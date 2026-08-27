@@ -203,7 +203,22 @@ export function useLoadBalancers(client: BinaryLaneClient | null) {
       if (!client) return []
       const { data, error } = await client.GET('/v2/load_balancers')
       if (error) throw new Error(JSON.stringify(error))
-      return data?.load_balancers || []
+      const lbs = data?.load_balancers || []
+
+      // Concurrently fetch full details for each load balancer to ensure server_ids and live status are fully loaded
+      const detailedLbs = await Promise.all(
+        lbs.map(async (lb) => {
+          try {
+            const { data: detailData } = await client.GET('/v2/load_balancers/{load_balancer_id}', {
+              params: { path: { load_balancer_id: lb.id } }
+            })
+            return detailData?.load_balancer || lb
+          } catch {
+            return lb
+          }
+        })
+      )
+      return detailedLbs
     },
     enabled: !!client
   })
