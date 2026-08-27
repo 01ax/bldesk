@@ -10,6 +10,7 @@ import { BillingOverview } from './components/billing/BillingOverview'
 import { VpcManager } from './components/vpcs/VpcManager'
 import { SshKeysManager } from './components/keys/SshKeysManager'
 import { FirewallManager } from './components/firewall/FirewallManager'
+import { LoadBalancerManager } from './components/loadbalancers/LoadBalancerManager'
 import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { createBinaryLaneClient, BinaryLaneClient } from './api/client'
@@ -138,9 +139,19 @@ function MainDashboard() {
 
           {activeTab === 'firewall' && <FirewallManager client={client} />}
 
+          {activeTab === 'loadbalancers' && (
+            <LoadBalancerManager
+              client={client}
+              onSelectServer={(s) => {
+                setSelectedServer(s)
+                setActiveTab('servers')
+              }}
+            />
+          )}
+
           {activeTab === 'billing' && <BillingOverview client={client} />}
 
-          {(activeTab === 'loadbalancers' || activeTab === 'backups') && (
+          {activeTab === 'backups' && (
             <div className="h-full flex flex-col p-6 space-y-4">
               <h1 className="text-xl font-bold text-white capitalize">{activeTab} Manager</h1>
               <p className="text-xs text-slate-400">
