@@ -1,0 +1,8 @@
+{
+  "appId": "com.termau.bldesk",
+  "appName": "BLDesk",
+  "webDir": "out/renderer",
+  "server": {
+    "androidScheme": "https"
+  }
+}
