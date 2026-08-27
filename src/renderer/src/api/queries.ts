@@ -209,6 +209,73 @@ export function useLoadBalancers(client: BinaryLaneClient | null) {
   })
 }
 
+export function useAddServerToLoadBalancerMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ loadBalancerId, serverId }: { loadBalancerId: number; serverId: number }) => {
+      if (!client) throw new Error('No client')
+      const { error } = await client.POST('/v2/load_balancers/{load_balancer_id}/servers', {
+        params: { path: { load_balancer_id: loadBalancerId } },
+        body: { server_ids: [serverId] }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
+export function useRemoveServerFromLoadBalancerMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ loadBalancerId, serverId }: { loadBalancerId: number; serverId: number }) => {
+      if (!client) throw new Error('No client')
+      const { error } = await client.DELETE('/v2/load_balancers/{load_balancer_id}/servers', {
+        params: { path: { load_balancer_id: loadBalancerId } },
+        body: { server_ids: [serverId] }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
+export function useCreateLoadBalancerMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: any) => {
+      if (!client) throw new Error('No client')
+      const { data, error } = await client.POST('/v2/load_balancers', { body })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.load_balancer
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
+    }
+  })
+}
+
+export function useDeleteLoadBalancerMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (loadBalancerId: number) => {
+      if (!client) throw new Error('No client')
+      const { error } = await client.DELETE('/v2/load_balancers/{load_balancer_id}', {
+        params: { path: { load_balancer_id: loadBalancerId } }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
+    }
+  })
+}
+
 // --- DNS DOMAINS & RECORDS ---
 
 export function useDomains(client: BinaryLaneClient | null) {
