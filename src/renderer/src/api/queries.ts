@@ -173,6 +173,27 @@ export function useFirewallRules(client: BinaryLaneClient | null, serverId: numb
   })
 }
 
+export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (rules: any[]) => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: 'change_advanced_firewall_rules',
+          firewall_rules: rules
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['firewallRules', serverId] })
+    }
+  })
+}
+
 // --- LOAD BALANCERS ---
 
 export function useLoadBalancers(client: BinaryLaneClient | null) {
