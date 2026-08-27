@@ -1,4 +1,4 @@
-name: Release BLDesk
+name: Build & Release Multi-OS
 
 on:
   push:
@@ -6,13 +6,16 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build & Package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
@@ -25,28 +28,42 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Generate Typed API Schema
         run: npm run generate-api
 
-      - name: Build Application
+      - name: Build Application Bundle
         run: npm run build
 
-      - name: Package for Windows
+      # --- WINDOWS BUILD ---
+      - name: Package for Windows (x64)
         if: matrix.os == 'windows-latest'
-        run: npx electron-packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite
+        run: |
+          npx electron-packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite --ignore="^/(src|tsconfig.*|tailwind.*|postcss.*)"
+          Compress-Archive -Path release/BLDesk-win32-x64 -DestinationPath release/BLDesk-win-x64.zip
 
-      - name: Package for macOS
+      # --- MACOS BUILD (Universal: Apple Silicon M1/M2/M3/M4 & Intel) ---
+      - name: Package for macOS (Universal)
         if: matrix.os == 'macos-latest'
-        run: npx electron-packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite
+        run: |
+          npx electron-packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite --ignore="^/(src|tsconfig.*|tailwind.*|postcss.*)"
+          cd release
+          zip -r -y BLDesk-mac-universal.zip BLDesk-darwin-universal/BLDesk.app
 
-      - name: Package for Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: npx electron-packager . BLDesk --platform=linux --arch=x64 --out=release --overwrite
-
-      - name: Upload Artifacts
+      # --- UPLOAD ARTIFACTS TO WORKFLOW RUN ---
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BLDesk-${{ matrix.os }}
-          path: release/
+          path: release/*.zip
+
+      # --- PUBLISH GITHUB RELEASE ---
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release/*.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
