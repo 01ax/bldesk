@@ -140,10 +140,18 @@ function registerIpcHandlers(): void {
       if (!existsSync(sshDir)) return []
       const files = readdirSync(sshDir)
       const pubFiles = files.filter(f => f.endsWith('.pub'))
-      return pubFiles.map(f => ({
-        name: f.replace('.pub', ''),
-        publicKey: readFileSync(join(sshDir, f), 'utf8').trim()
-      }))
+      return pubFiles.map(f => {
+        const baseName = f.replace('.pub', '')
+        const privPath = join(sshDir, baseName)
+        const pubPath = join(sshDir, f)
+        const hasPriv = existsSync(privPath)
+        return {
+          name: baseName,
+          publicKey: readFileSync(pubPath, 'utf8').trim(),
+          pubPath,
+          privateKeyPath: hasPriv ? privPath : undefined
+        }
+      })
     } catch (err) {
       console.error('[Main] Failed to read local SSH keys:', err)
       return []

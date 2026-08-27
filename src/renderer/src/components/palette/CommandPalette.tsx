@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Server, Globe, Receipt, Terminal, ArrowRight, ShieldCheck, Power, X } from 'lucide-react'
+import { Search, Server, Globe, Receipt, Terminal, LucideIcon } from 'lucide-react'
 import { components } from '@shared/api/schema'
 
 type ServerResponse = components['schemas']['Server']
+
+interface CommandItem {
+  id: string
+  title: string
+  subtitle?: string
+  category: string
+  icon: LucideIcon
+  action: () => void
+}
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -39,7 +48,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null
 
   // Navigation Items
-  const navActions = [
+  const navActions: CommandItem[] = [
     { id: 'nav-servers', title: 'Go to Virtual Servers & Compute', category: 'Navigation', icon: Server, action: () => { onNavigateTab('servers'); onClose(); } },
     { id: 'nav-terminal', title: 'Open Embedded SSH Shell', category: 'Navigation', icon: Terminal, action: () => { onNavigateTab('terminal'); onClose(); } },
     { id: 'nav-dns', title: 'Manage DNS Domains & Records', category: 'Navigation', icon: Globe, action: () => { onNavigateTab('dns'); onClose(); } },
@@ -47,7 +56,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ]
 
   // Server Items
-  const serverActions = servers.map((s) => ({
+  const serverActions: CommandItem[] = servers.map((s) => ({
     id: `server-${s.id}`,
     title: `${s.name} (${s.networks?.v4?.[0]?.ip_address || 'No IP'})`,
     subtitle: `${s.region?.slug?.toUpperCase()} • ${s.status === 'active' ? '🟢 Running' : '🔴 Stopped'}`,
@@ -59,7 +68,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }))
 
-  const allItems = [...navActions, ...serverActions]
+  const allItems: CommandItem[] = [...navActions, ...serverActions]
   const filtered = allItems.filter(
     (item) =>
       item.title.toLowerCase().includes(query.toLowerCase()) ||

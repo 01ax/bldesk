@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Globe, Plus, Trash2, RefreshCw, Search, Check, AlertCircle, Loader2 } from 'lucide-react'
+import { Globe, Plus, Trash2, Search, RefreshCw, Loader2 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useDomainRecords } from '../../api/queries'
 
@@ -14,7 +14,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [recordType, setRecordType] = useState('A')
   const [recordName, setRecordName] = useState('@')
   const [recordData, setRecordData] = useState('')
-  const [recordTtl, setRecordTtl] = useState(300)
+  const [recordTtl] = useState(300)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const domainsQuery = useDomains(client)
@@ -49,7 +49,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       await client.POST('/v2/domains/{domain_name}/records', {
         params: { path: { domain_name: selectedDomain } },
         body: {
-          type: recordType,
+          type: recordType as any,
           name: recordName.trim(),
           data: recordData.trim(),
           ttl: Number(recordTtl)

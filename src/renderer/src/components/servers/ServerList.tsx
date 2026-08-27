@@ -2,19 +2,15 @@ import React, { useState } from 'react'
 import {
   Server as ServerIcon,
   Play,
-  Square,
   RotateCw,
   Power,
   Terminal,
-  ExternalLink,
   Search,
   Copy,
   Check,
   Cpu,
   HardDrive,
   Activity,
-  Layers,
-  ShieldAlert,
   Loader2,
   Plus
 } from 'lucide-react'
@@ -82,7 +78,7 @@ export const ServerList: React.FC<ServerListProps> = ({
     const matchesSearch =
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.networks?.v4 || []).some((net) => net.ip_address.includes(searchTerm)) ||
-      (s.tags || []).some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+      (((s as any).tags || []) as string[]).some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase()))
 
     const matchesRegion = regionFilter === 'all' || s.region?.slug === regionFilter
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter

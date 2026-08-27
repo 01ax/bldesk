@@ -2,22 +2,34 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
-import { Terminal as TermIcon, Play, RefreshCw, X } from 'lucide-react'
+import { Terminal as TermIcon, Play, RefreshCw, Key } from 'lucide-react'
+import { LocalSshKey } from '@shared/ipc-types'
 
 interface EmbeddedTerminalProps {
   initialHost?: string
   onClose?: () => void
 }
 
-export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost = '', onClose }) => {
+export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost = '' }) => {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermInstance = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [hostInput, setHostInput] = useState(initialHost)
   const [username, setUsername] = useState('root')
-  const [connected, setConnected] = useState(false)
+  const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
+  const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
 
   useEffect(() => {
+    // Discover available local SSH keys
+    window.bldeskApi.getLocalSshKeys().then((keys) => {
+      setLocalKeys(keys)
+      // If there are keys with privateKeyPath, default to the first one
+      const defaultKey = keys.find((k) => k.privateKeyPath)
+      if (defaultKey?.privateKeyPath) {
+        setSelectedKeyPath(defaultKey.privateKeyPath)
+      }
+    })
+
     if (!terminalRef.current) return
 
     const term = new XTerm({
@@ -38,9 +50,9 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
     fitAddon.fit()
 
     term.writeln('\x1b[1;34m╔══════════════════════════════════════════════════════════════╗\x1b[0m')
-    term.writeln('\x1b[1;34m║\x1b[0m   \x1b[1;36mBLDesk Embedded SSH / Serial Console Terminal\x1b[0m              \x1b[1;34m║\x1b[0m')
+    term.writeln('\x1b[1;34m║\x1b[0m   \x1b[1;36mBLDesk Embedded SSH / Native Console Terminal\x1b[0m              \x1b[1;34m║\x1b[0m')
     term.writeln('\x1b[1;34m╚══════════════════════════════════════════════════════════════╝\x1b[0m')
-    term.writeln('\x1b[90mEnter a server IP above and click Connect or launch via Native Terminal.\x1b[0m\r\n')
+    term.writeln('\x1b[90mSelect an SSH key, enter target host, and click Connect to launch.\x1b[0m\r\n')
 
     xtermInstance.current = term
     fitAddonRef.current = fitAddon
@@ -57,13 +69,18 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
   const handleConnect = () => {
     if (!hostInput.trim() || !xtermInstance.current) return
     const term = xtermInstance.current
-    term.writeln(`\r\n\x1b[33mConnecting to ${username}@${hostInput}...\x1b[0m`)
-    setConnected(true)
+    const keyLabel = localKeys.find((k) => k.privateKeyPath === selectedKeyPath)?.name || 'Default'
+    
+    term.writeln(`\r\n\x1b[33mConnecting to ${username}@${hostInput} (Key: ${keyLabel})...\x1b[0m`)
 
-    // Launch native terminal or simulate session
-    window.bldeskApi.launchNativeTerminal({ host: hostInput, username })
-    term.writeln(`\x1b[32m[OK] Spawned native SSH session in Windows Terminal / OS Console.\x1b[0m`)
-    term.writeln(`\x1b[90mTip: Direct SSH sessions run in full native PTY.\x1b[0m\r\n`)
+    // Launch native terminal with specified key
+    window.bldeskApi.launchNativeTerminal({
+      host: hostInput,
+      username,
+      privateKeyPath: selectedKeyPath || undefined
+    })
+    term.writeln(`\x1b[32m[OK] Spawned native SSH session with key "${keyLabel}".\x1b[0m`)
+    term.writeln(`\x1b[90mTip: Native Terminal session is running in your active OS console.\x1b[0m\r\n`)
   }
 
   const handleClear = () => {
@@ -73,7 +90,7 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
   return (
     <div className="h-full flex flex-col bg-slate-950 p-6 space-y-4">
       {/* Top Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
             <TermIcon className="w-3.5 h-3.5 text-sky-400" />
@@ -84,20 +101,37 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* SSH Key Picker */}
+          <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 border border-slate-800 rounded-lg">
+            <Key className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <select
+              value={selectedKeyPath}
+              onChange={(e) => setSelectedKeyPath(e.target.value)}
+              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[140px]"
+            >
+              <option value="" className="bg-slate-900 text-slate-400">Default Key (~/.ssh/id_*)</option>
+              {localKeys.map((k) => (
+                <option key={k.name} value={k.privateKeyPath || ''} className="bg-slate-900 text-white">
+                  {k.name} {k.privateKeyPath ? '🔑' : '(pub only)'}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <input
             type="text"
-            placeholder="User (default: root)"
+            placeholder="User (root)"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-24 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
+            className="w-20 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
           />
           <input
             type="text"
             placeholder="Host / IP Address"
             value={hostInput}
             onChange={(e) => setHostInput(e.target.value)}
-            className="w-44 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
+            className="w-40 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
           />
           <button
             onClick={handleConnect}

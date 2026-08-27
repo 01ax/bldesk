@@ -1,7 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   ArrowLeft,
-  Server,
   Play,
   RotateCw,
   Power,
@@ -14,19 +13,17 @@ import {
   Archive,
   Radio,
   Key,
-  ExternalLink,
   Loader2,
   Copy,
-  Check,
-  RefreshCw
+  Check
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
+import { LocalSshKey } from '@shared/ipc-types'
 import {
   useServerMetrics,
   useServerConsole,
   useServerActionMutation,
-  useServerBackups,
   useServerSnapshots,
   useFirewallRules,
   useHistoricalMetrics
@@ -38,24 +35,41 @@ interface ServerDetailsProps {
   server: ServerResponse
   client: BinaryLaneClient | null
   onBack: () => void
-  onOpenTerminal: (ip: string) => void
+  onOpenTerminal?: (ip: string) => void
 }
 
 export const ServerDetails: React.FC<ServerDetailsProps> = ({
   server,
   client,
-  onBack,
-  onOpenTerminal
+  onBack
 }) => {
-  const [activeTab, setActiveTab] = useState<'metrics' | 'network' | 'backups' | 'firewall'>('metrics')
+  const [activeTab, setActiveTab] = useState<'metrics' | 'network' | 'backups' | 'snapshots' | 'firewall' | 'diagnostics'>('metrics')
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null)
+  const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
+  const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
+
+  useEffect(() => {
+    if (window.bldeskApi?.getLocalSshKeys) {
+      window.bldeskApi
+        .getLocalSshKeys()
+        .then((keys) => {
+          if (Array.isArray(keys)) {
+            setLocalKeys(keys)
+            const defaultKey = keys.find((k) => k.privateKeyPath)
+            if (defaultKey?.privateKeyPath) {
+              setSelectedKeyPath(defaultKey.privateKeyPath)
+            }
+          }
+        })
+        .catch(console.error)
+    }
+  }, [])
 
   const metricsQuery = useServerMetrics(client, server.id)
   const historyQuery = useHistoricalMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
-  const backupsQuery = useServerBackups(client, server.id)
   const snapshotsQuery = useServerSnapshots(client, server.id)
   const firewallQuery = useFirewallRules(client, server.id)
   const serverAction = useServerActionMutation(client)
@@ -86,7 +100,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         body: `Action #${res?.id || ''} initiated successfully.`
       })
       if (actionType === 'ping' || actionType === 'uptime' || actionType === 'is_running') {
-        setDiagnosticResult(`Result of ${actionType}: ${JSON.stringify(res?.result || res?.status || 'Success')}`)
+        setDiagnosticResult(`Result of ${actionType}: ${JSON.stringify((res as any)?.result || res?.status || 'Success')}`)
       }
     } catch (err: any) {
       alert(`Action failed: ${err.message || 'Unknown error'}`)
@@ -139,8 +153,31 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* SSH Key Selector */}
+          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 border border-slate-800 rounded-lg">
+            <Key className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <select
+              value={selectedKeyPath}
+              onChange={(e) => setSelectedKeyPath(e.target.value)}
+              className="bg-transparent text-xs text-slate-300 focus:outline-none cursor-pointer max-w-[120px]"
+            >
+              <option value="" className="bg-slate-900 text-slate-400">Default (~/.ssh/id_*)</option>
+              {localKeys.map((k) => (
+                <option key={k.name} value={k.privateKeyPath || ''} className="bg-slate-900 text-white">
+                  {k.name} {k.privateKeyPath ? '🔑' : '(pub)'}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
-            onClick={() => window.bldeskApi.launchNativeTerminal({ host: primaryV4, username: 'root' })}
+            onClick={() =>
+              window.bldeskApi.launchNativeTerminal({
+                host: primaryV4,
+                username: 'root',
+                privateKeyPath: selectedKeyPath || undefined
+              })
+            }
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow"
           >
             <Terminal className="w-3.5 h-3.5" />

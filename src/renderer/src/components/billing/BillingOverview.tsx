@@ -44,25 +44,25 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
         {/* Account Balance Card */}
         <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Account Balance</span>
+            <span>Available Credit</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-white font-mono">
-            {balance ? `$${Number(balance.credit || 0).toFixed(2)} AUD` : '$0.00 AUD'}
+            ${(balance?.available_credit || 0).toFixed(2)} AUD
           </div>
           <div className="text-[11px] text-slate-500">
-            {balance && balance.debit ? `Pending Debit: $${Number(balance.debit).toFixed(2)}` : 'No pending unpaid charges'}
+            Current balance available on account
           </div>
         </div>
 
-        {/* Projected Monthly Forecast */}
+        {/* Unbilled Charges Forecast */}
         <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Monthly Fleet Cost</span>
-            <ArrowUpRight className="w-4 h-4 text-sky-400" />
+            <span>Unbilled Usage</span>
+            <ArrowUpRight className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl font-bold text-white font-mono">
-            {balance ? `$${Number(balance.month_to_date_balance || 0).toFixed(2)}` : '$0.00'}
+            ${((balance as any)?.unbilled_total || (balance as any)?.debit || 0).toFixed(2)} AUD
           </div>
           <div className="text-[11px] text-slate-500">
             Month-to-date accumulated compute charges
