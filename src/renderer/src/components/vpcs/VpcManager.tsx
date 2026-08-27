@@ -314,10 +314,10 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                       {memberServers.map((server) => {
                         const privateIp =
-                          server.networks?.v4?.find((v) => v.type === 'private')?.ip_address ||
+                          server.networks?.v4?.find((v: any) => v.type === 'private')?.ip_address ||
                           'Private IP assigned'
                         const publicIp =
-                          server.networks?.v4?.find((v) => v.type === 'public')?.ip_address ||
+                          server.networks?.v4?.find((v: any) => v.type === 'public')?.ip_address ||
                           server.networks?.v4?.[0]?.ip_address ||
                           'No public IP'
                         const isRunning = server.status === 'active'

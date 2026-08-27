@@ -386,9 +386,6 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
             typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
           ).filter((n) => !isNaN(n) && n > 0)
 
-          const memberServers = servers.filter((s) =>
-            memberServerIds.some((mid) => mid === s.id)
-          )
           const isHealthy = lb.status === 'active'
 
           return (
@@ -467,7 +464,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                   <div className="flex items-center justify-between text-xs text-slate-400">
                     <span className="font-semibold text-slate-300 flex items-center gap-1.5">
                       <Server className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Backend Server Pool ({memberServers.length})</span>
+                      <span>Backend Server Pool ({memberServerIds.length})</span>
                     </span>
 
                     {/* Add Server Button */}
@@ -487,7 +484,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                     </button>
                   </div>
 
-                  {memberServers.length === 0 ? (
+                  {memberServerIds.length === 0 ? (
                     <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800/80 text-center text-xs text-slate-500 space-y-2">
                       <div>No compute servers currently in this backend pool.</div>
                       <button
@@ -503,14 +500,20 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {memberServers.map((server) => {
-                        const isRunning = server.status === 'active'
-                        const isProcessing = actionServerId === server.id
-                        const ip = server.networks?.v4?.[0]?.ip_address || 'No IP'
+                      {memberServerIds.map((serverId) => {
+                        const server = servers.find((s) => s.id === serverId)
+                        const isRunning = server ? server.status === 'active' : true
+                        const isProcessing = actionServerId === serverId
+                        const name = server?.name || `Server #${serverId}`
+                        const publicIp =
+                          server?.networks?.v4?.find((v: any) => v.type === 'public')?.ip_address ||
+                          server?.networks?.v4?.[0]?.ip_address ||
+                          'Resolving IP...'
+                        const privateIp = server?.networks?.v4?.find((v: any) => v.type === 'private')?.ip_address
 
                         return (
                           <div
-                            key={server.id}
+                            key={serverId}
                             className="flex items-center justify-between p-2.5 bg-slate-950/70 border border-slate-800/90 rounded-xl text-xs hover:border-slate-700 transition"
                           >
                             <div className="flex items-center gap-2.5 truncate">
@@ -520,13 +523,21 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                                 }`}
                               />
                               <div className="truncate">
-                                <div className="font-semibold text-slate-100 truncate">{server.name}</div>
-                                <div className="text-[11px] text-slate-500 font-mono">{ip}</div>
+                                <div className="font-semibold text-slate-100 truncate">{name}</div>
+                                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
+                                  <span>{publicIp}</span>
+                                  {privateIp && (
+                                    <>
+                                      <span className="text-slate-600">•</span>
+                                      <span className="text-sky-400">{privateIp}</span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                              {onSelectServer && (
+                              {server && onSelectServer && (
                                 <button
                                   onClick={() => onSelectServer(server)}
                                   className="flex items-center gap-1 px-2 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition"
@@ -539,7 +550,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
 
                               {/* Remove Server from Pool */}
                               <button
-                                onClick={() => handleRemoveServer(lb, server)}
+                                onClick={() => handleRemoveServer(lb, server || ({ id: serverId, name } as any))}
                                 disabled={isProcessing}
                                 className="p-1 text-slate-500 hover:text-rose-400 bg-slate-800/50 hover:bg-rose-950/60 hover:border-rose-800/50 border border-transparent rounded transition"
                                 title="Remove server from backend pool"

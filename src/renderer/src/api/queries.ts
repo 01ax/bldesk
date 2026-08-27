@@ -8,9 +8,24 @@ export function useServers(client: BinaryLaneClient | null) {
     queryKey: ['servers'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/servers')
-      if (error) throw new Error(JSON.stringify(error))
-      return data?.servers || []
+      let allServers: any[] = []
+      let page = 1
+      let hasMore = true
+
+      while (hasMore && page <= 10) {
+        const { data, error } = await client.GET('/v2/servers', {
+          params: { query: { per_page: 200, page } }
+        })
+        if (error) break
+        const pageServers = data?.servers || []
+        allServers = [...allServers, ...pageServers]
+        if (!data?.links?.pages?.next || pageServers.length === 0) {
+          hasMore = false
+        } else {
+          page++
+        }
+      }
+      return allServers
     },
     enabled: !!client,
     refetchInterval: 15000 // auto poll fleet every 15s
