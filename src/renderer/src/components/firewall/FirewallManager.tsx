@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   Shield,
   Plus,
@@ -8,7 +8,14 @@ import {
   Server,
   Unlock,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Download,
+  Upload,
+  Copy,
+  Check,
+  Share2,
+  FileJson,
+  X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useServers, useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
@@ -19,6 +26,7 @@ interface FirewallManagerProps {
 }
 
 export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initialServerId }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const serversQuery = useServers(client)
   const servers = serversQuery.data || []
 
@@ -32,6 +40,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const firewallQuery = useFirewallRules(client, activeServerId)
   const updateFirewall = useUpdateFirewallRulesMutation(client, activeServerId)
 
+  // Add Rule Form States
   const [isAdding, setIsAdding] = useState(false)
   const [ruleAction, setRuleAction] = useState<'accept' | 'drop'>('accept')
   const [ruleProtocol, setRuleProtocol] = useState<'tcp' | 'udp' | 'icmp' | 'all'>('tcp')
@@ -40,6 +49,17 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [ruleDescription, setRuleDescription] = useState('Allow SSH')
   const [rulePlacement, setRulePlacement] = useState<'top' | 'bottom' | 'before_drop'>('before_drop')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Import / Export States
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [importJsonText, setImportJsonText] = useState('')
+  const [importError, setImportError] = useState<string | null>(null)
+  const [copiedJson, setCopiedJson] = useState(false)
+
+  // Clone to Server States
+  const [isCloneOpen, setIsCloneOpen] = useState(false)
+  const [targetCloneServerId, setTargetCloneServerId] = useState<number | null>(null)
+  const [isCloning, setIsCloning] = useState(false)
 
   const currentRules: any[] = firewallQuery.data || []
   const hasCatchAllDrop = currentRules.length > 0 && currentRules[currentRules.length - 1]?.action === 'drop'
@@ -120,10 +140,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     if (rulePlacement === 'top') {
       updatedRules.unshift(newRule)
     } else if (rulePlacement === 'before_drop' && hasCatchAllDrop) {
-      // Insert right before the last rule (which is the drop rule)
       updatedRules.splice(updatedRules.length - 1, 0, newRule)
     } else {
-      // Default: append to bottom
       updatedRules.push(newRule)
     }
 
@@ -186,10 +204,122 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     }
   }
 
+  // --- DOWNLOAD / EXPORT FIREWALL RULES ---
+  const handleDownloadRules = () => {
+    if (currentRules.length === 0) {
+      alert('No active firewall rules to download.')
+      return
+    }
+    const jsonStr = JSON.stringify(currentRules, null, 2)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `firewall-rules-${activeServer?.name || activeServerId}-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleCopyJson = () => {
+    const jsonStr = JSON.stringify(currentRules, null, 2)
+    navigator.clipboard.writeText(jsonStr)
+    setCopiedJson(true)
+    setTimeout(() => setCopiedJson(false), 1500)
+  }
+
+  // --- UPLOAD / IMPORT FIREWALL RULES ---
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string
+        setImportJsonText(text)
+        setImportError(null)
+      } catch (err: any) {
+        setImportError('Failed to read file: ' + err.message)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleApplyImportedRules = async () => {
+    setImportError(null)
+    if (!importJsonText.trim()) {
+      setImportError('Please paste or upload JSON rules.')
+      return
+    }
+
+    try {
+      let parsed = JSON.parse(importJsonText)
+      if (!Array.isArray(parsed) && Array.isArray((parsed as any)?.firewall_rules)) {
+        parsed = (parsed as any).firewall_rules
+      }
+
+      if (!Array.isArray(parsed)) {
+        throw new Error('Rules JSON must be an array of firewall rule objects.')
+      }
+
+      // Format & sanitize rules
+      const sanitized = parsed.map((r: any) => ({
+        action: r.action === 'drop' ? 'drop' : 'accept',
+        protocol: r.protocol || 'tcp',
+        source_addresses: Array.isArray(r.source_addresses) ? r.source_addresses : [r.source_addresses || '0.0.0.0/0'],
+        destination_addresses: Array.isArray(r.destination_addresses) ? r.destination_addresses : ['0.0.0.0/0'],
+        destination_ports: Array.isArray(r.destination_ports)
+          ? r.destination_ports
+          : r.destination_ports
+          ? [String(r.destination_ports)]
+          : null,
+        description: r.description || null
+      }))
+
+      await updateFirewall.mutateAsync(sanitized)
+      setIsImportOpen(false)
+      setImportJsonText('')
+      window.bldeskApi.sendNotification({
+        title: 'Firewall Policy Imported',
+        body: `Applied ${sanitized.length} firewall rules to "${activeServer?.name || activeServerId}".`
+      })
+    } catch (err: any) {
+      setImportError(err.message || 'Invalid JSON rules format.')
+    }
+  }
+
+  // --- CLONE RULES TO ANOTHER SERVER ---
+  const handleCloneToServer = async () => {
+    if (!client || !targetCloneServerId) return
+    if (!confirm(`Apply this ruleset (${currentRules.length} rules) to target server #${targetCloneServerId}?`)) return
+
+    setIsCloning(true)
+    try {
+      await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: targetCloneServerId } },
+        body: {
+          type: 'change_advanced_firewall_rules',
+          firewall_rules: currentRules
+        }
+      })
+      setIsCloneOpen(false)
+      window.bldeskApi.sendNotification({
+        title: 'Firewall Rules Cloned',
+        body: `Successfully cloned policy to target server #${targetCloneServerId}.`
+      })
+    } catch (err: any) {
+      alert(`Failed to clone rules: ${err.message}`)
+    } finally {
+      setIsCloning(false)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto select-text">
       {/* Header & Server Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
             <Shield className="w-5 h-5 text-sky-400" />
@@ -200,14 +330,14 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Server Selector Dropdown */}
           <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 border border-slate-800 rounded-lg">
             <Server className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={activeServerId || ''}
               onChange={(e) => setSelectedServerId(Number(e.target.value))}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[160px]"
             >
               {servers.map((s) => (
                 <option key={s.id} value={s.id} className="bg-slate-900 text-white">
@@ -217,6 +347,42 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </select>
           </div>
 
+          {/* Import / Export & Clone Buttons */}
+          <button
+            onClick={handleDownloadRules}
+            disabled={currentRules.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition disabled:opacity-40"
+            title="Download Ruleset JSON File"
+          >
+            <Download className="w-3.5 h-3.5 text-sky-400" />
+            <span>Export JSON</span>
+          </button>
+
+          <button
+            onClick={() => setIsImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition"
+            title="Import or Restore Rules from JSON"
+          >
+            <Upload className="w-3.5 h-3.5 text-purple-400" />
+            <span>Import JSON</span>
+          </button>
+
+          {servers.length > 1 && (
+            <button
+              onClick={() => {
+                const other = servers.find((s) => s.id !== activeServerId)
+                if (other) setTargetCloneServerId(other.id)
+                setIsCloneOpen(true)
+              }}
+              disabled={currentRules.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition disabled:opacity-40"
+              title="Clone Current Policy to Another Server"
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Clone to Server</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               setIsAdding(!isAdding)
@@ -224,7 +390,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 setRulePlacement('before_drop')
               }
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Rule</span>
@@ -418,16 +584,29 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </p>
           </div>
 
-          {currentRules.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              disabled={updateFirewall.isPending}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-950/80 border border-rose-800/40 rounded transition"
-            >
-              <Trash2 className="w-3 h-3" />
-              <span>Clear All Rules</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {currentRules.length > 0 && (
+              <>
+                <button
+                  onClick={handleCopyJson}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition"
+                  title="Copy formatted JSON rules to clipboard"
+                >
+                  {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
+                </button>
+
+                <button
+                  onClick={handleClearAll}
+                  disabled={updateFirewall.isPending}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-950/80 border border-rose-800/40 rounded transition"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear All Rules</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {firewallQuery.isLoading && (
@@ -534,6 +713,146 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </div>
         )}
       </div>
+
+      {/* --- IMPORT FIREWALL MODAL --- */}
+      {isImportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in select-text">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/80">
+              <div className="flex items-center gap-2.5">
+                <FileJson className="w-4 h-4 text-purple-400" />
+                <h3 className="text-sm font-semibold text-white">Import Firewall Policy (JSON)</h3>
+              </div>
+              <button
+                onClick={() => setIsImportOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Upload .json file or paste rules JSON:
+                </label>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2 px-3 border border-dashed border-slate-700 hover:border-purple-500/80 bg-slate-950/60 rounded-xl text-xs text-slate-400 hover:text-white transition flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Choose JSON File from Computer</span>
+                </button>
+              </div>
+
+              <div>
+                <textarea
+                  rows={8}
+                  placeholder={`[\n  {\n    "action": "accept",\n    "protocol": "tcp",\n    "destination_ports": ["22", "80", "443"],\n    "source_addresses": ["0.0.0.0/0"],\n    "description": "Allow Web & SSH"\n  }\n]`}
+                  value={importJsonText}
+                  onChange={(e) => setImportJsonText(e.target.value)}
+                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-[11px] focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {importError && (
+                <div className="flex items-center gap-2 p-2.5 bg-rose-950/50 border border-rose-800/60 rounded-lg text-rose-300 text-xs">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{importError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsImportOpen(false)}
+                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyImportedRules}
+                  disabled={updateFirewall.isPending}
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition shadow disabled:opacity-50"
+                >
+                  {updateFirewall.isPending ? 'Applying Policy...' : 'Apply Imported Policy'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CLONE TO SERVER MODAL --- */}
+      {isCloneOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in select-text">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/80">
+              <div className="flex items-center gap-2.5">
+                <Share2 className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-semibold text-white">Clone Firewall Policy to Server</h3>
+              </div>
+              <button
+                onClick={() => setIsCloneOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-400">
+                Copy all <strong className="text-white">{currentRules.length} rules</strong> from{' '}
+                <strong className="text-sky-400">{activeServer?.name}</strong> to:
+              </p>
+
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1 font-semibold">Target Server</label>
+                <select
+                  value={targetCloneServerId || ''}
+                  onChange={(e) => setTargetCloneServerId(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white"
+                >
+                  {servers
+                    .filter((s) => s.id !== activeServerId)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.networks?.v4?.[0]?.ip_address || `#${s.id}`})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCloneOpen(false)}
+                  className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloneToServer}
+                  disabled={isCloning || !targetCloneServerId}
+                  className="px-4 py-1.5 font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition shadow disabled:opacity-50"
+                >
+                  {isCloning ? 'Cloning Policy...' : 'Apply to Target Server'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
