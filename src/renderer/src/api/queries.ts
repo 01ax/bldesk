@@ -218,6 +218,83 @@ export function useDomainRecords(client: BinaryLaneClient | null, domainName: st
   })
 }
 
+// --- SIZES, REGIONS & IMAGES ---
+
+export function useSizes(client: BinaryLaneClient | null) {
+  return useQuery({
+    queryKey: ['sizes'],
+    queryFn: async () => {
+      if (!client) return []
+      const { data, error } = await client.GET('/v2/sizes')
+      if (error) return []
+      return data?.sizes || []
+    },
+    enabled: !!client,
+    staleTime: 300000
+  })
+}
+
+export function useRegions(client: BinaryLaneClient | null) {
+  return useQuery({
+    queryKey: ['regions'],
+    queryFn: async () => {
+      if (!client) return []
+      const { data, error } = await client.GET('/v2/regions')
+      if (error) return []
+      return data?.regions || []
+    },
+    enabled: !!client,
+    staleTime: 300000
+  })
+}
+
+export function useImages(client: BinaryLaneClient | null) {
+  return useQuery({
+    queryKey: ['images'],
+    queryFn: async () => {
+      if (!client) return []
+      const { data, error } = await client.GET('/v2/images')
+      if (error) return []
+      return data?.images || []
+    },
+    enabled: !!client,
+    staleTime: 300000
+  })
+}
+
+export function useHistoricalMetrics(client: BinaryLaneClient | null, serverId: number | null) {
+  return useQuery({
+    queryKey: ['historicalMetrics', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return []
+      const { data, error } = await client.GET('/v2/samplesets/{server_id}', {
+        params: { path: { server_id: serverId } }
+      })
+      if (error) return []
+      return (data as any)?.sample_sets || []
+    },
+    enabled: !!client && !!serverId,
+    refetchInterval: 30000
+  })
+}
+
+export function useCreateServerMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: any) => {
+      if (!client) throw new Error('No client')
+      const { data, error } = await client.POST('/v2/servers', {
+        body
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.server
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
 // --- SSH KEYS ---
 
 export function useSshKeys(client: BinaryLaneClient | null) {
@@ -230,6 +307,39 @@ export function useSshKeys(client: BinaryLaneClient | null) {
       return data?.ssh_keys || []
     },
     enabled: !!client
+  })
+}
+
+export function useAddSshKeyMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, publicKey }: { name: string; publicKey: string }) => {
+      if (!client) throw new Error('No client')
+      const { data, error } = await client.POST('/v2/account/keys', {
+        body: { name, public_key: publicKey }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.ssh_key
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sshKeys'] })
+    }
+  })
+}
+
+export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (keyId: number) => {
+      if (!client) throw new Error('No client')
+      const { error } = await client.DELETE('/v2/account/keys/{key_id}', {
+        params: { path: { key_id: keyId } }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sshKeys'] })
+    }
   })
 }
 

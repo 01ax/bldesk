@@ -1,0 +1,52 @@
+name: Release BLDesk
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Typed API Schema
+        run: npm run generate-api
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Package for Windows
+        if: matrix.os == 'windows-latest'
+        run: npx electron-packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite
+
+      - name: Package for macOS
+        if: matrix.os == 'macos-latest'
+        run: npx electron-packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite
+
+      - name: Package for Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: npx electron-packager . BLDesk --platform=linux --arch=x64 --out=release --overwrite
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLDesk-${{ matrix.os }}
+          path: release/

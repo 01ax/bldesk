@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, Notification, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
@@ -131,6 +131,23 @@ function registerIpcHandlers(): void {
     })
     consoleWindow.loadURL(options.url)
     return { success: true }
+  })
+
+  // SSH Keys & Local FS
+  ipcMain.handle('vault:getLocalSshKeys', async () => {
+    try {
+      const sshDir = join(app.getPath('home'), '.ssh')
+      if (!existsSync(sshDir)) return []
+      const files = readdirSync(sshDir)
+      const pubFiles = files.filter(f => f.endsWith('.pub'))
+      return pubFiles.map(f => ({
+        name: f.replace('.pub', ''),
+        publicKey: readFileSync(join(sshDir, f), 'utf8').trim()
+      }))
+    } catch (err) {
+      console.error('[Main] Failed to read local SSH keys:', err)
+      return []
+    }
   })
 
   // Notifications
