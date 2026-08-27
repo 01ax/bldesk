@@ -380,9 +380,15 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
         )}
 
         {loadBalancers.map((lb) => {
-          // Find all servers belonging to this Load Balancer pool
-          const memberServerIds = (lb.server_ids || []) as number[]
-          const memberServers = servers.filter((s) => memberServerIds.includes(s.id))
+          // Find all servers belonging to this Load Balancer pool (handle number[], string[], and object[])
+          const rawIds = (lb.server_ids || (lb as any).servers || []) as any[]
+          const memberServerIds: number[] = rawIds.map((item: any) =>
+            typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
+          ).filter((n) => !isNaN(n) && n > 0)
+
+          const memberServers = servers.filter((s) =>
+            memberServerIds.some((mid) => mid === s.id)
+          )
           const isHealthy = lb.status === 'active'
 
           return (
@@ -467,7 +473,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                     {/* Add Server Button */}
                     <button
                       onClick={() => {
-                        const candidates = servers.filter((s) => !memberServerIds.includes(s.id))
+                        const candidates = servers.filter((s) => !memberServerIds.some((mid) => mid === s.id))
                         if (candidates.length > 0) {
                           setSelectedServerToAttach(candidates[0].id)
                         }
@@ -486,7 +492,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                       <div>No compute servers currently in this backend pool.</div>
                       <button
                         onClick={() => {
-                          const candidates = servers.filter((s) => !memberServerIds.includes(s.id))
+                          const candidates = servers.filter((s) => !memberServerIds.some((mid) => mid === s.id))
                           if (candidates.length > 0) setSelectedServerToAttach(candidates[0].id)
                           setAttachModalLb(lb)
                         }}
@@ -599,7 +605,13 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium"
                 >
                   {servers
-                    .filter((s) => !(attachModalLb.server_ids || []).includes(s.id))
+                    .filter((s) => {
+                      const raw = (attachModalLb.server_ids || (attachModalLb as any).servers || []) as any[]
+                      const existingIds = raw.map((item: any) =>
+                        typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
+                      )
+                      return !existingIds.some((eid) => eid === s.id)
+                    })
                     .map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.networks?.v4?.[0]?.ip_address || `#${s.id}`}) — {s.region?.slug?.toUpperCase()}
@@ -608,7 +620,13 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                 </select>
               </div>
 
-              {servers.filter((s) => !(attachModalLb.server_ids || []).includes(s.id)).length === 0 && (
+              {servers.filter((s) => {
+                const raw = (attachModalLb.server_ids || (attachModalLb as any).servers || []) as any[]
+                const existingIds = raw.map((item: any) =>
+                  typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
+                )
+                return !existingIds.some((eid) => eid === s.id)
+              }).length === 0 && (
                 <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-300 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>All your servers are already in this load balancer pool!</span>
@@ -625,7 +643,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={addServerMutation.isPending || !selectedServerToAttach || servers.filter((s) => !(attachModalLb.server_ids || []).includes(s.id)).length === 0}
+                  disabled={addServerMutation.isPending || !selectedServerToAttach}
                   className="flex items-center gap-1.5 px-4 py-1.5 font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow disabled:opacity-50"
                 >
                   {addServerMutation.isPending ? (
