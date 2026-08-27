@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Notification, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Notification, Tray, Menu, nativeImage, NativeImage } from 'electron'
 import { join } from 'path'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -18,8 +18,58 @@ function getPreloadPath(): string {
   return cjsPath
 }
 
+function getIconPath(filename: string): string {
+  // Check development path
+  const devPath = join(__dirname, '../../resources', filename)
+  if (existsSync(devPath)) return devPath
+
+  // Check production resources path
+  const prodPath = join(process.resourcesPath, filename)
+  if (existsSync(prodPath)) return prodPath
+
+  // Check extra resource directory
+  const extraPath = join(process.resourcesPath, 'resources', filename)
+  if (existsSync(extraPath)) return extraPath
+
+  // Check app root
+  const rootPath = join(__dirname, '../resources', filename)
+  if (existsSync(rootPath)) return rootPath
+
+  return devPath
+}
+
+function getAppIcon(): NativeImage {
+  const icoPath = getIconPath('icon.ico')
+  const pngPath = getIconPath('icon.png')
+  if (process.platform === 'win32' && existsSync(icoPath)) {
+    return nativeImage.createFromPath(icoPath)
+  }
+  if (existsSync(pngPath)) {
+    return nativeImage.createFromPath(pngPath)
+  }
+  return nativeImage.createEmpty()
+}
+
+function getTrayIcon(): NativeImage {
+  const trayPng = getIconPath('tray.png')
+  const iconIco = getIconPath('icon.ico')
+  const iconPng = getIconPath('icon.png')
+
+  if (existsSync(trayPng)) {
+    return nativeImage.createFromPath(trayPng)
+  }
+  if (process.platform === 'win32' && existsSync(iconIco)) {
+    return nativeImage.createFromPath(iconIco)
+  }
+  if (existsSync(iconPng)) {
+    return nativeImage.createFromPath(iconPng)
+  }
+  return nativeImage.createEmpty()
+}
+
 function createWindow(): void {
   const preload = getPreloadPath()
+  const appIcon = getAppIcon()
   console.log('[Main] Using preload path:', preload)
 
   mainWindow = new BrowserWindow({
@@ -29,6 +79,7 @@ function createWindow(): void {
     minHeight: 680,
     show: true,
     title: 'BLDesk - BinaryLane Desktop',
+    icon: appIcon,
     frame: true, // Native window frame for guaranteed desktop rendering
     backgroundColor: '#020617', // slate-950
     autoHideMenuBar: true,
@@ -76,7 +127,7 @@ function createWindow(): void {
 
 function createTray(): void {
   try {
-    const icon = nativeImage.createEmpty()
+    const icon = getTrayIcon()
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([
       { label: 'BLDesk - BinaryLane Cloud', enabled: false },
@@ -103,6 +154,15 @@ function createTray(): void {
     ])
     tray.setToolTip('BLDesk - BinaryLane Desktop')
     tray.setContextMenu(contextMenu)
+    tray.on('double-click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
+      } else {
+        createWindow()
+      }
+    })
   } catch (err) {
     console.warn('[Tray] Failed to initialize tray:', err)
   }
