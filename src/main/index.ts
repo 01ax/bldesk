@@ -28,8 +28,8 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 680,
     show: true,
-    frame: false, // Frameless window with custom modern titlebar
-    titleBarStyle: 'hidden',
+    title: 'BLDesk - BinaryLane Desktop',
+    frame: true, // Native window frame for guaranteed desktop rendering
     backgroundColor: '#020617', // slate-950
     autoHideMenuBar: true,
     webPreferences: {
@@ -40,10 +40,19 @@ function createWindow(): void {
     }
   })
 
+  // Log renderer console messages to terminal
+  mainWindow.webContents.on('console-message', (_, level, message, line, sourceId) => {
+    console.log(`[Renderer] [${level}] ${message} (${sourceId}:${line})`)
+  })
+
   mainWindow.on('ready-to-show', () => {
-    console.log('[Main] Window ready to show')
-    mainWindow?.show()
-    mainWindow?.focus()
+    console.log('[Main] Window ready to show - forcing focus to foreground')
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.setAlwaysOnTop(true)
+      mainWindow.focus()
+      mainWindow.setAlwaysOnTop(false)
+    }
   })
 
   mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
@@ -56,7 +65,6 @@ function createWindow(): void {
   })
 
   // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     console.log('[Main] Loading dev URL:', process.env['ELECTRON_RENDERER_URL'])
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
