@@ -6,7 +6,9 @@ import {
   AlertCircle,
   Loader2,
   Server,
-  Unlock
+  Unlock,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useServers, useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
@@ -36,9 +38,11 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [rulePorts, setRulePorts] = useState('22')
   const [ruleSource, setRuleSource] = useState('0.0.0.0/0')
   const [ruleDescription, setRuleDescription] = useState('Allow SSH')
+  const [rulePlacement, setRulePlacement] = useState<'top' | 'bottom' | 'before_drop'>('before_drop')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const currentRules: any[] = firewallQuery.data || []
+  const hasCatchAllDrop = currentRules.length > 0 && currentRules[currentRules.length - 1]?.action === 'drop'
 
   const applyPreset = (preset: string) => {
     switch (preset) {
@@ -76,6 +80,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         setRulePorts('')
         setRuleSource('0.0.0.0/0')
         setRuleDescription('Drop All Other Inbound Traffic')
+        setRulePlacement('bottom')
         break
     }
   }
@@ -110,7 +115,17 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       description: ruleDescription.trim() || null
     }
 
-    const updatedRules = [...currentRules, newRule]
+    let updatedRules = [...currentRules]
+
+    if (rulePlacement === 'top') {
+      updatedRules.unshift(newRule)
+    } else if (rulePlacement === 'before_drop' && hasCatchAllDrop) {
+      // Insert right before the last rule (which is the drop rule)
+      updatedRules.splice(updatedRules.length - 1, 0, newRule)
+    } else {
+      // Default: append to bottom
+      updatedRules.push(newRule)
+    }
 
     try {
       await updateFirewall.mutateAsync(updatedRules)
@@ -122,6 +137,22 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       })
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update firewall rules.')
+    }
+  }
+
+  const handleMoveRule = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= currentRules.length) return
+
+    const updatedRules = [...currentRules]
+    const temp = updatedRules[index]
+    updatedRules[index] = updatedRules[targetIndex]
+    updatedRules[targetIndex] = temp
+
+    try {
+      await updateFirewall.mutateAsync(updatedRules)
+    } catch (err: any) {
+      alert(`Failed to reorder rules: ${err.message}`)
     }
   }
 
@@ -165,7 +196,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             <span>Stateful Cloud Firewall</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Network layer packet filtering & ingress security rules for your instances
+            Sequential packet filtering & ingress security rules (Evaluated top to bottom)
           </p>
         </div>
 
@@ -187,7 +218,12 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </div>
 
           <button
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => {
+              setIsAdding(!isAdding)
+              if (!isAdding && hasCatchAllDrop) {
+                setRulePlacement('before_drop')
+              }
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -300,15 +336,35 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </div>
           </div>
 
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Rule Description / Label</label>
-            <input
-              type="text"
-              placeholder="e.g. Allow Web & Admin Access from Office"
-              value={ruleDescription}
-              onChange={(e) => setRuleDescription(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-[11px] text-slate-400 block mb-1">Rule Description / Label</label>
+              <input
+                type="text"
+                placeholder="e.g. Allow Web & Admin Access from Office"
+                value={ruleDescription}
+                onChange={(e) => setRuleDescription(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white"
+              />
+            </div>
+
+            {/* Position / Placement selector */}
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1">Evaluation Order / Position</label>
+              <select
+                value={rulePlacement}
+                onChange={(e) => setRulePlacement(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white font-medium"
+              >
+                {hasCatchAllDrop && (
+                  <option value="before_drop">
+                    Insert Before Final DROP (Recommended)
+                  </option>
+                )}
+                <option value="top">Insert at Top (Position #1 - Highest Priority)</option>
+                <option value="bottom">Append to Bottom (Lowest Priority)</option>
+              </select>
+            </div>
           </div>
 
           {errorMsg && (
@@ -339,7 +395,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               ) : (
                 <>
                   <Shield className="w-3.5 h-3.5" />
-                  <span>Apply Rule</span>
+                  <span>Apply Rule in Order</span>
                 </>
               )}
             </button>
@@ -350,11 +406,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       {/* Rules Table / Container */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 flex-1">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-white">Active Firewall Rules ({currentRules.length})</h2>
-            <span className="text-[10px] text-slate-500 font-mono">
-              Evaluated sequentially from top to bottom
-            </span>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-white">Active Firewall Rules ({currentRules.length})</h2>
+              <span className="text-[10px] text-sky-400 font-medium px-2 py-0.5 bg-sky-950 border border-sky-800/60 rounded">
+                Evaluated Top to Bottom
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              The first rule matching incoming traffic takes effect. Use the 🔼 and 🔽 buttons to adjust precedence.
+            </p>
           </div>
 
           {currentRules.length > 0 && (
@@ -364,7 +425,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-950/80 border border-rose-800/40 rounded transition"
             >
               <Trash2 className="w-3 h-3" />
-              <span>Clear All Rules (Permit All)</span>
+              <span>Clear All Rules</span>
             </button>
           )}
         </div>
@@ -393,16 +454,39 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               const isAccept = rule.action === 'accept'
               const ports = rule.destination_ports?.join(', ') || 'Any / All Ports'
               const sources = rule.source_addresses?.join(', ') || '0.0.0.0/0'
+              const isFirst = idx === 0
+              const isLast = idx === currentRules.length - 1
 
               return (
                 <div
                   key={idx}
-                  className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl flex items-center justify-between text-xs hover:border-slate-700 transition"
+                  className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl flex items-center justify-between text-xs hover:border-slate-700 transition"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-[10px] text-slate-500 font-bold w-4">
-                      #{idx + 1}
-                    </span>
+                    {/* Position Priority & Move Up/Down */}
+                    <div className="flex items-center gap-1 bg-slate-900 border border-slate-800/80 px-1.5 py-0.5 rounded-lg">
+                      <span className="font-mono text-[10px] text-slate-400 font-bold w-4 text-center">
+                        #{idx + 1}
+                      </span>
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => handleMoveRule(idx, 'up')}
+                          disabled={isFirst || updateFirewall.isPending}
+                          className="text-slate-500 hover:text-sky-400 disabled:opacity-20 disabled:hover:text-slate-500 transition"
+                          title="Move Up (Higher Priority)"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleMoveRule(idx, 'down')}
+                          disabled={isLast || updateFirewall.isPending}
+                          className="text-slate-500 hover:text-sky-400 disabled:opacity-20 disabled:hover:text-slate-500 transition"
+                          title="Move Down (Lower Priority)"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
 
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
