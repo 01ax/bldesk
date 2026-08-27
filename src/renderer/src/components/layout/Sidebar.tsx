@@ -10,7 +10,8 @@ import {
   Receipt,
   ExternalLink,
   Terminal,
-  Activity
+  Activity,
+  X
 } from 'lucide-react'
 
 export type ActiveTab =
@@ -28,9 +29,17 @@ interface SidebarProps {
   activeTab: ActiveTab
   onSelectTab: (tab: ActiveTab) => void
   serverCount?: number
+  isMobileDrawerOpen?: boolean
+  onCloseMobileDrawer?: () => void
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, serverCount = 0 }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  onSelectTab,
+  serverCount = 0,
+  isMobileDrawerOpen = false,
+  onCloseMobileDrawer
+}) => {
   const menuItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }>; badge?: number | string }[] = [
     { id: 'servers', label: 'Servers & Compute', icon: Server, badge: serverCount > 0 ? serverCount : undefined },
     { id: 'terminal', label: 'Embedded Shell', icon: Terminal },
@@ -47,12 +56,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, server
     window.bldeskApi.openExternal('https://home.binarylane.com.au/mpanel')
   }
 
-  return (
-    <aside className="w-60 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between select-none flex-shrink-0">
+  const handleItemClick = (id: ActiveTab) => {
+    onSelectTab(id)
+    if (onCloseMobileDrawer) {
+      onCloseMobileDrawer()
+    }
+  }
+
+  const renderNavContent = () => (
+    <div className="flex flex-col h-full justify-between">
       {/* Navigation Links */}
-      <div className="p-3 space-y-1">
-        <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Cloud Resources
+      <div className="p-3 space-y-1 overflow-y-auto">
+        <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+          <span>Cloud Resources</span>
+          {onCloseMobileDrawer && (
+            <button
+              onClick={onCloseMobileDrawer}
+              className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
         {menuItems.map((item) => {
           const Icon = item.icon
@@ -60,8 +84,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, server
           return (
             <button
               key={item.id}
-              onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition ${
+              onClick={() => handleItemClick(item.id)}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition ${
                 isActive
                   ? 'bg-sky-600/15 text-sky-400 border border-sky-500/30'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
@@ -84,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, server
       </div>
 
       {/* Footer / External Links */}
-      <div className="p-3 border-t border-slate-800/80 space-y-2">
+      <div className="p-3 border-t border-slate-800/80 space-y-2 flex-shrink-0">
         <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900/60 rounded-lg border border-slate-800/60 text-[11px] text-slate-400">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
@@ -104,6 +128,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSelectTab, server
           <ExternalLink className="w-3 h-3 text-slate-500" />
         </button>
       </div>
-    </aside>
+    </div>
+  )
+
+  return (
+    <>
+      {/* 1. Desktop Fixed Sidebar */}
+      <aside className="hidden md:flex w-60 bg-slate-950 border-r border-slate-800/80 flex-col justify-between select-none flex-shrink-0">
+        {renderNavContent()}
+      </aside>
+
+      {/* 2. Mobile Slide-Over Drawer with Backdrop */}
+      {isMobileDrawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            onClick={onCloseMobileDrawer}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+          />
+
+          {/* Drawer Panel */}
+          <div className="relative w-72 max-w-[80vw] bg-slate-950 border-r border-slate-800 flex flex-col z-10 shadow-2xl animate-in slide-in-from-left duration-200">
+            {renderNavContent()}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

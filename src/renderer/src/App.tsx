@@ -1,59 +1,53 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TitleBar } from './components/layout/TitleBar'
 import { Sidebar, ActiveTab } from './components/layout/Sidebar'
+import { BottomNav } from './components/layout/BottomNav'
 import { ServerList } from './components/servers/ServerList'
 import { ServerDetails } from './components/servers/ServerDetails'
+import { AuthModal } from './components/auth/AuthModal'
+import { CommandPalette } from './components/palette/CommandPalette'
 import { EmbeddedTerminal } from './components/terminal/EmbeddedTerminal'
-import { DnsManager } from './components/dns/DnsManager'
-import { BillingOverview } from './components/billing/BillingOverview'
 import { VpcManager } from './components/vpcs/VpcManager'
+import { DnsManager } from './components/dns/DnsManager'
 import { SshKeysManager } from './components/keys/SshKeysManager'
 import { FirewallManager } from './components/firewall/FirewallManager'
 import { LoadBalancerManager } from './components/loadbalancers/LoadBalancerManager'
 import { BackupManager } from './components/backups/BackupManager'
-import { AuthModal } from './components/auth/AuthModal'
-import { CommandPalette } from './components/palette/CommandPalette'
-import { createBinaryLaneClient, BinaryLaneClient } from './api/client'
+import { BillingOverview } from './components/billing/BillingOverview'
 import { useServers } from './api/queries'
+import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
-import { components } from '@shared/api/schema'
-
-type ServerResponse = components['schemas']['Server']
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      staleTime: 5000
+      staleTime: 1000 * 30, // 30s freshness
+      refetchOnWindowFocus: true,
+      retry: 2
     }
   }
 })
 
 function MainDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
-  const [profiles, setProfiles] = useState<Omit<AccountProfile, 'token'>[]>([])
-  const [activeProfile, setActiveProfile] = useState<AccountProfile | null>(null)
-  const [client, setClient] = useState<BinaryLaneClient | null>(null)
+  const [selectedServer, setSelectedServer] = useState<any | null>(null)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
-  const [selectedServer, setSelectedServer] = useState<ServerResponse | null>(null)
-  const [terminalHost, setTerminalHost] = useState('')
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
+  const [profiles, setProfiles] = useState<Omit<AccountProfile, 'token'>[]>([])
+  const [activeProfile, setActiveProfile] = useState<AccountProfile | null>(null)
+  const [terminalHost, setTerminalHost] = useState<string | undefined>(undefined)
 
-  // Load vault profiles on mount
   const refreshProfiles = async () => {
+    if (!window.bldeskApi) return
     const pList = await window.bldeskApi.getProfiles()
     const active = await window.bldeskApi.getActiveProfile()
     setProfiles(pList)
     setActiveProfile(active)
 
-    if (active && active.token) {
-      setClient(createBinaryLaneClient(active.token))
-    } else {
-      setClient(null)
-      if (pList.length === 0) {
-        setIsAuthOpen(true)
-      }
+    if (pList.length === 0) {
+      setIsAuthOpen(true)
     }
   }
 
@@ -61,16 +55,29 @@ function MainDashboard() {
     refreshProfiles()
   }, [])
 
+  // Create API Client with Active Profile Token
+  const client = React.useMemo(() => {
+    return createBinaryLaneClient(activeProfile?.token || '')
+  }, [activeProfile?.token])
+
+  // Queries
+  const { data: servers = [], isLoading: isLoadingServers } = useServers(client)
+
   const handleSwitchProfile = async (profileId: string) => {
+    if (!window.bldeskApi) return
     await window.bldeskApi.setActiveProfile(profileId)
     await refreshProfiles()
+    queryClient.invalidateQueries()
   }
-
-  const { data: servers = [], isLoading: isLoadingServers } = useServers(client)
 
   const handleOpenTerminalForIp = (ip: string) => {
     setTerminalHost(ip)
     setActiveTab('terminal')
+  }
+
+  const handleSelectTab = (tab: ActiveTab) => {
+    setSelectedServer(null)
+    setActiveTab(tab)
   }
 
   return (
@@ -82,22 +89,22 @@ function MainDashboard() {
         onSwitchProfile={handleSwitchProfile}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenCommandPalette={() => setIsPaletteOpen(true)}
+        onToggleMobileDrawer={() => setIsMobileDrawerOpen((prev) => !prev)}
       />
 
       {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Navigation Sidebar */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Navigation Sidebar (Desktop + Mobile Drawer) */}
         <Sidebar
           activeTab={activeTab}
-          onSelectTab={(tab) => {
-            setSelectedServer(null)
-            setActiveTab(tab)
-          }}
+          onSelectTab={handleSelectTab}
           serverCount={servers.length}
+          isMobileDrawerOpen={isMobileDrawerOpen}
+          onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
         />
 
         {/* Dynamic Center Viewport */}
-        <main className="flex-1 overflow-hidden bg-slate-950 relative">
+        <main className="flex-1 overflow-hidden bg-slate-950 relative pb-14 md:pb-0">
           {activeTab === 'servers' && (
             selectedServer ? (
               <ServerDetails
@@ -155,6 +162,14 @@ function MainDashboard() {
           {activeTab === 'billing' && <BillingOverview client={client} />}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation Bar (< 768px) */}
+      <BottomNav
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
+        onOpenDrawer={() => setIsMobileDrawerOpen(true)}
+        serverCount={servers.length}
+      />
 
       {/* Auth & Profile Vault Modal */}
       <AuthModal
