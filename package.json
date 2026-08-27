@@ -18,6 +18,7 @@
     "pack:win": "npx @electron/packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite --icon=resources/icon.ico --extra-resource=resources --ignore=src",
     "pack:mac": "npx @electron/packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite --icon=resources/icon.png --extra-resource=resources --ignore=src",
     "pack:linux": "npx @electron/packager . BLDesk --platform=linux --arch=x64 --out=release --overwrite --icon=resources/icon.png --extra-resource=resources --ignore=src",
+    "cap:sync": "npm run build && npx cap sync android",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
@@ -47,6 +48,9 @@
     }
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/preferences": "^8.0.1",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@tanstack/react-query": "^5.60.5",
@@ -61,6 +65,7 @@
     "xterm-addon-web-links": "^0.9.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@electron/packager": "^20.3.0",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
