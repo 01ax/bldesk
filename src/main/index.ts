@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, Notification, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
+import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
@@ -8,19 +9,31 @@ import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
+function getPreloadPath(): string {
+  const mjsPath = join(__dirname, '../preload/index.mjs')
+  const jsPath = join(__dirname, '../preload/index.js')
+  const cjsPath = join(__dirname, '../preload/index.cjs')
+  if (existsSync(mjsPath)) return mjsPath
+  if (existsSync(jsPath)) return jsPath
+  return cjsPath
+}
+
 function createWindow(): void {
+  const preload = getPreloadPath()
+  console.log('[Main] Using preload path:', preload)
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 1024,
     minHeight: 680,
-    show: false,
+    show: true,
     frame: false, // Frameless window with custom modern titlebar
     titleBarStyle: 'hidden',
     backgroundColor: '#020617', // slate-950
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload,
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -28,7 +41,13 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    console.log('[Main] Window ready to show')
     mainWindow?.show()
+    mainWindow?.focus()
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main] Page failed to load (${errorCode}): ${errorDescription} at ${validatedURL}`)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -39,15 +58,16 @@ function createWindow(): void {
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    console.log('[Main] Loading dev URL:', process.env['ELECTRON_RENDERER_URL'])
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
+    console.log('[Main] Loading production file...')
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
 function createTray(): void {
   try {
-    // Generate a simple 16x16 icon in memory or use asset
     const icon = nativeImage.createEmpty()
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([
@@ -58,6 +78,7 @@ function createTray(): void {
         click: () => {
           if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore()
+            mainWindow.show()
             mainWindow.focus()
           } else {
             createWindow()
