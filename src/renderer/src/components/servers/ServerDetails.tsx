@@ -20,12 +20,12 @@ import {
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { LocalSshKey } from '@shared/ipc-types'
+import { FirewallManager } from '../firewall/FirewallManager'
 import {
   useServerMetrics,
   useServerConsole,
   useServerActionMutation,
   useServerSnapshots,
-  useFirewallRules,
   useHistoricalMetrics
 } from '../../api/queries'
 
@@ -71,7 +71,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const historyQuery = useHistoricalMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
   const snapshotsQuery = useServerSnapshots(client, server.id)
-  const firewallQuery = useFirewallRules(client, server.id)
   const serverAction = useServerActionMutation(client)
 
   const primaryV4 =
@@ -533,27 +532,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {activeTab === 'firewall' && (
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Advanced Firewall Rules</h3>
-            <div className="space-y-2">
-              {((firewallQuery.data as any[]) || []).length === 0 && (
-                <div className="text-xs text-slate-500 p-6 bg-slate-900/30 rounded-xl text-center">
-                  Default firewall policy active (all inbound ports open).
-                </div>
-              )}
-              {((firewallQuery.data as any[]) || []).map((rule: any, idx: number) => (
-                <div key={idx} className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${rule.action === 'accept' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}`}>
-                      {rule.action}
-                    </span>
-                    <span className="text-white font-mono">{rule.protocol?.toUpperCase()}</span>
-                    <span className="text-slate-400">Port {rule.destination_ports || 'Any'}</span>
-                  </div>
-                  <span className="text-slate-500 text-[11px]">{rule.source_addresses || '0.0.0.0/0'}</span>
-                </div>
-              ))}
-            </div>
+          <div className="-m-6">
+            <FirewallManager client={client} initialServerId={server.id} />
           </div>
         )}
       </div>
