@@ -19,30 +19,31 @@ function getPreloadPath(): string {
 }
 
 function getIconPath(filename: string): string {
-  // Check development path
-  const devPath = join(__dirname, '../../resources', filename)
-  if (existsSync(devPath)) return devPath
+  const possiblePaths = [
+    join(process.resourcesPath, 'resources', filename),
+    join(process.resourcesPath, filename),
+    join(__dirname, '../../resources', filename),
+    join(__dirname, '../resources', filename),
+    join(app.getAppPath(), 'resources', filename)
+  ]
 
-  // Check production resources path
-  const prodPath = join(process.resourcesPath, filename)
-  if (existsSync(prodPath)) return prodPath
+  for (const p of possiblePaths) {
+    if (existsSync(p)) return p
+  }
 
-  // Check extra resource directory
-  const extraPath = join(process.resourcesPath, 'resources', filename)
-  if (existsSync(extraPath)) return extraPath
-
-  // Check app root
-  const rootPath = join(__dirname, '../resources', filename)
-  if (existsSync(rootPath)) return rootPath
-
-  return devPath
+  return possiblePaths[0]
 }
 
 function getAppIcon(): NativeImage {
   const icoPath = getIconPath('icon.ico')
   const pngPath = getIconPath('icon.png')
   if (process.platform === 'win32' && existsSync(icoPath)) {
-    return nativeImage.createFromPath(icoPath)
+    try {
+      const img = nativeImage.createFromPath(icoPath)
+      if (!img.isEmpty()) return img
+    } catch {
+      // fallback to png
+    }
   }
   if (existsSync(pngPath)) {
     return nativeImage.createFromPath(pngPath)
@@ -51,18 +52,23 @@ function getAppIcon(): NativeImage {
 }
 
 function getTrayIcon(): NativeImage {
-  const trayPng = getIconPath('tray.png')
-  const iconIco = getIconPath('icon.ico')
+  const tray16 = getIconPath('tray-16.png')
+  const tray32 = getIconPath('tray.png')
   const iconPng = getIconPath('icon.png')
 
-  if (existsSync(trayPng)) {
-    return nativeImage.createFromPath(trayPng)
-  }
-  if (process.platform === 'win32' && existsSync(iconIco)) {
-    return nativeImage.createFromPath(iconIco)
-  }
-  if (existsSync(iconPng)) {
-    return nativeImage.createFromPath(iconPng)
+  const targetPath = existsSync(tray16) ? tray16 : existsSync(tray32) ? tray32 : iconPng
+
+  if (existsSync(targetPath)) {
+    try {
+      const buf = readFileSync(targetPath)
+      const img = nativeImage.createFromBuffer(buf)
+      if (!img.isEmpty()) {
+        return img
+      }
+    } catch (e) {
+      console.warn('[Tray] Buffer load error:', e)
+    }
+    return nativeImage.createFromPath(targetPath)
   }
   return nativeImage.createEmpty()
 }
