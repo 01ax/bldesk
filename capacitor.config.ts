@@ -5,7 +5,16 @@ const config: CapacitorConfig = {
   appName: 'BLDesk',
   webDir: 'out/renderer',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    cleartext: true
+  },
+  plugins: {
+    CapacitorHttp: {
+      enabled: true
+    },
+    CapacitorCookies: {
+      enabled: true
+    }
   }
 };
 
