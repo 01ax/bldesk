@@ -28,7 +28,8 @@ import {
   useServerActionMutation,
   useServerBackups,
   useServerSnapshots,
-  useFirewallRules
+  useFirewallRules,
+  useHistoricalMetrics
 } from '../../api/queries'
 
 type ServerResponse = components['schemas']['Server']
@@ -52,6 +53,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null)
 
   const metricsQuery = useServerMetrics(client, server.id)
+  const historyQuery = useHistoricalMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
   const backupsQuery = useServerBackups(client, server.id)
   const snapshotsQuery = useServerSnapshots(client, server.id)
@@ -345,6 +347,45 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Historical Metrics Timeline */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-200">Historical Performance Samples (Last 24h)</span>
+                <span className="text-[11px] text-slate-500 font-mono">{(historyQuery.data || []).length} data points</span>
+              </div>
+
+              {(historyQuery.data || []).length === 0 ? (
+                <div className="text-xs text-slate-500 py-6 text-center bg-slate-950/40 rounded-lg">
+                  Aggregating periodic metric samples for this instance...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="h-28 w-full flex items-end gap-1 bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+                    {(historyQuery.data || []).slice(-30).map((set: any, idx: number) => {
+                      const cpuVal = set.average?.cpu_usage_percent || 0
+                      const heightPct = Math.min(100, Math.max(5, cpuVal))
+                      return (
+                        <div
+                          key={idx}
+                          className="flex-1 bg-sky-600/60 hover:bg-sky-400 rounded-t transition-all cursor-pointer group relative"
+                          style={{ height: `${heightPct}%` }}
+                        >
+                          <div className="hidden group-hover:block absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded shadow whitespace-nowrap z-30 font-mono">
+                            {cpuVal.toFixed(1)}% CPU
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                    <span>24 hours ago</span>
+                    <span>Recent Average CPU Utilization</span>
+                    <span>Now</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quick Diagnostic Actions */}

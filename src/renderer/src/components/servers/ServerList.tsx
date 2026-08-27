@@ -15,11 +15,13 @@ import {
   Activity,
   Layers,
   ShieldAlert,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useServerActionMutation } from '../../api/queries'
+import { CreateServerModal } from './CreateServerModal'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -42,6 +44,7 @@ export const ServerList: React.FC<ServerListProps> = ({
   const [regionFilter, setRegionFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [copiedIp, setCopiedIp] = useState<string | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const serverAction = useServerActionMutation(client)
 
@@ -105,7 +108,7 @@ export const ServerList: React.FC<ServerListProps> = ({
           <p className="text-xs text-slate-400 mt-0.5">High-performance cloud compute instances across Australia & Asia</p>
         </div>
 
-        {/* Search & Filter bar */}
+        {/* Search & Filter bar & Deploy Button */}
         <div className="flex items-center gap-2.5">
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -114,7 +117,7 @@ export const ServerList: React.FC<ServerListProps> = ({
               placeholder="Search by name, IP, tag..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition w-56"
+              className="pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition w-48"
             />
           </div>
 
@@ -141,6 +144,14 @@ export const ServerList: React.FC<ServerListProps> = ({
             <option value="off">Powered Off</option>
             <option value="archive">Archived</option>
           </select>
+
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow-md shadow-sky-950/40"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Deploy Instance</span>
+          </button>
         </div>
       </div>
 
@@ -308,6 +319,13 @@ export const ServerList: React.FC<ServerListProps> = ({
           )
         })}
       </div>
+
+      {/* Deploy Server Wizard Modal */}
+      <CreateServerModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        client={client}
+      />
     </div>
   )
 }

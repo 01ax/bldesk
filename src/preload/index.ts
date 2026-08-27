@@ -13,6 +13,9 @@ const api: IpcApi = {
   launchNativeTerminal: (options) => ipcRenderer.invoke('terminal:launchNative', options),
   openRescueConsole: (options) => ipcRenderer.invoke('console:openRescue', options),
 
+  // SSH Keys
+  getLocalSshKeys: () => ipcRenderer.invoke('vault:getLocalSshKeys'),
+
   // System Notifications
   sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),
 

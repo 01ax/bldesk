@@ -45,6 +45,9 @@ export interface IpcApi {
   launchNativeTerminal: (options: TerminalLaunchOptions) => Promise<{ success: boolean; error?: string }>
   openRescueConsole: (options: ConsoleWindowOptions) => Promise<{ success: boolean }>
   
+  // SSH Keys & Local FS
+  getLocalSshKeys: () => Promise<{ name: string; publicKey: string }[]>
+
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>
   

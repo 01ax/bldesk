@@ -8,6 +8,7 @@ import { EmbeddedTerminal } from './components/terminal/EmbeddedTerminal'
 import { DnsManager } from './components/dns/DnsManager'
 import { BillingOverview } from './components/billing/BillingOverview'
 import { VpcManager } from './components/vpcs/VpcManager'
+import { SshKeysManager } from './components/keys/SshKeysManager'
 import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { createBinaryLaneClient, BinaryLaneClient } from './api/client'
@@ -124,9 +125,11 @@ function MainDashboard() {
 
           {activeTab === 'dns' && <DnsManager client={client} />}
 
+          {activeTab === 'keys' && <SshKeysManager client={client} />}
+
           {activeTab === 'billing' && <BillingOverview client={client} />}
 
-          {(activeTab === 'firewall' || activeTab === 'loadbalancers' || activeTab === 'backups' || activeTab === 'keys') && (
+          {(activeTab === 'firewall' || activeTab === 'loadbalancers' || activeTab === 'backups') && (
             <div className="h-full flex flex-col p-6 space-y-4">
               <h1 className="text-xl font-bold text-white capitalize">{activeTab} Manager</h1>
               <p className="text-xs text-slate-400">
