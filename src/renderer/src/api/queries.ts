@@ -492,3 +492,112 @@ export function useServerSnapshots(client: BinaryLaneClient | null, serverId: nu
     enabled: !!client && !!serverId
   })
 }
+
+export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (label?: string) => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: 'take_backup',
+          replacement_strategy: 'none',
+          label: label || undefined
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serverBackups', serverId] })
+      queryClient.invalidateQueries({ queryKey: ['serverSnapshots', serverId] })
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
+export function useRestoreBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (imageId: number) => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: 'restore',
+          image: imageId
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
+export function useToggleAutomatedBackupsMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (enable: boolean) => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: enable ? 'enable_backups' : 'disable_backups'
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+      queryClient.invalidateQueries({ queryKey: ['server', serverId] })
+    }
+  })
+}
+
+export function useAttachBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (imageId: number) => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: 'attach_backup',
+          image: imageId
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+      queryClient.invalidateQueries({ queryKey: ['server', serverId] })
+    }
+  })
+}
+
+export function useDetachBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      if (!client || !serverId) throw new Error('No client or serverId')
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: {
+          type: 'detach_backup'
+        }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return data?.action
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+      queryClient.invalidateQueries({ queryKey: ['server', serverId] })
+    }
+  })
+}

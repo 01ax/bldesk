@@ -13,7 +13,6 @@ import {
   Archive,
   Radio,
   Key,
-  Loader2,
   Copy,
   Check
 } from 'lucide-react'
@@ -21,11 +20,11 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { LocalSshKey } from '@shared/ipc-types'
 import { FirewallManager } from '../firewall/FirewallManager'
+import { BackupManager } from '../backups/BackupManager'
 import {
   useServerMetrics,
   useServerConsole,
   useServerActionMutation,
-  useServerSnapshots,
   useHistoricalMetrics
 } from '../../api/queries'
 
@@ -70,7 +69,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const metricsQuery = useServerMetrics(client, server.id)
   const historyQuery = useHistoricalMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
-  const snapshotsQuery = useServerSnapshots(client, server.id)
   const serverAction = useServerActionMutation(client)
 
   const primaryV4 =
@@ -493,41 +491,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {activeTab === 'backups' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Snapshots & Backups</h3>
-              <button
-                onClick={() => handleAction('take_backup')}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition"
-              >
-                Create Snapshot Now
-              </button>
-            </div>
-            {snapshotsQuery.isLoading ? (
-              <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
-            ) : (
-              <div className="space-y-2">
-                {((snapshotsQuery.data as any[]) || []).length === 0 && (
-                  <div className="text-xs text-slate-500 p-6 bg-slate-900/30 rounded-xl text-center">
-                    No snapshots taken yet for this server.
-                  </div>
-                )}
-                {((snapshotsQuery.data as any[]) || []).map((snap: any, idx: number) => (
-                  <div key={idx} className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-semibold text-white">{snap.name || `Snapshot #${snap.id}`}</div>
-                      <div className="text-[11px] text-slate-500">{snap.created_at || 'Point-in-time'}</div>
-                    </div>
-                    <button
-                      onClick={() => handleAction('restore', { image_id: snap.id })}
-                      className="px-2.5 py-1 text-xs text-amber-400 bg-amber-950 border border-amber-800 rounded-lg hover:bg-amber-900 transition"
-                    >
-                      Restore
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="-m-6">
+            <BackupManager client={client} initialServerId={server.id} />
           </div>
         )}
 

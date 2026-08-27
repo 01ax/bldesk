@@ -11,6 +11,7 @@ import { VpcManager } from './components/vpcs/VpcManager'
 import { SshKeysManager } from './components/keys/SshKeysManager'
 import { FirewallManager } from './components/firewall/FirewallManager'
 import { LoadBalancerManager } from './components/loadbalancers/LoadBalancerManager'
+import { BackupManager } from './components/backups/BackupManager'
 import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { createBinaryLaneClient, BinaryLaneClient } from './api/client'
@@ -149,21 +150,9 @@ function MainDashboard() {
             />
           )}
 
-          {activeTab === 'billing' && <BillingOverview client={client} />}
+          {activeTab === 'backups' && <BackupManager client={client} />}
 
-          {activeTab === 'backups' && (
-            <div className="h-full flex flex-col p-6 space-y-4">
-              <h1 className="text-xl font-bold text-white capitalize">{activeTab} Manager</h1>
-              <p className="text-xs text-slate-400">
-                Manage your BinaryLane {activeTab} directly with full API synchronization.
-              </p>
-              {servers.length > 0 && selectedServer === null && (
-                <div className="text-xs text-slate-500 p-8 bg-slate-900/30 rounded-xl border border-slate-800 text-center">
-                  Select a server from the Compute tab to configure instance-specific {activeTab}.
-                </div>
-              )}
-            </div>
-          )}
+          {activeTab === 'billing' && <BillingOverview client={client} />}
         </main>
       </div>
 
