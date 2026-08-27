@@ -1,20 +1,27 @@
 import React, { useState } from 'react'
-import { Network, Plus, Server, Loader2 } from 'lucide-react'
+import { Network, Plus, Server, Loader2, ArrowRight } from 'lucide-react'
+import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useVpcs } from '../../api/queries'
+import { useVpcs, useServers } from '../../api/queries'
+
+type ServerResponse = components['schemas']['Server']
 
 interface VpcManagerProps {
   client: BinaryLaneClient | null
+  onSelectServer?: (server: ServerResponse) => void
 }
 
-export const VpcManager: React.FC<VpcManagerProps> = ({ client }) => {
+export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }) => {
   const [isCreating, setIsCreating] = useState(false)
   const [vpcName, setVpcName] = useState('')
   const [ipRange, setIpRange] = useState('10.240.0.0/16')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const vpcsQuery = useVpcs(client)
+  const serversQuery = useServers(client)
+
   const vpcs = vpcsQuery.data || []
+  const servers = serversQuery.data || []
 
   const handleCreateVpc = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,7 +120,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client }) => {
       )}
 
       {/* VPC Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {vpcsQuery.isLoading && (
           <div className="col-span-2 py-12 flex justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
@@ -126,31 +133,101 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client }) => {
           </div>
         )}
 
-        {vpcs.map((vpc) => (
-          <div key={vpc.id} className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex items-start justify-between">
+        {vpcs.map((vpc) => {
+          // Find all servers belonging to this VPC
+          const memberServers = servers.filter((s) => s.vpc_id === vpc.id)
+
+          return (
+            <div key={vpc.id} className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-white">{vpc.name}</h3>
-                  <span className="text-[10px] text-slate-500 font-mono">#{vpc.id}</span>
+                {/* VPC Card Header */}
+                <div className="flex items-start justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white">{vpc.name}</h3>
+                      <span className="text-[10px] text-slate-500 font-mono">#{vpc.id}</span>
+                    </div>
+                    <div className="text-xs text-sky-400 font-mono font-semibold">{vpc.ip_range}</div>
+                  </div>
+
+                  <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-800 text-slate-300">
+                    {(vpc as any).region?.slug?.toUpperCase() || 'Global'}
+                  </span>
                 </div>
-                <div className="text-xs text-slate-400 font-mono mt-1">{vpc.ip_range}</div>
+
+                {/* Member Servers Section */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Server className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Member Servers ({memberServers.length})</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">Subnet Active</span>
+                  </div>
+
+                  {memberServers.length === 0 ? (
+                    <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800/80 text-center text-xs text-slate-500">
+                      No compute servers currently assigned to this VPC.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {memberServers.map((server) => {
+                        const privateIp =
+                          server.networks?.v4?.find((v) => v.type === 'private')?.ip_address ||
+                          'Private IP assigned'
+                        const publicIp =
+                          server.networks?.v4?.find((v) => v.type === 'public')?.ip_address ||
+                          server.networks?.v4?.[0]?.ip_address ||
+                          'No public IP'
+                        const isRunning = server.status === 'active'
+
+                        return (
+                          <div
+                            key={server.id}
+                            className="flex items-center justify-between p-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg text-xs hover:border-slate-700 transition"
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              <span
+                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  isRunning ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400'
+                                }`}
+                              />
+                              <div className="truncate">
+                                <div className="font-semibold text-slate-100 truncate">{server.name}</div>
+                                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
+                                  <span className="text-sky-400">{privateIp}</span>
+                                  <span className="text-slate-600">•</span>
+                                  <span className="text-slate-500">{publicIp}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {onSelectServer && (
+                              <button
+                                onClick={() => onSelectServer(server)}
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition flex-shrink-0 ml-2"
+                                title="Open Server Management"
+                              >
+                                <span>Manage</span>
+                                <ArrowRight className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-800 text-slate-300">
-                {(vpc as any).region?.slug?.toUpperCase() || 'Global'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-800/80 text-slate-400">
-              <div className="flex items-center gap-1.5">
-                <Server className="w-3.5 h-3.5 text-sky-400" />
-                <span>Member Servers</span>
+              {/* Card Footer Info */}
+              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Route Table Active</span>
+                <span>Isolated Layer-2 VLAN</span>
               </div>
-              <span className="text-[11px] text-slate-500">Route Table Active</span>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

@@ -121,7 +121,15 @@ function MainDashboard() {
             />
           )}
 
-          {activeTab === 'vpcs' && <VpcManager client={client} />}
+          {activeTab === 'vpcs' && (
+            <VpcManager
+              client={client}
+              onSelectServer={(s) => {
+                setSelectedServer(s)
+                setActiveTab('servers')
+              }}
+            />
+          )}
 
           {activeTab === 'dns' && <DnsManager client={client} />}
 
