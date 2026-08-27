@@ -39,15 +39,16 @@ jobs:
       # --- WINDOWS BUILD ---
       - name: Package for Windows (x64)
         if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          npx electron-packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite --ignore="^/(src|tsconfig.*|tailwind.*|postcss.*)"
+          npm run pack:win
           Compress-Archive -Path release/BLDesk-win32-x64 -DestinationPath release/BLDesk-win-x64.zip
 
-      # --- MACOS BUILD (Universal: Apple Silicon M1/M2/M3/M4 & Intel) ---
+      # --- MACOS BUILD (Universal: Apple Silicon & Intel) ---
       - name: Package for macOS (Universal)
         if: matrix.os == 'macos-latest'
         run: |
-          npx electron-packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite --ignore="^/(src|tsconfig.*|tailwind.*|postcss.*)"
+          npm run pack:mac
           cd release
           zip -r -y BLDesk-mac-universal.zip BLDesk-darwin-universal/BLDesk.app
 
