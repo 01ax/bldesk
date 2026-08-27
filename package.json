@@ -14,7 +14,7 @@
     "generate-api": "openapi-typescript ./openapi.json -o ./src/shared/api/schema.d.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "node ./src/main/generate-icons.cjs && npm run generate-api && electron-vite build",
+    "build": "npm run generate-api && electron-vite build",
     "pack:win": "npx @electron/packager . BLDesk --platform=win32 --arch=x64 --out=release --overwrite --icon=resources/icon.ico --extra-resource=resources --ignore=src",
     "pack:mac": "npx @electron/packager . BLDesk --platform=darwin --arch=universal --out=release --overwrite --icon=resources/icon.png --extra-resource=resources --ignore=src",
     "pack:linux": "npx @electron/packager . BLDesk --platform=linux --arch=x64 --out=release --overwrite --icon=resources/icon.png --extra-resource=resources --ignore=src",

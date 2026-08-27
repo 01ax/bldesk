@@ -18,6 +18,8 @@ function getPreloadPath(): string {
   return cjsPath
 }
 
+import { APP_ICON_DATA_URL, TRAY_ICON_DATA_URL } from './embedded-icons'
+
 function getIconPath(filename: string): string {
   const possiblePaths = [
     join(process.resourcesPath, 'resources', filename),
@@ -36,41 +38,28 @@ function getIconPath(filename: string): string {
 
 function getAppIcon(): NativeImage {
   const icoPath = getIconPath('icon.ico')
-  const pngPath = getIconPath('icon.png')
   if (process.platform === 'win32' && existsSync(icoPath)) {
     try {
       const img = nativeImage.createFromPath(icoPath)
       if (!img.isEmpty()) return img
     } catch {
-      // fallback to png
+      // fallback to embedded
     }
   }
-  if (existsSync(pngPath)) {
-    return nativeImage.createFromPath(pngPath)
-  }
-  return nativeImage.createEmpty()
+  return nativeImage.createFromDataURL(APP_ICON_DATA_URL)
 }
 
 function getTrayIcon(): NativeImage {
-  const tray16 = getIconPath('tray-16.png')
-  const tray32 = getIconPath('tray.png')
-  const iconPng = getIconPath('icon.png')
-
-  const targetPath = existsSync(tray16) ? tray16 : existsSync(tray32) ? tray32 : iconPng
-
-  if (existsSync(targetPath)) {
+  const trayPath = getIconPath('tray.png')
+  if (existsSync(trayPath)) {
     try {
-      const buf = readFileSync(targetPath)
-      const img = nativeImage.createFromBuffer(buf)
-      if (!img.isEmpty()) {
-        return img
-      }
-    } catch (e) {
-      console.warn('[Tray] Buffer load error:', e)
+      const img = nativeImage.createFromPath(trayPath)
+      if (!img.isEmpty()) return img
+    } catch {
+      // fallback to embedded
     }
-    return nativeImage.createFromPath(targetPath)
   }
-  return nativeImage.createEmpty()
+  return nativeImage.createFromDataURL(TRAY_ICON_DATA_URL)
 }
 
 function createWindow(): void {
