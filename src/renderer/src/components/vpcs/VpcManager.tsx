@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Network, Plus, Server, Trash2, Loader2, CheckCircle2 } from 'lucide-react'
+import { Network, Plus, Server, Loader2 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useVpcs } from '../../api/queries'
 
@@ -138,7 +138,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client }) => {
               </div>
 
               <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-800 text-slate-300">
-                {vpc.region?.slug?.toUpperCase() || 'Global'}
+                {(vpc as any).region?.slug?.toUpperCase() || 'Global'}
               </span>
             </div>
 

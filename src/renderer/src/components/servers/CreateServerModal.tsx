@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Server, Globe, Cpu, HardDrive, ShieldCheck, Check, Key, Loader2, Sparkles, AlertCircle } from 'lucide-react'
+import { X, Server, Globe, Cpu, Key, Loader2, Sparkles, AlertCircle } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSizes, useRegions, useImages, useSshKeys, useVpcs, useCreateServerMutation } from '../../api/queries'
 
@@ -35,7 +35,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const vpcs = vpcsQuery.data || []
 
   // Filter distribution base images
-  const baseImages = images.filter((img) => img.type === 'distribution' || img.type === 'base')
+  const baseImages = images.filter((img: any) => img.type === 'distribution' || img.type === 'base' || !img.type)
 
   const currentSizeObj = sizes.find((s) => s.slug === selectedSize) || sizes[0]
 

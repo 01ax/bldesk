@@ -33,6 +33,13 @@ export interface SystemNotificationOptions {
   icon?: string
 }
 
+export interface LocalSshKey {
+  name: string
+  publicKey: string
+  pubPath?: string
+  privateKeyPath?: string
+}
+
 export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
@@ -46,7 +53,7 @@ export interface IpcApi {
   openRescueConsole: (options: ConsoleWindowOptions) => Promise<{ success: boolean }>
   
   // SSH Keys & Local FS
-  getLocalSshKeys: () => Promise<{ name: string; publicKey: string }[]>
+  getLocalSshKeys: () => Promise<LocalSshKey[]>
 
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>

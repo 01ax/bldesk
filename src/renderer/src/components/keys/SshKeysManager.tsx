@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Download, Copy, Check, ShieldCheck, Loader2, Sparkles } from 'lucide-react'
+import { Key, Plus, Trash2, Download, Copy, Check, Loader2, Sparkles } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 
@@ -212,14 +212,14 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
 
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
-                  onClick={() => handleCopyKey(k.id, k.public_key)}
+                  onClick={() => handleCopyKey(k.id, k.public_key || '')}
                   className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition"
                   title="Copy Full Public Key"
                 >
                   {copiedId === k.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 <button
-                  onClick={() => handleDeleteKey(k.id, k.name)}
+                  onClick={() => handleDeleteKey(k.id, k.name || 'Key')}
                   className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
                   title="Delete Key"
                 >

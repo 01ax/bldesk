@@ -12,8 +12,16 @@ export function launchNativeTerminal(options: TerminalLaunchOptions): Promise<{ 
 
     try {
       if (platform === 'win32') {
-        // Try launching Windows Terminal (wt.exe), fallback to PowerShell / cmd
-        const wtProcess = spawn('wt.exe', ['new-tab', '-p', 'PowerShell', 'ssh', `${user}@${options.host}`, ...(options.port ? ['-p', String(options.port)] : [])], {
+        // Try launching Windows Terminal (wt.exe) with full ssh args
+        const wtArgs = [
+          'new-tab',
+          '-p', 'PowerShell',
+          'ssh',
+          `${user}@${options.host}`,
+          ...(options.port ? ['-p', String(options.port)] : []),
+          ...(options.privateKeyPath ? ['-i', options.privateKeyPath] : [])
+        ]
+        const wtProcess = spawn('wt.exe', wtArgs, {
           detached: true,
           stdio: 'ignore'
         })
