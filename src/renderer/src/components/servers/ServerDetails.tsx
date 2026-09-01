@@ -12,10 +12,7 @@ import {
   Key,
   Copy,
   Check,
-  Globe,
-  Settings,
-  Lock,
-  AlertTriangle
+  Globe
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -23,6 +20,7 @@ import { LocalSshKey } from '@shared/ipc-types'
 import { FirewallManager } from '../firewall/FirewallManager'
 import { BackupManager } from '../backups/BackupManager'
 import { ServerNetwork } from './ServerNetwork'
+import { ServerSettings } from './ServerSettings'
 import {
   useServerMetrics,
   useServerConsole,
@@ -499,86 +497,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {/* SETTINGS TAB */}
-        {activeSubTab === 'settings' && (
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4 flex-shrink-0">
-              <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
-                <Settings className="w-4 h-4 text-[#017cb6]" />
-                <span>Server Plan & Configuration</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <label className="text-[#6c757d] dark:text-slate-400 block text-[11px] mb-1">Hostname / Label</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={server.name}
-                    className="w-full px-3 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded font-medium text-[#212529] dark:text-white text-xs opacity-80 cursor-not-allowed"
-                  />
-                </div>
-                <div>
-                  <label className="text-[#6c757d] dark:text-slate-400 block text-[11px] mb-1">Hardware Plan</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={`${server.vcpus} vCPU · ${ramGB} GB RAM · ${server.disk} GB Disk`}
-                    className="w-full px-3 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded font-medium text-[#212529] dark:text-white text-xs opacity-80 cursor-not-allowed"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Password & Security Actions */}
-            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-3 flex-shrink-0">
-              <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[#017cb6]" />
-                <span>Security & Administrative Operations</span>
-              </h3>
-              <p className="text-xs text-[#6c757d] dark:text-slate-400">
-                Trigger root/admin password resets or hardware sync operations.
-              </p>
-              <div className="flex flex-wrap gap-2 pt-2">
-                <button
-                  onClick={() => handleAction('password_reset')}
-                  disabled={!!actionInProgress}
-                  className="px-3.5 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] text-xs font-medium rounded transition flex items-center gap-1.5"
-                >
-                  <Key className="w-3.5 h-3.5 text-[#017cb6]" />
-                  <span>Reset Root / Admin Password</span>
-                </button>
-                <button
-                  onClick={() => handleAction('power_cycle')}
-                  disabled={!!actionInProgress}
-                  className="px-3.5 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] text-xs font-medium rounded transition flex items-center gap-1.5"
-                >
-                  <RotateCw className="w-3.5 h-3.5 text-[#017cb6]" />
-                  <span>Hard Power Cycle</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Danger Zone */}
-            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-lg p-5 space-y-3 flex-shrink-0">
-              <h3 className="font-bold text-xs text-rose-800 dark:text-rose-400 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Danger Zone</span>
-              </h3>
-              <p className="text-xs text-rose-700/80 dark:text-rose-400/80">
-                Destructive actions will cause server downtime or irreversible data loss. Proceed with extreme caution.
-              </p>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  onClick={() => handleAction('rebuild')}
-                  disabled={!!actionInProgress}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Rebuild Operating System</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeSubTab === 'settings' && <ServerSettings client={client} server={server} />}
 
         {/* RECOVERY TAB */}
         {activeSubTab === 'recovery' && (
