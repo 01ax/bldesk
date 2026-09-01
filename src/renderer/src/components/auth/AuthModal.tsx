@@ -28,7 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null
 
   const handleOpenTokenPage = () => {
-    window.bldeskApi.openExternal('https://home.binarylane.com.au/api-tokens')
+    window.bldeskApi?.openExternal?.('https://home.binarylane.com.au/api-tokens')
   }
 
   const handleSaveToken = async (e: React.FormEvent) => {
@@ -57,95 +57,106 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const name = profileName.trim() || verifiedEmail || 'BinaryLane Account'
 
       // Save encrypted into SafeStorage Vault
-      const result = await window.bldeskApi.saveProfile({
+      const result = await window.bldeskApi?.saveProfile?.({
         name,
         token: cleanToken,
         isDefault
       })
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to save token to secure storage.')
+      if (result?.error) {
+        throw new Error(result.error)
       }
 
       setSuccessMsg(`Account "${name}" connected successfully!`)
-      setTokenInput('')
       setProfileName('')
+      setTokenInput('')
       onProfileAddedOrUpdated()
+
       setTimeout(() => {
+        setSuccessMsg(null)
         onClose()
-      }, 900)
+      }, 1200)
     } catch (err: any) {
-      setErrorMsg(err.message || 'An error occurred while validating the token.')
+      setErrorMsg(err.message || 'Verification failed.')
     } finally {
       setIsValidating(false)
     }
   }
 
-  const handleDeleteProfile = async (id: string) => {
-    if (confirm('Are you sure you want to remove this account profile?')) {
-      await window.bldeskApi.deleteProfile(id)
+  const handleDeleteProfile = async (id: string, name: string) => {
+    if (!confirm(`Remove account profile "${name}"? You will need to re-enter your API token to use it again.`)) return
+    try {
+      await window.bldeskApi?.deleteProfile?.(id)
       onProfileAddedOrUpdated()
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`)
     }
   }
 
+  const handleSetActive = async (id: string) => {
+    await window.bldeskApi?.setActiveProfile?.(id)
+    onProfileAddedOrUpdated()
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-100">
+      <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden flex flex-col text-xs">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
-              <Key className="w-4 h-4 text-sky-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-white">Account Vault & API Access</h2>
-              <p className="text-xs text-slate-400">Encrypted with OS hardware security (safeStorage)</p>
-            </div>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-[#f1f1f1] dark:bg-[#262a2e]">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-[#017cb6]" />
+            <h3 className="font-bold text-sm text-[#212529] dark:text-white">Hardware Encrypted Vault</h3>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition"
+            className="p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white rounded"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Active / Stored Profiles List */}
+        <div className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+          {/* Active Profiles List */}
           {profiles.length > 0 && (
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                Connected Profiles ({profiles.length})
-              </label>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              <label className="font-semibold text-[#495057] dark:text-[#ced4da] block">Configured Accounts</label>
+              <div className="space-y-1.5">
                 {profiles.map((p) => {
                   const isActive = activeProfile?.id === p.id
                   return (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg border text-xs ${
+                      className={`flex items-center justify-between p-2.5 rounded border transition ${
                         isActive
-                          ? 'bg-sky-950/40 border-sky-500/40 text-white'
-                          : 'bg-slate-950/40 border-slate-800 text-slate-300'
+                          ? 'bg-[#017cb6]/10 border-[#017cb6] text-[#017cb6]'
+                          : 'bg-[#f8f9fa] dark:bg-[#212529] border-[#ced4da] dark:border-[#373b3e] text-[#212529] dark:text-white hover:border-[#017cb6]'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className={`w-4 h-4 ${isActive ? 'text-sky-400' : 'text-slate-500'}`} />
-                        <span className="font-medium">{p.name}</span>
+                      <div
+                        onClick={() => handleSetActive(p.id)}
+                        className="cursor-pointer flex-1 flex items-center gap-2"
+                      >
+                        <Key className={`w-3.5 h-3.5 ${isActive ? 'text-[#f1ca00]' : 'text-[#6c757d]'}`} />
+                        <div>
+                          <div className="font-semibold">{p.name}</div>
+                          {p.email && <div className="text-[10px] text-[#6c757d]">{p.email}</div>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
                         {isActive && (
-                          <span className="text-[10px] bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded font-mono">
-                            Active
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-[#017cb6] text-white rounded">
+                            ACTIVE
                           </span>
                         )}
+                        <button
+                          onClick={() => handleDeleteProfile(p.id, p.name)}
+                          className="text-[#6c757d] hover:text-rose-500 p-1 rounded"
+                          title="Delete profile"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleDeleteProfile(p.id)}
-                        className="text-slate-500 hover:text-rose-400 p-1 transition"
-                        title="Delete Profile"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   )
                 })}
@@ -153,90 +164,82 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* Add New Token Form */}
-          <form onSubmit={handleSaveToken} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-200">Profile Name (Optional)</label>
+          {/* Add New Profile Form */}
+          <form onSubmit={handleSaveToken} className="space-y-3 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#495057] dark:text-[#ced4da]">Add BinaryLane API Token</span>
+              <button
+                type="button"
+                onClick={handleOpenTokenPage}
+                className="text-[11px] text-[#017cb6] hover:underline flex items-center gap-1"
+              >
+                <span>Generate in mPanel</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-[#6c757d] mb-1">Account Label (optional)</label>
               <input
                 type="text"
-                placeholder="e.g. Personal Cloud, Work Fleet"
+                placeholder="e.g. Production / Personal"
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-3 py-1.5 rounded text-[#212529] dark:text-white focus:outline-none focus:border-[#017cb6]"
               />
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-200">Personal Access Token (PAT)</label>
-                <button
-                  type="button"
-                  onClick={handleOpenTokenPage}
-                  className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 transition"
-                >
-                  <span>Generate Token in mPanel</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              </div>
+            <div>
+              <label className="block text-[11px] text-[#6c757d] mb-1">API Token Secret</label>
               <input
                 type="password"
                 required
-                placeholder="Paste your BinaryLane API token here..."
+                placeholder="Paste API token secret..."
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-3 py-1.5 rounded text-[#212529] dark:text-white font-mono focus:outline-none focus:border-[#017cb6]"
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer pt-1">
               <input
                 type="checkbox"
-                id="isDefault"
                 checked={isDefault}
                 onChange={(e) => setIsDefault(e.target.checked)}
-                className="rounded border-slate-700 bg-slate-950 text-sky-600 focus:ring-0"
+                className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
               />
-              <label htmlFor="isDefault" className="text-xs text-slate-400 select-none cursor-pointer">
-                Set as default active profile
-              </label>
-            </div>
+              <span className="text-[11px] text-[#6c757d]">Set as default active profile</span>
+            </label>
 
             {errorMsg && (
-              <div className="flex items-center gap-2 p-2.5 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-xs">
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded flex items-center gap-2 text-[11px]">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {successMsg && (
-              <div className="flex items-center gap-2 p-2.5 bg-emerald-950/40 border border-emerald-800/60 rounded-lg text-emerald-300 text-xs">
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 rounded flex items-center gap-2 text-[11px]">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>{successMsg}</span>
               </div>
             )}
 
-            <div className="pt-2 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-lg transition"
-              >
-                Cancel
-              </button>
+            <div className="pt-2">
               <button
                 type="submit"
-                disabled={isValidating || !tokenInput.trim()}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:pointer-events-none rounded-lg transition shadow-lg shadow-sky-900/30"
+                disabled={isValidating}
+                className="w-full py-2 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
               >
                 {isValidating ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Verifying Token...</span>
+                    <span>Verifying Live Token...</span>
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Connect & Encrypt</span>
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Save & Encrypt Token</span>
                   </>
                 )}
               </button>

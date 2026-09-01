@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Download, Copy, Check, Loader2, Sparkles } from 'lucide-react'
+import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 
@@ -22,7 +22,9 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
 
   useEffect(() => {
     // Scan local ~/.ssh directory
-    window.bldeskApi.getLocalSshKeys().then(setLocalKeys)
+    if (window.bldeskApi?.getLocalSshKeys) {
+      window.bldeskApi.getLocalSshKeys().then(setLocalKeys)
+    }
   }, [])
 
   const handleCopyKey = (id: number, keyText: string) => {
@@ -37,7 +39,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
         name: localKey.name,
         publicKey: localKey.publicKey
       })
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'SSH Key Imported',
         body: `Imported "${localKey.name}" from your local ~/.ssh directory.`
       })
@@ -58,75 +60,83 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       setIsAdding(false)
       setKeyName('')
       setPublicKey('')
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'SSH Key Added',
-        body: `Key "${keyName}" added to your BinaryLane account.`
+        body: `Added SSH key "${keyName}".`
       })
     } catch (err: any) {
-      alert(`Add failed: ${err.message}`)
+      alert(`Failed to add key: ${err.message}`)
     }
   }
 
-  const handleDeleteKey = async (id: number, name: string) => {
-    if (!confirm(`Are you sure you want to delete SSH key "${name}"?`)) return
+  const handleDeleteKey = async (keyId: number, name: string) => {
+    if (!confirm(`Delete SSH key "${name}" (#${keyId})?`)) return
     try {
-      await deleteKeyMutation.mutateAsync(id)
+      await deleteKeyMutation.mutateAsync(keyId)
+      window.bldeskApi?.sendNotification?.({
+        title: 'SSH Key Deleted',
+        body: `Deleted key #${keyId}.`
+      })
     } catch (err: any) {
       alert(`Delete failed: ${err.message}`)
     }
   }
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto select-text">
+    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <Key className="w-5 h-5 text-amber-400" />
+          <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
+            <Key className="w-5 h-5 text-[#017cb6]" />
             <span>SSH Public Keys</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Public keys for passwordless root and user access to your servers</p>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+            Manage your SSH public keys for passwordless authentication to your cloud servers.
+          </p>
         </div>
 
         <button
-          onClick={() => setIsAdding(!isAdding)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition"
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
           <span>Add SSH Key</span>
         </button>
       </div>
 
-      {/* Discovered Local Keys Banner */}
+      {/* Local Auto-Discovery Card */}
       {localKeys.length > 0 && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-semibold text-sky-400">
-              <Sparkles className="w-4 h-4" />
-              <span>Discovered Local Keys on this Machine (~/.ssh)</span>
-            </div>
+        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-[#f1ca00]" />
+            <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">
+              Discovered in your local ~/.ssh folder
+            </h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {localKeys.map((lk) => {
-              const alreadyImported = keys.some((k) => k.public_key.trim() === lk.publicKey.trim())
+              const alreadyImported = keys.some((k) => k.public_key?.trim() === lk.publicKey?.trim())
               return (
-                <div key={lk.name} className="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <Key className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                    <span className="font-mono text-slate-200">{lk.name}.pub</span>
+                <div
+                  key={lk.name}
+                  className="flex items-center justify-between p-2.5 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]"
+                >
+                  <div className="truncate mr-2">
+                    <div className="text-xs font-semibold text-[#212529] dark:text-white truncate">{lk.name}</div>
+                    <div className="text-[10px] text-[#6c757d] font-mono truncate">{lk.publicKey.substring(0, 24)}...</div>
                   </div>
                   {alreadyImported ? (
-                    <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/40">
-                      Already in Account
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 bg-emerald-500/10 rounded">
+                      Linked
                     </span>
                   ) : (
                     <button
                       onClick={() => handleImportLocalKey(lk)}
                       disabled={addKeyMutation.isPending}
-                      className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-sky-300 bg-sky-950 hover:bg-sky-900 border border-sky-800 rounded transition"
+                      className="px-2.5 py-1 text-[11px] font-medium bg-[#017cb6] hover:bg-[#016594] text-white rounded transition shadow-sm"
                     >
-                      <Download className="w-3 h-3" />
-                      <span>Import</span>
+                      Import
                     </button>
                   )}
                 </div>
@@ -136,100 +146,126 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
         </div>
       )}
 
-      {/* Add Key Form */}
-      {isAdding && (
-        <form onSubmit={handleManualAdd} className="p-4 bg-slate-900/90 border border-sky-500/40 rounded-xl space-y-3 text-xs animate-in fade-in">
-          <h2 className="text-xs font-semibold text-white">Add New SSH Key</h2>
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Key Label / Name</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Workstation ED25519"
-              value={keyName}
-              onChange={(e) => setKeyName(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Public Key String</label>
-            <textarea
-              required
-              rows={3}
-              placeholder="ssh-ed25519 AAAA... or ssh-rsa AAAA..."
-              value={publicKey}
-              onChange={(e) => setPublicKey(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono text-[11px]"
-            />
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsAdding(false)}
-              className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={addKeyMutation.isPending}
-              className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium transition"
-            >
-              {addKeyMutation.isPending ? 'Saving...' : 'Add Key'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Account Keys List */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 flex-1">
-        <h2 className="text-sm font-bold text-white">Account Public Keys ({keys.length})</h2>
+      {/* Cloud SSH Keys Table */}
+      <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
+        <div className="p-3 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] font-semibold text-xs text-[#495057] dark:text-[#ced4da]">
+          Account SSH Keys ({keys.length})
+        </div>
 
         {sshKeysQuery.isLoading && (
-          <div className="py-12 flex justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-          </div>
+          <div className="p-8 text-center text-xs text-[#6c757d]">Loading keys...</div>
         )}
 
         {!sshKeysQuery.isLoading && keys.length === 0 && (
-          <div className="text-xs text-slate-500 p-8 text-center bg-slate-950/40 rounded-xl">
-            No SSH keys stored in your BinaryLane account.
-          </div>
+          <div className="p-8 text-center text-xs text-[#6c757d]">No SSH keys registered in BinaryLane.</div>
         )}
 
-        <div className="space-y-2">
-          {keys.map((k) => (
-            <div key={k.id} className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-              <div className="space-y-1 truncate pr-4">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-white">{k.name}</span>
-                  <span className="text-[10px] text-slate-500 font-mono">#{k.id}</span>
-                </div>
-                <div className="font-mono text-[11px] text-slate-400 truncate max-w-md">
-                  {k.fingerprint || k.public_key.slice(0, 48) + '...'}
-                </div>
+        {!sshKeysQuery.isLoading && keys.length > 0 && (
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#ced4da] dark:border-[#373b3e] text-[#6c757d]">
+                <th className="py-2.5 px-4">Name</th>
+                <th className="py-2.5 px-4">Fingerprint</th>
+                <th className="py-2.5 px-4">Public Key</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+              {keys.map((k) => (
+                <tr key={k.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
+                  <td className="py-3 px-4 font-bold text-[#017cb6]">{k.name}</td>
+                  <td className="py-3 px-4 font-mono text-[#6c757d] dark:text-slate-300 text-[11px]">
+                    {k.fingerprint || '—'}
+                  </td>
+                  <td className="py-3 px-4 font-mono text-[#6c757d] text-[11px] truncate max-w-xs">
+                    {k.public_key?.substring(0, 32)}...
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => handleCopyKey(k.id, k.public_key ?? "")}
+                        className="text-[#6c757d] hover:text-[#017cb6] p-1 rounded"
+                        title="Copy Public Key"
+                      >
+                        {copiedId === k.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteKey(k.id, k.name || "SSH Key")}
+                        className="text-[#6c757d] hover:text-rose-500 p-1 rounded"
+                        title="Delete Key"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Add Modal */}
+      {isAdding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Add Public SSH Key</h2>
+              <button onClick={() => setIsAdding(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualAdd} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Key Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. MacBook Pro M3"
+                  value={keyName}
+                  onChange={(e) => setKeyName(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                />
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div>
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Public Key (ssh-ed25519 or ssh-rsa)
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5..."
+                  value={publicKey}
+                  onChange={(e) => setPublicKey(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white p-3 rounded font-mono focus:outline-none focus:border-[#017cb6]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
                 <button
-                  onClick={() => handleCopyKey(k.id, k.public_key || '')}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition"
-                  title="Copy Full Public Key"
+                  type="button"
+                  onClick={() => setIsAdding(false)}
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
                 >
-                  {copiedId === k.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  Cancel
                 </button>
                 <button
-                  onClick={() => handleDeleteKey(k.id, k.name || 'Key')}
-                  className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
-                  title="Delete Key"
+                  type="submit"
+                  disabled={addKeyMutation.isPending}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  {addKeyMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Save SSH Key</span>
                 </button>
               </div>
-            </div>
-          ))}
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

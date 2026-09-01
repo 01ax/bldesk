@@ -4,12 +4,11 @@ import {
   Plus,
   Server,
   Loader2,
-  ArrowRight,
+  
   UserPlus,
   Unlink,
   Trash2,
   X,
-  AlertCircle
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
@@ -58,7 +57,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
       setIsCreating(false)
       setVpcName('')
       vpcsQuery.refetch()
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'VPC Created',
         body: `Virtual Private Cloud "${vpcName}" created successfully.`
       })
@@ -85,7 +84,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
       })
 
       const targetServerName = servers.find((s) => s.id === selectedServerToAttach)?.name || selectedServerToAttach
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'Server Attached to VPC',
         body: `Moved "${targetServerName}" into VPC "${attachModalVpc.name}".`
       })
@@ -101,27 +100,24 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
     }
   }
 
-  // Remove / Detach Server from VPC back to Public Network
-  const handleRemoveServerFromVpc = async (server: ServerResponse, vpcName: string) => {
+  // Detach / Remove Server from VPC
+  const handleDetachServer = async (serverId: number, serverName: string) => {
     if (!client) return
-    const confirmed = confirm(
-      `Remove server "${server.name}" from VPC "${vpcName}"?\n\nThe server will be moved back to the standard public network.`
-    )
-    if (!confirmed) return
+    if (!confirm(`Are you sure you want to detach "${serverName}" from its VPC? It will revert to the default public network.`)) return
 
-    setActionServerId(server.id)
+    setActionServerId(serverId)
     try {
       await client.POST('/v2/servers/{server_id}/actions', {
-        params: { path: { server_id: server.id } },
+        params: { path: { server_id: serverId } },
         body: {
           type: 'change_network',
           vpc_id: null as any
         }
       })
 
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'Server Detached from VPC',
-        body: `"${server.name}" removed from VPC and returned to public network.`
+        body: `Detached "${serverName}" from private network.`
       })
 
       queryClient.invalidateQueries({ queryKey: ['servers'] })
@@ -133,341 +129,296 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
     }
   }
 
-  // Delete Empty VPC
-  const handleDeleteVpc = async (vpcId: number, name: string) => {
+  // Delete VPC
+  const handleDeleteVpc = async (vpcId: number, vpcName: string) => {
     if (!client) return
-    const confirmed = confirm(`Are you sure you want to permanently delete VPC "${name}"?`)
-    if (!confirmed) return
+    if (!confirm(`Delete Virtual Private Cloud "${vpcName}" (#${vpcId})? This action cannot be undone.`)) return
 
     try {
       await client.DELETE('/v2/vpcs/{vpc_id}', {
         params: { path: { vpc_id: vpcId } }
       })
-      window.bldeskApi.sendNotification({
-        title: 'VPC Deleted',
-        body: `Virtual Private Cloud "${name}" was deleted.`
-      })
       vpcsQuery.refetch()
+      window.bldeskApi?.sendNotification?.({
+        title: 'VPC Deleted',
+        body: `VPC #${vpcId} deleted.`
+      })
     } catch (err: any) {
       alert(`Failed to delete VPC: ${err.message}`)
     }
   }
 
+  // Servers available to attach (not already in this specific VPC)
+  const getAttachableServers = (vpcId: number) => {
+    return servers.filter((s) => s.vpc_id !== vpcId)
+  }
+
   return (
-    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto select-text">
+    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <Network className="w-5 h-5 text-sky-400" />
-            <span>Virtual Private Clouds (VPC)</span>
+          <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
+            <Network className="w-5 h-5 text-[#017cb6]" />
+            <span>Virtual Private Clouds (VPCs)</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Isolated private virtual networks connecting your server instances</p>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+            Isolated layer-2 private networks across BinaryLane data centres.
+          </p>
         </div>
 
         <button
-          onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition"
+          onClick={() => setIsCreating(true)}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
           <span>Create VPC</span>
         </button>
       </div>
 
-      {/* Create VPC Form */}
-      {isCreating && (
-        <form
-          onSubmit={handleCreateVpc}
-          className="p-4 bg-slate-900/90 border border-sky-500/40 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs animate-in fade-in"
-        >
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">VPC Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Production-VPC"
-              value={vpcName}
-              onChange={(e) => setVpcName(e.target.value)}
-              required
-              className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white"
-            />
-          </div>
+      {/* Loading state */}
+      {vpcsQuery.isLoading && (
+        <div className="flex flex-col items-center justify-center p-12 space-y-3 bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <Loader2 className="w-8 h-8 text-[#017cb6] animate-spin" />
+          <p className="text-xs text-[#6c757d] dark:text-slate-400">Loading VPC networks...</p>
+        </div>
+      )}
 
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">IP Range (CIDR)</label>
-            <input
-              type="text"
-              placeholder="10.240.0.0/16"
-              value={ipRange}
-              onChange={(e) => setIpRange(e.target.value)}
-              required
-              className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono"
-            />
-          </div>
-
-          <div className="flex items-end gap-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium transition"
-            >
-              {isSubmitting ? 'Creating...' : 'Provision VPC'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCreating(false)}
-              className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+      {/* Empty State */}
+      {!vpcsQuery.isLoading && vpcs.length === 0 && (
+        <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <Network className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
+          <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No VPC Networks</h3>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 max-w-sm mt-1 mb-4">
+            Connect multiple virtual servers privately on an isolated 10Gbps backend network.
+          </p>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition"
+          >
+            Create Your First VPC
+          </button>
+        </div>
       )}
 
       {/* VPC Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {vpcsQuery.isLoading && (
-          <div className="col-span-2 py-12 flex justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-          </div>
-        )}
-
-        {!vpcsQuery.isLoading && vpcs.length === 0 && (
-          <div className="col-span-2 text-xs text-slate-500 p-8 text-center bg-slate-900/30 rounded-xl">
-            No VPC networks created. All instances use standard public routing.
-          </div>
-        )}
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {vpcs.map((vpc) => {
-          // Find all servers belonging to this VPC
-          const memberServers = servers.filter((s) => s.vpc_id === vpc.id)
+          const vpcServers = servers.filter((s) => s.vpc_id === vpc.id)
+          const attachableServers = getAttachableServers(vpc.id)
 
           return (
-            <div key={vpc.id} className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
-              <div>
-                {/* VPC Card Header */}
-                <div className="flex items-start justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-white">{vpc.name}</h3>
-                      <span className="text-[10px] text-slate-500 font-mono">#{vpc.id}</span>
-                    </div>
-                    <div className="text-xs text-sky-400 font-mono font-semibold">{vpc.ip_range}</div>
+            <div
+              key={vpc.id}
+              className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm flex flex-col justify-between overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-[#f1f1f1] dark:bg-[#262a2e] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded bg-[#017cb6]/10 flex items-center justify-center">
+                    <Network className="w-4 h-4 text-[#017cb6]" />
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-800 text-slate-300">
-                      {(vpc as any).region?.slug?.toUpperCase() || 'Global'}
+                  <div>
+                    <h3 className="font-bold text-sm text-[#212529] dark:text-white">{vpc.name}</h3>
+                    <span className="text-[11px] text-[#6c757d] dark:text-slate-400 font-mono">
+                      #{vpc.id} • {vpc.ip_range}
                     </span>
-
-                    {memberServers.length === 0 && (
-                      <button
-                        onClick={() => handleDeleteVpc(vpc.id, vpc.name)}
-                        className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition"
-                        title="Delete Empty VPC"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
                 </div>
 
-                {/* Member Servers Section */}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Server className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Member Servers ({memberServers.length})</span>
-                    </span>
-
-                    {/* Add Server Button */}
-                    <button
-                      onClick={() => {
-                        const candidates = servers.filter((s) => s.vpc_id !== vpc.id)
-                        if (candidates.length > 0) {
-                          setSelectedServerToAttach(candidates[0].id)
-                        }
-                        setAttachModalVpc(vpc)
-                      }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-sky-400 hover:text-sky-300 bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 rounded transition"
-                      title="Add or Move an existing server into this VPC"
-                    >
-                      <UserPlus className="w-3 h-3" />
-                      <span>+ Add Server</span>
-                    </button>
-                  </div>
-
-                  {memberServers.length === 0 ? (
-                    <div className="p-4 bg-slate-950/40 rounded-lg border border-slate-800/80 text-center text-xs text-slate-500 space-y-2">
-                      <div>No compute servers currently assigned to this VPC.</div>
-                      <button
-                        onClick={() => {
-                          const candidates = servers.filter((s) => s.vpc_id !== vpc.id)
-                          if (candidates.length > 0) setSelectedServerToAttach(candidates[0].id)
-                          setAttachModalVpc(vpc)
-                        }}
-                        className="px-2.5 py-1 text-[11px] text-sky-400 bg-sky-950/80 hover:bg-sky-900 border border-sky-800/80 rounded-lg transition"
-                      >
-                        Add Existing Server to this VPC
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {memberServers.map((server) => {
-                        const privateIp =
-                          server.networks?.v4?.find((v: any) => v.type === 'private')?.ip_address ||
-                          'Private IP assigned'
-                        const publicIp =
-                          server.networks?.v4?.find((v: any) => v.type === 'public')?.ip_address ||
-                          server.networks?.v4?.[0]?.ip_address ||
-                          'No public IP'
-                        const isRunning = server.status === 'active'
-                        const isProcessing = actionServerId === server.id
-
-                        return (
-                          <div
-                            key={server.id}
-                            className="flex items-center justify-between p-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg text-xs hover:border-slate-700 transition"
-                          >
-                            <div className="flex items-center gap-2.5 truncate">
-                              <span
-                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                  isRunning ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400'
-                                }`}
-                              />
-                              <div className="truncate">
-                                <div className="font-semibold text-slate-100 truncate">{server.name}</div>
-                                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
-                                  <span className="text-sky-400">{privateIp}</span>
-                                  <span className="text-slate-600">•</span>
-                                  <span className="text-slate-500">{publicIp}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                              {onSelectServer && (
-                                <button
-                                  onClick={() => onSelectServer(server)}
-                                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition"
-                                  title="Open Server Management"
-                                >
-                                  <span>Manage</span>
-                                  <ArrowRight className="w-3 h-3" />
-                                </button>
-                              )}
-
-                              {/* Remove from VPC button */}
-                              <button
-                                onClick={() => handleRemoveServerFromVpc(server, vpc.name)}
-                                disabled={isProcessing}
-                                className="p-1 text-slate-500 hover:text-rose-400 bg-slate-800/50 hover:bg-rose-950/60 hover:border-rose-800/50 border border-transparent rounded transition"
-                                title="Remove / Detach from VPC (Move to Public Network)"
-                              >
-                                {isProcessing ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
-                                ) : (
-                                  <Unlink className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => handleDeleteVpc(vpc.id, vpc.name)}
+                  className="text-[#6c757d] hover:text-rose-500 p-1.5 rounded transition"
+                  title="Delete VPC"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Card Footer Info */}
-              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Route Table Active</span>
-                <span>Isolated Layer-2 VLAN</span>
+              {/* Members */}
+              <div className="p-4 flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-semibold text-[#495057] dark:text-[#ced4da]">
+                    Attached Members ({vpcServers.length})
+                  </h4>
+                  <button
+                    onClick={() => {
+                      setAttachModalVpc(vpc)
+                      if (attachableServers.length > 0) {
+                        setSelectedServerToAttach(attachableServers[0].id)
+                      }
+                    }}
+                    className="flex items-center gap-1 text-xs text-[#017cb6] hover:underline font-medium"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Attach Server</span>
+                  </button>
+                </div>
+
+                {vpcServers.length === 0 ? (
+                  <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-dashed border-[#ced4da] dark:border-[#373b3e] text-center text-xs text-[#6c757d] dark:text-slate-400">
+                    No servers connected to this VPC yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {vpcServers.map((s) => {
+                      const privateIp = s.networks?.v4?.find((n: any) => n.type === 'private')?.ip_address || 'Assigning IP...'
+                      const isDetaching = actionServerId === s.id
+
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex items-center justify-between p-2.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded hover:border-[#017cb6] transition"
+                        >
+                          <div
+                            onClick={() => onSelectServer && onSelectServer(s)}
+                            className="flex items-center gap-2 cursor-pointer flex-1"
+                          >
+                            <Server className="w-3.5 h-3.5 text-[#017cb6]" />
+                            <div>
+                              <div className="text-xs font-bold text-[#017cb6] hover:underline">
+                                {s.name}
+                              </div>
+                              <div className="text-[11px] font-mono text-[#6c757d] dark:text-slate-400">
+                                Private: {privateIp}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleDetachServer(s.id, s.name)}
+                            disabled={isDetaching}
+                            className="p-1.5 text-[#6c757d] hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition"
+                            title="Detach from VPC"
+                          >
+                            {isDetaching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#017cb6]" /> : <Unlink className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* --- ATTACH / ADD SERVER MODAL --- */}
-      {attachModalVpc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in select-text">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/80">
-              <div className="flex items-center gap-2.5">
-                <Network className="w-4 h-4 text-sky-400" />
-                <h3 className="text-sm font-semibold text-white">
-                  Add Server to {attachModalVpc.name}
-                </h3>
-              </div>
-              <button
-                onClick={() => setAttachModalVpc(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              >
+      {/* Create VPC Modal */}
+      {isCreating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Create Virtual Private Cloud</h2>
+              <button onClick={() => setIsCreating(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleAttachServer} className="p-5 space-y-4 text-xs">
-              <p className="text-slate-400">
-                Select an existing compute server to attach to{' '}
-                <strong className="text-sky-400">{attachModalVpc.name}</strong> ({attachModalVpc.ip_range}):
-              </p>
-
+            <form onSubmit={handleCreateVpc} className="space-y-4">
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1 font-semibold">
-                  Select Server
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  VPC Name
                 </label>
-                <select
-                  value={selectedServerToAttach || ''}
-                  onChange={(e) => setSelectedServerToAttach(Number(e.target.value))}
+                <input
+                  type="text"
                   required
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium"
-                >
-                  {servers
-                    .filter((s) => s.vpc_id !== attachModalVpc.id)
-                    .map((s) => {
-                      const currentVpc = vpcs.find((v) => v.id === s.vpc_id)
-                      const locationLabel = currentVpc ? `Currently in ${currentVpc.name}` : 'Public Network'
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.networks?.v4?.[0]?.ip_address || `#${s.id}`}) — {locationLabel}
-                        </option>
-                      )
-                    })}
-                </select>
+                  placeholder="e.g. Production Cluster VPC"
+                  value={vpcName}
+                  onChange={(e) => setVpcName(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                />
               </div>
 
-              {servers.filter((s) => s.vpc_id !== attachModalVpc.id).length === 0 && (
-                <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>All your servers are already members of this VPC!</span>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Subnet CIDR Range
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="10.240.0.0/16"
+                  value={ipRange}
+                  onChange={(e) => setIpRange(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
+                />
+                <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
+                  Standard private range: 10.240.0.0/16, 172.16.0.0/16, etc.
+                </p>
+              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setAttachModalVpc(null)}
-                  className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg"
+                  onClick={() => setIsCreating(false)}
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isAttaching || !selectedServerToAttach || servers.filter((s) => s.vpc_id !== attachModalVpc.id).length === 0}
-                  className="flex items-center gap-1.5 px-4 py-1.5 font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow disabled:opacity-50"
+                  disabled={isSubmitting}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
                 >
-                  {isAttaching ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Attaching...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Attach to VPC</span>
-                    </>
-                  )}
+                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Create Network</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Attach Server Modal */}
+      {attachModalVpc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Attach Server to VPC</h2>
+              <button onClick={() => setAttachModalVpc(null)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAttachServer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Select Server to Connect
+                </label>
+                {getAttachableServers(attachModalVpc.id).length === 0 ? (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs rounded">
+                    All available servers in this account are already in this VPC.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedServerToAttach || ''}
+                    onChange={(e) => setSelectedServerToAttach(Number(e.target.value))}
+                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                  >
+                    {getAttachableServers(attachModalVpc.id).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (#{s.id}) {s.vpc_id ? `[Currently in VPC #${s.vpc_id}]` : '[Public Default]'}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAttachModalVpc(null)}
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAttaching || !selectedServerToAttach}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {isAttaching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Attach to {attachModalVpc.name}</span>
                 </button>
               </div>
             </form>
