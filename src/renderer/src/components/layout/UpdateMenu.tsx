@@ -7,8 +7,13 @@ import { UpdateChannel, UpdaterState } from '@shared/ipc-types'
  * gold dot when an update is downloading and a "Restart" pill once one is ready.
  */
 
-export function useUpdaterState(): UpdaterState | null {
-  const [state, setState] = useState<UpdaterState | null>(null)
+export function useUpdaterState(): UpdaterState {
+  const [state, setState] = useState<UpdaterState>({
+    status: 'idle',
+    currentVersion: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.28',
+    channel: 'stable',
+    supported: false
+  })
 
   useEffect(() => {
     const api = window.bldeskApi
@@ -43,8 +48,6 @@ export const UpdateMenu: React.FC = () => {
     }
   }, [open])
 
-  if (!state) return null
-
   const busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'available'
   const ready = state.status === 'ready'
 
@@ -59,20 +62,21 @@ export const UpdateMenu: React.FC = () => {
         <button
           onClick={install}
           title={`Restart to install BLDesk ${state.availableVersion}`}
-          className="flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-semibold text-slate-900 bg-[#f1ca00] hover:bg-[#ffd633] rounded-md transition shadow"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-slate-900 bg-[#f1ca00] hover:bg-[#ffd633] rounded-md transition shadow"
         >
-          <RotateCw className="w-3 h-3" />
+          <RotateCw className="w-3 h-3 animate-spin" />
           <span>Restart to update</span>
         </button>
       ) : (
         <button
           onClick={() => setOpen((o) => !o)}
-          title={`BLDesk ${state.currentVersion}`}
-          className="relative flex items-center gap-1 px-1.5 py-1 text-[11px] text-slate-400 hover:text-white hover:bg-white/10 rounded transition"
+          title={`BLDesk v${state.currentVersion} (${state.channel} channel)`}
+          className="relative flex items-center gap-1.5 px-2 py-0.5 text-xs text-slate-300 hover:text-white bg-black/25 hover:bg-black/40 border border-white/10 hover:border-white/20 rounded-md transition shadow-inner font-mono"
         >
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f1ca00]" /> : <span className="font-mono">v{state.currentVersion}</span>}
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f1ca00]" /> : <span>v{state.currentVersion}</span>}
           <ChevronDown className="w-3 h-3 opacity-60" />
-          {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-rose-400" />}
+          {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#343a40]" />}
+          {state.status === 'up-to-date' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
         </button>
       )}
 
