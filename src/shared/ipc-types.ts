@@ -111,6 +111,14 @@ export interface IpcApi {
   setUpdateChannel: (channel: UpdateChannel) => Promise<UpdaterState>
   /** Subscribe to state changes; returns an unsubscribe function. */
   onUpdaterState: (listener: (state: UpdaterState) => void) => () => void
+
+  // Deep links (bldesk://) — see shared/deeplink.ts for the URL grammar
+  /** One-shot: a link that arrived before the renderer was listening (cold start). */
+  getPendingDeepLink: () => Promise<string | null>
+  /** Tell main the renderer is subscribed; flushes any queued link via onDeepLink. */
+  deepLinkReady: () => Promise<void>
+  /** Subscribe to links arriving while running; returns an unsubscribe function. */
+  onDeepLink: (listener: (url: string) => void) => () => void
 }
 
 declare global {

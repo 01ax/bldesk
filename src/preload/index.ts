@@ -37,6 +37,15 @@ const api: IpcApi = {
     const handler = (_: Electron.IpcRendererEvent, state: UpdaterState) => listener(state)
     ipcRenderer.on('updater:state', handler)
     return () => ipcRenderer.removeListener('updater:state', handler)
+  },
+
+  // Deep links (bldesk://)
+  getPendingDeepLink: () => ipcRenderer.invoke('deeplink:getPending'),
+  deepLinkReady: () => ipcRenderer.invoke('deeplink:ready'),
+  onDeepLink: (listener) => {
+    const handler = (_: Electron.IpcRendererEvent, url: string) => listener(url)
+    ipcRenderer.on('deeplink:open', handler)
+    return () => ipcRenderer.removeListener('deeplink:open', handler)
   }
 }
 

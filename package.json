@@ -1,6 +1,6 @@
 {
   "name": "bldesk",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "type": "module",
   "description": "BinaryLane Cloud Desktop Client",
   "main": "./out/main/index.js",
@@ -47,6 +47,15 @@
       "repo": "bldesk",
       "releaseType": "release"
     },
+    "protocols": [
+      {
+        "name": "BLDesk",
+        "schemes": [
+          "bldesk"
+        ],
+        "role": "Viewer"
+      }
+    ],
     "mac": {
       "icon": "resources/icon.png",
       "category": "public.app-category.developer-tools",
