@@ -132,18 +132,6 @@ const UsageSvgChart: React.FC<{
     return padding.top + chartH - (clamped / (maxVal || 1)) * chartH
   }
 
-  // Generate SVG Path
-  const generatePath = (points: DataPoint[], isSec: boolean) => {
-    if (!points || points.length === 0) return ''
-    return points
-      .map((p, i) => {
-        const x = getX(p.time)
-        const y = getY(p.value, isSec)
-        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
-      })
-      .join(' ')
-  }
-
   // Time grid ticks
   const timeTicks = useMemo(() => {
     const count = 6
@@ -258,10 +246,26 @@ const UsageSvgChart: React.FC<{
             )
           })}
 
-          {/* Plotted Series Lines */}
+          {/* Plotted Series Lines and Data Points */}
           {seriesList.map((s, idx) => {
-            const path = generatePath(s.summary.data, !!s.isSecondaryAxis)
-            if (!path) return null
+            const isSec = !!s.isSecondaryAxis
+            const points = s.summary.data
+            if (!points || points.length === 0) return null
+
+            let path = ''
+            if (points.length === 1) {
+              const y = getY(points[0].value, isSec)
+              path = `M ${padding.left} ${y.toFixed(1)} L ${(width - padding.right).toFixed(1)} ${y.toFixed(1)}`
+            } else {
+              path = points
+                .map((p, i) => {
+                  const x = getX(p.time)
+                  const y = getY(p.value, isSec)
+                  return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+                })
+                .join(' ')
+            }
+
             return (
               <g key={idx}>
                 <path
@@ -271,7 +275,25 @@ const UsageSvgChart: React.FC<{
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  strokeDasharray={points.length === 1 ? '4,4' : 'none'}
                 />
+                {points.map((p, pIdx) => {
+                  const cx = getX(p.time)
+                  const cy = getY(p.value, isSec)
+                  return (
+                    <circle
+                      key={pIdx}
+                      cx={cx}
+                      cy={cy}
+                      r={points.length <= 10 ? 3.5 : 2}
+                      fill={s.color}
+                      stroke="#1e2227"
+                      strokeWidth="1"
+                    >
+                      <title>{`${s.name}: ${s.formatter(p.value)} (${new Date(p.time).toLocaleTimeString()})`}</title>
+                    </circle>
+                  )
+                })}
               </g>
             )
           })}
