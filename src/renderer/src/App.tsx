@@ -19,6 +19,7 @@ import { useServers } from './api/queries'
 import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
 import { ThemeProvider } from './context/ThemeContext'
+import { useDeepLinkRouter } from './lib/deeplinks'
 import { AlertCircle, KeyRound, X, Server, Loader2 } from 'lucide-react'
 
 // Strict QueryClient settings: Never retry failed mutations (create/update/delete/actions) to prevent spamming!
@@ -124,6 +125,19 @@ function MainDashboard() {
     setSelectedServer(server)
     setActiveServerSubTab('overview')
   }
+
+  // bldesk:// deep links (cold start + while running)
+  useDeepLinkRouter({
+    profiles,
+    activeProfile,
+    client,
+    servers,
+    isLoadingServers,
+    onSwitchProfile: handleSwitchProfile,
+    onSelectServer: handleSelectServer,
+    onSelectServerSubTab: setActiveServerSubTab,
+    onSelectTab: setActiveTab
+  })
 
   if (isInitializing) {
     return (

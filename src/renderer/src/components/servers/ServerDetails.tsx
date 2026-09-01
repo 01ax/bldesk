@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   ArrowLeft,
+  Link2,
   Play,
   RotateCw,
   Power,
@@ -29,6 +30,7 @@ import {
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { launchSsh } from '../../lib/launchSsh'
+import { copyDeepLink } from '../../lib/deeplinks'
 import { ServerSubTab } from '../layout/Sidebar'
 
 type ServerResponse = components['schemas']['Server']
@@ -52,6 +54,13 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null)
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const handleCopyLink = async () => {
+    await copyDeepLink({ kind: 'server', serverId: server.id, subTab: activeSubTab })
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 1500)
+  }
 
   useEffect(() => {
     if (window.bldeskApi?.getLocalSshKeys) {
@@ -159,6 +168,16 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             {/* Breadcrumb Specs */}
             <div className="flex flex-wrap items-center gap-2 text-xs text-[#6c757d] dark:text-slate-400 mt-1">
               <span className="font-mono text-[#212529] dark:text-slate-200">{primaryV4}</span>
+              <span>•</span>
+              <span className="font-mono">#{server.id}</span>
+              <button
+                onClick={handleCopyLink}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-[#6c757d] hover:text-[#017cb6] hover:bg-black/[0.05] dark:hover:bg-white/[0.06] transition"
+                title="Copy bldesk:// link to this server"
+              >
+                {linkCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Link2 className="w-3 h-3" />}
+                <span>{linkCopied ? 'Copied' : 'Copy link'}</span>
+              </button>
               <span>•</span>
               <span>{server.region?.name || server.region?.slug?.toUpperCase()}</span>
               <span>•</span>

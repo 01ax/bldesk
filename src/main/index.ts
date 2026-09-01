@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
 import { UpdaterManager } from './updater'
+import { DeepLinkManager } from './deeplink'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, UpdateChannel } from '../shared/ipc-types'
 
 let mainWindow: BrowserWindow | null = null
@@ -175,6 +176,7 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    DeepLinkManager.onWindowClosed()
   })
 }
 
@@ -295,6 +297,10 @@ function registerIpcHandlers(): void {
     await shell.openExternal(url)
   })
 
+  // Deep links (bldesk://)
+  ipcMain.handle('deeplink:getPending', () => DeepLinkManager.takePending())
+  ipcMain.handle('deeplink:ready', () => DeepLinkManager.markRendererReady())
+
   // Auto-update
   ipcMain.handle('updater:getState', () => UpdaterManager.getState())
   ipcMain.handle('updater:check', () => UpdaterManager.check())
@@ -307,11 +313,21 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_, argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+    }
+    // Windows / Linux deliver bldesk:// links to the running instance via argv
+    DeepLinkManager.handleSecondInstance(argv)
+  })
+
+  // Must be registered before `ready` so a cold-start open-url on macOS is caught
+  DeepLinkManager.register({
+    getWindow: () => mainWindow,
+    ensureWindow: () => {
+      if (!mainWindow && app.isReady()) createWindow()
     }
   })
 

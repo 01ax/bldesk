@@ -138,7 +138,16 @@ export async function initMobileBridge(): Promise<void> {
     checkForUpdates: async () => mobileUpdaterState,
     installUpdate: async () => {},
     setUpdateChannel: async () => mobileUpdaterState,
-    onUpdaterState: () => () => {}
+    onUpdaterState: () => () => {},
+
+    // Deep links: Android intent-filter + @capacitor/app `appUrlOpen` would feed
+    // these; for now the web/mobile build accepts a link via the page URL hash.
+    getPendingDeepLink: async () => {
+      const hash = window.location.hash.replace(/^#/, '')
+      return hash.startsWith('bldesk:') ? decodeURIComponent(hash) : null
+    },
+    deepLinkReady: async () => {},
+    onDeepLink: () => () => {}
   }
 
   ;(window as any).bldeskApi = mobileApi
