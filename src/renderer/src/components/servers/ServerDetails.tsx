@@ -27,6 +27,7 @@ import {
   useServerActionMutation
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
+import { launchSsh } from '../../lib/launchSsh'
 import { ServerSubTab } from '../layout/Sidebar'
 
 type ServerResponse = components['schemas']['Server']
@@ -187,7 +188,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
             <button
               onClick={() =>
-                window.bldeskApi?.launchNativeTerminal?.({
+                launchSsh({
                   host: primaryV4,
                   username: 'root',
                   privateKeyPath: selectedKeyPath || undefined
@@ -455,7 +456,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <div className="flex items-center gap-3">
                 <button
                   onClick={() =>
-                    window.bldeskApi?.launchNativeTerminal?.({
+                    launchSsh({
                       host: primaryV4,
                       username: 'root',
                       privateKeyPath: selectedKeyPath || undefined
