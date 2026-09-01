@@ -1,8 +1,11 @@
 import { app, BrowserWindow, Notification } from 'electron'
-import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater'
+import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
+
+// electron-updater is CJS with dynamic getter exports; resolve via namespace/default
+const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as any).default?.autoUpdater || electronUpdater
 
 /**
  * Auto-update via electron-updater against GitHub Releases.
@@ -73,10 +76,10 @@ export class UpdaterManager {
     }
 
     autoUpdater.logger = {
-      info: (m) => console.log('[Updater]', m),
-      warn: (m) => console.warn('[Updater]', m),
-      error: (m) => console.error('[Updater]', m),
-      debug: (m) => console.debug('[Updater]', m)
+      info: (m: any) => console.log('[Updater]', m),
+      warn: (m: any) => console.warn('[Updater]', m),
+      error: (m: any) => console.error('[Updater]', m),
+      debug: (m: any) => console.debug('[Updater]', m)
     }
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
