@@ -562,6 +562,22 @@ export interface TakeBackupParams {
   backupIdToReplace?: number
 }
 
+export function useServerActions(client: BinaryLaneClient | null, serverId: number | null) {
+  return useQuery({
+    queryKey: ['serverActions', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return []
+      const { data, error } = await client.GET('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } }
+      })
+      if (error) return []
+      return data?.actions || []
+    },
+    enabled: !!client && !!serverId,
+    refetchInterval: 3000
+  })
+}
+
 export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -569,7 +585,9 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
       if (!client || !serverId) throw new Error('No client or serverId')
 
       const p: TakeBackupParams = typeof params === 'string' ? { label: params } : params || {}
-      const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'none')
+      // Default to 'oldest' replacement strategy so that if all slots of this type are occupied,
+      // BinaryLane smoothly replaces/rotates the oldest existing snapshot instead of throwing an error.
+      const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'oldest')
       const backupType = replacementStrategy === 'specified' ? undefined : (p.backupType || 'temporary')
 
       const body: any = {
@@ -603,6 +621,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serverBackups', serverId] })
       queryClient.invalidateQueries({ queryKey: ['serverSnapshots', serverId] })
+      queryClient.invalidateQueries({ queryKey: ['serverActions', serverId] })
       queryClient.invalidateQueries({ queryKey: ['servers'] })
     }
   })
