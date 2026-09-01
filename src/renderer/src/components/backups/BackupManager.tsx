@@ -16,6 +16,7 @@ import {
   useServers,
   useServerBackups,
   useServerSnapshots,
+  useServerActions,
   useTakeBackupMutation,
   useRestoreBackupMutation,
   useToggleAutomatedBackupsMutation,
@@ -42,6 +43,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Queries for current server
   const backupsQuery = useServerBackups(client, activeServerId)
   const snapshotsQuery = useServerSnapshots(client, activeServerId)
+  const actionsQuery = useServerActions(client, activeServerId)
 
   // Mutations
   const takeBackupMutation = useTakeBackupMutation(client, activeServerId)
@@ -58,6 +60,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
   const backups = backupsQuery.data || []
   const snapshots = snapshotsQuery.data || []
+  const actions = actionsQuery.data || []
+
+  const activeBackupAction = actions.find(
+    (a) =>
+      a.status === 'in-progress' &&
+      (a.type === 'take_backup' || a.type === 'restore' || a.type?.includes('backup'))
+  )
 
   const allImages = [...snapshots, ...backups]
   const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
@@ -67,7 +76,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     e.preventDefault()
     if (!activeServerId) return
 
-    let replacementStrategy: 'none' | 'specified' = 'none'
+    let replacementStrategy: 'oldest' | 'specified' = 'oldest'
     let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
     let backupIdToReplace: number | undefined
 
@@ -77,7 +86,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       backupIdToReplace = Number(selectedSlot.split(':')[1])
     } else {
       backupType = (selectedSlot as any) || 'temporary'
-      replacementStrategy = 'none'
+      replacementStrategy = 'oldest'
     }
 
     try {
@@ -246,6 +255,30 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           >
             {isAutoBackupEnabled ? 'Disable Schedule' : 'Enable Nightly Backups'}
           </button>
+        </div>
+      )}
+
+      {/* Active In-Progress Action Banner */}
+      {activeBackupAction && (
+        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg p-3.5 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <Loader2 className="w-4 h-4 text-[#017cb6] animate-spin flex-shrink-0" />
+            <div>
+              <h4 className="text-xs font-bold text-[#212529] dark:text-white">
+                {activeBackupAction.type === 'take_backup'
+                  ? 'Disk Snapshot in Progress...'
+                  : activeBackupAction.type === 'restore'
+                  ? 'Restoring Disk Image...'
+                  : 'Backup Task in Progress...'}
+              </h4>
+              <p className="text-[11px] text-[#6c757d] dark:text-slate-400">
+                The hypervisor is actively creating your snapshot. It will appear in the table below automatically once ready.
+              </p>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-blue-100 dark:bg-blue-900/60 text-[#017cb6] dark:text-blue-300 animate-pulse flex-shrink-0">
+            Capturing Image
+          </span>
         </div>
       )}
 
