@@ -105,8 +105,14 @@ export class UpdaterManager {
       }
     })
     autoUpdater.on('error', (err: Error) => {
-      // Offline / rate-limited / no release yet are all routine; surface but don't nag.
-      this.setState({ status: 'error', error: err?.message || String(err) })
+      const msg = err?.message || String(err)
+      // 404 on latest.yml means no update manifest is published for this release yet (app is already on latest)
+      if (msg.includes('404') || msg.includes('latest.yml') || msg.includes('Cannot find')) {
+        console.log('[Updater] No newer update manifest on GitHub Releases:', msg)
+        this.setState({ status: 'up-to-date', availableVersion: undefined, error: undefined, lastCheckedAt: new Date().toISOString() })
+        return
+      }
+      this.setState({ status: 'error', error: msg })
     })
 
     setTimeout(() => this.check(), INITIAL_DELAY_MS)
@@ -120,10 +126,17 @@ export class UpdaterManager {
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
     if (this.state.status === 'checking' || this.state.status === 'downloading') return this.getState()
+    this.setState({ status: 'checking', error: undefined })
     try {
       await autoUpdater.checkForUpdates()
     } catch (err: any) {
-      this.setState({ status: 'error', error: err?.message || String(err) })
+      const msg = err?.message || String(err)
+      if (msg.includes('404') || msg.includes('latest.yml') || msg.includes('Cannot find')) {
+        console.log('[Updater] No newer update manifest on GitHub Releases:', msg)
+        this.setState({ status: 'up-to-date', availableVersion: undefined, error: undefined, lastCheckedAt: new Date().toISOString() })
+      } else {
+        this.setState({ status: 'error', error: msg })
+      }
     }
     return this.getState()
   }
