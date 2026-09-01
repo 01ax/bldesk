@@ -433,18 +433,23 @@ export function useSampleSets(
     queryKey: ['sample-sets', serverId, interval, start, end],
     queryFn: async () => {
       if (!client || !serverId) return []
+      const query: Record<string, any> = {
+        data_interval: interval,
+        per_page: 300
+      }
+      if (start) query.start = start
+      if (end) query.end = end
+
       const { data, error } = await client.GET('/v2/samplesets/{server_id}', {
         params: {
           path: { server_id: serverId },
-          query: {
-            data_interval: interval,
-            start,
-            end,
-            per_page: 300
-          }
+          query: query as any
         }
       })
-      if (error) return []
+      if (error) {
+        console.warn('[useSampleSets] Error loading sample sets:', error)
+        return []
+      }
       return data?.sample_sets || []
     },
     enabled: !!client && !!serverId,
