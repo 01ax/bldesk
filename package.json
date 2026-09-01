@@ -73,6 +73,9 @@
       ],
       "verifyUpdateCodeSignature": false
     },
+    "portable": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
+    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
