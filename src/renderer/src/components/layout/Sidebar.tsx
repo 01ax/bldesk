@@ -12,8 +12,7 @@ import {
   Terminal,
   Activity,
   ChevronLeft,
-  X
-} from 'lucide-react'
+  X, UserCircle} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
 import logoFull from '../../assets/logo-binarylane.png'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
@@ -27,6 +26,7 @@ export type ActiveTab =
   | 'backups'
   | 'keys'
   | 'billing'
+  | 'account'
   | 'terminal'
 
 export type ServerSubTab =
@@ -73,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'backups', label: 'Backups', icon: Archive },
     { id: 'keys', label: 'SSH Keys', icon: Key },
     { id: 'billing', label: 'Billing & Invoices', icon: Receipt },
+    { id: 'account', label: 'Account Details', icon: UserCircle },
     { id: 'terminal', label: 'Embedded Shell', icon: Terminal }
   ]
 
