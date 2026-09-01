@@ -44,10 +44,11 @@ jobs:
       - name: Build Web Application
         run: npm run build
 
-      - name: Copy Web Assets to Android
+      - name: Sync Capacitor Android
         run: |
-          mkdir -p android/app/src/main/assets/public
-          cp -r out/renderer/* android/app/src/main/assets/public/
+          npx cap sync android
+          mkdir -p android/capacitor-cordova-android-plugins
+          touch android/capacitor-cordova-android-plugins/cordova.variables.gradle
 
       - name: Build Android APK (Debug)
         run: |
