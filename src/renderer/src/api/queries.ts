@@ -741,9 +741,41 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       // The refetch keeps running in the background past the cap.
       const refetch = Promise.all([
         queryClient.invalidateQueries({ queryKey: ['server', serverId], refetchType: 'all' }),
-        queryClient.invalidateQueries({ queryKey: ['servers'] })
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+        queryClient.invalidateQueries({ queryKey: ['server-threshold-alerts', serverId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-advanced-features', serverId] })
       ])
       await Promise.race([refetch, new Promise((r) => setTimeout(r, ACTION_REQUEST_TIMEOUT_MS))])
     }
+  })
+}
+
+export function useServerThresholdAlerts(client: BinaryLaneClient | null, serverId: number | undefined) {
+  return useQuery({
+    queryKey: ['server-threshold-alerts', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return []
+      const { data, error } = await client.GET('/v2/servers/{server_id}/threshold_alerts', {
+        params: { path: { server_id: serverId } }
+      })
+      if (error) throw new Error(describeApiError(error))
+      return data?.threshold_alerts || []
+    },
+    enabled: !!client && !!serverId
+  })
+}
+
+export function useAvailableAdvancedFeatures(client: BinaryLaneClient | null, serverId: number | undefined) {
+  return useQuery({
+    queryKey: ['server-advanced-features', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return null
+      const { data, error } = await client.GET('/v2/servers/{server_id}/available_advanced_features', {
+        params: { path: { server_id: serverId } }
+      })
+      if (error) throw new Error(describeApiError(error))
+      return data?.available_advanced_server_features || null
+    },
+    enabled: !!client && !!serverId
   })
 }
