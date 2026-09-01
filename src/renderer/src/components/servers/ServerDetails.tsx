@@ -12,7 +12,13 @@ import {
   Key,
   Copy,
   Check,
-  Globe
+  Globe,
+  Network,
+  Shield,
+  Layers,
+  Settings,
+  Lock,
+  AlertTriangle
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -477,6 +483,214 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           </div>
         )}
 
+        {/* NETWORK TAB */}
+        {activeSubTab === 'network' && (
+          <div className="space-y-4">
+            {/* IPv4 Networking Card */}
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex-shrink-0">
+              <div className="p-3.5 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
+                <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#017cb6]" />
+                  <span>IPv4 Addresses & Routing ({server.networks?.v4?.length || 0})</span>
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#ced4da] dark:border-[#373b3e] text-[#6c757d] dark:text-slate-400 font-semibold">
+                      <th className="py-2 px-4">IP Address</th>
+                      <th className="py-2 px-4">Type</th>
+                      <th className="py-2 px-4">Netmask</th>
+                      <th className="py-2 px-4">Gateway</th>
+                      <th className="py-2 px-4">Reverse DNS (PTR)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+                    {(server.networks?.v4 || []).map((net, idx) => (
+                      <tr key={idx} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
+                        <td className="py-2.5 px-4 font-mono font-medium text-[#017cb6]">
+                          <div className="flex items-center gap-1.5">
+                            <span>{net.ip_address}</span>
+                            <button
+                              onClick={() => handleCopy(net.ip_address)}
+                              className="text-[#6c757d] hover:text-[#017cb6] p-1 rounded transition"
+                              title="Copy IP"
+                            >
+                              {copiedText === net.ip_address ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                              net.type === 'public'
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                : 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20'
+                            }`}
+                          >
+                            {net.type}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-[#6c757d] dark:text-slate-400">
+                          {net.netmask || '255.255.255.0'}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-[#6c757d] dark:text-slate-400">
+                          {net.gateway || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-[#212529] dark:text-slate-200">
+                          {net.reverse_name || <span className="text-[#6c757d] dark:text-slate-500 italic">None configured</span>}
+                        </td>
+                      </tr>
+                    ))}
+                    {(!server.networks?.v4 || server.networks.v4.length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="py-4 px-4 text-center text-[#6c757d] dark:text-slate-400">
+                          No IPv4 addresses assigned.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* IPv6 Networking Card */}
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex-shrink-0">
+              <div className="p-3.5 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
+                <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#017cb6]" />
+                  <span>IPv6 Addresses ({server.networks?.v6?.length || 0})</span>
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#ced4da] dark:border-[#373b3e] text-[#6c757d] dark:text-slate-400 font-semibold">
+                      <th className="py-2 px-4">IPv6 Address</th>
+                      <th className="py-2 px-4">Netmask</th>
+                      <th className="py-2 px-4">Gateway</th>
+                      <th className="py-2 px-4">Reverse DNS (PTR)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+                    {(server.networks?.v6 || []).map((net, idx) => (
+                      <tr key={idx} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
+                        <td className="py-2.5 px-4 font-mono font-medium text-[#017cb6]">
+                          <div className="flex items-center gap-1.5">
+                            <span>{net.ip_address}</span>
+                            <button
+                              onClick={() => handleCopy(net.ip_address)}
+                              className="text-[#6c757d] hover:text-[#017cb6] p-1 rounded transition"
+                              title="Copy IPv6"
+                            >
+                              {copiedText === net.ip_address ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-[#6c757d] dark:text-slate-400">
+                          {net.netmask || '/64'}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-[#6c757d] dark:text-slate-400">
+                          {net.gateway || '—'}
+                        </td>
+                        <td className="py-2.5 px-4 text-[#212529] dark:text-slate-200">
+                          {net.reverse_name || <span className="text-[#6c757d] dark:text-slate-500 italic">None configured</span>}
+                        </td>
+                      </tr>
+                    ))}
+                    {(!server.networks?.v6 || server.networks.v6.length === 0) && (
+                      <tr>
+                        <td colSpan={4} className="py-4 px-4 text-center text-[#6c757d] dark:text-slate-400">
+                          No IPv6 addresses assigned.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Hardware & Interface Properties */}
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-3 flex-shrink-0">
+              <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+                <Network className="w-4 h-4 text-[#017cb6]" />
+                <span>Interface & Security Properties</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 text-xs">
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">Primary MAC Address</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-mono font-medium text-[#212529] dark:text-white">
+                      {server.networks?.mac_address || '—'}
+                    </span>
+                    {server.networks?.mac_address && (
+                      <button
+                        onClick={() => handleCopy(server.networks.mac_address)}
+                        className="text-[#6c757d] hover:text-[#017cb6] p-1 rounded transition"
+                      >
+                        {copiedText === server.networks.mac_address ? (
+                          <Check className="w-3 h-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">VPC Assignment</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Layers className="w-3.5 h-3.5 text-[#017cb6]" />
+                    <span className="font-medium text-[#212529] dark:text-white">
+                      {server.vpc_id ? `VPC #${server.vpc_id}` : 'Default Public Network'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">DDoS Protection Status</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Shield className={`w-3.5 h-3.5 ${server.networks?.recent_ddos ? 'text-amber-500' : 'text-emerald-500'}`} />
+                    <span className="font-medium text-[#212529] dark:text-white">
+                      {server.networks?.recent_ddos ? 'Under Attack / Mitigation' : 'Active & Protected'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">Port Blocking</span>
+                  <span className="font-medium text-[#212529] dark:text-white mt-1 block">
+                    {server.networks?.port_blocking ? 'Enabled (Standard outbound SMTP/NetBIOS filtered)' : 'Disabled'}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">Source & Destination Check</span>
+                  <span className="font-medium text-[#212529] dark:text-white mt-1 block">
+                    {server.networks?.source_and_destination_check ? 'Enabled' : 'Disabled (Routing enabled)'}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[#6c757d] dark:text-slate-400 block text-[11px]">Failover IP Addresses</span>
+                  <span className="font-medium text-[#212529] dark:text-white mt-1 block">
+                    {server.failover_ips?.length ? server.failover_ips.join(', ') : 'None assigned'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* BACKUPS TAB */}
         {activeSubTab === 'backups' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
@@ -488,6 +702,88 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         {activeSubTab === 'firewall' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
             <FirewallManager client={client} initialServerId={server.id} />
+          </div>
+        )}
+
+        {/* SETTINGS TAB */}
+        {activeSubTab === 'settings' && (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4 flex-shrink-0">
+              <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+                <Settings className="w-4 h-4 text-[#017cb6]" />
+                <span>Server Plan & Configuration</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="text-[#6c757d] dark:text-slate-400 block text-[11px] mb-1">Hostname / Label</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={server.name}
+                    className="w-full px-3 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded font-medium text-[#212529] dark:text-white text-xs opacity-80 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="text-[#6c757d] dark:text-slate-400 block text-[11px] mb-1">Hardware Plan</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`${server.vcpus} vCPU · ${ramGB} GB RAM · ${server.disk} GB Disk`}
+                    className="w-full px-3 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded font-medium text-[#212529] dark:text-white text-xs opacity-80 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Password & Security Actions */}
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-3 flex-shrink-0">
+              <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+                <Lock className="w-4 h-4 text-[#017cb6]" />
+                <span>Security & Administrative Operations</span>
+              </h3>
+              <p className="text-xs text-[#6c757d] dark:text-slate-400">
+                Trigger root/admin password resets or hardware sync operations.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  onClick={() => handleAction('password_reset')}
+                  disabled={!!actionInProgress}
+                  className="px-3.5 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] text-xs font-medium rounded transition flex items-center gap-1.5"
+                >
+                  <Key className="w-3.5 h-3.5 text-[#017cb6]" />
+                  <span>Reset Root / Admin Password</span>
+                </button>
+                <button
+                  onClick={() => handleAction('power_cycle')}
+                  disabled={!!actionInProgress}
+                  className="px-3.5 py-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] text-xs font-medium rounded transition flex items-center gap-1.5"
+                >
+                  <RotateCw className="w-3.5 h-3.5 text-[#017cb6]" />
+                  <span>Hard Power Cycle</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-lg p-5 space-y-3 flex-shrink-0">
+              <h3 className="font-bold text-xs text-rose-800 dark:text-rose-400 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Danger Zone</span>
+              </h3>
+              <p className="text-xs text-rose-700/80 dark:text-rose-400/80">
+                Destructive actions will cause server downtime or irreversible data loss. Proceed with extreme caution.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  onClick={() => handleAction('rebuild')}
+                  disabled={!!actionInProgress}
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>Rebuild Operating System</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
