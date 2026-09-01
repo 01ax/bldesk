@@ -446,6 +446,7 @@ export function useSampleSets(
           query: query as any
         }
       })
+      console.log('[DEBUG useSampleSets]', { serverId, interval, start, end, dataCount: data?.sample_sets?.length, error })
       if (error) {
         console.warn('[useSampleSets] Error loading sample sets:', error)
         return []

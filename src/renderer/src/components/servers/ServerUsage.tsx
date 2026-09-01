@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react'
 import {
   Loader2,
   Calendar,
-  Info
+  Info,
+  Activity
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -567,6 +568,57 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
           </div>
         )}
       </div>
+
+      {/* When Historical Data is Empty for this window */}
+      {samples.length === 0 && (
+        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-4 shadow-sm space-y-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#017cb6] dark:text-[#5bc0de]">
+            <Info className="w-4 h-4 flex-shrink-0" />
+            <span>No historical telemetry samples recorded for {server.name} in this {activeWindow} window yet.</span>
+          </div>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400">
+            BinaryLane's telemetry daemon records 5-minute performance metrics on active instances. If this VM was recently started or is in testing, historical curves will accumulate automatically.
+          </p>
+
+          {latestMetricsQuery.data?.average && (
+            <div className="pt-2 border-t border-[#ced4da] dark:border-[#373b3e] space-y-2">
+              <h4 className="text-xs font-bold text-[#212529] dark:text-white flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-[#017cb6]" />
+                <span>Live Telemetry Snapshot</span>
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                <div className="bg-[#f8f9fa] dark:bg-[#212529] p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[10px] text-[#6c757d] dark:text-slate-400 block">CPU Load</span>
+                  <span className="font-bold text-[#212529] dark:text-white font-mono">
+                    {(latestMetricsQuery.data.average.cpu_usage_percent || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-[#f8f9fa] dark:bg-[#212529] p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[10px] text-[#6c757d] dark:text-slate-400 block">Memory</span>
+                  <span className="font-bold text-[#212529] dark:text-white font-mono">
+                    {((latestMetricsQuery.data.average.memory_usage_bytes || 0) / (1024 * 1024 * 1024)).toFixed(2)} GB
+                  </span>
+                </div>
+                <div className="bg-[#f8f9fa] dark:bg-[#212529] p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[10px] text-[#6c757d] dark:text-slate-400 block">Storage Used</span>
+                  <span className="font-bold text-[#212529] dark:text-white font-mono">
+                    {((latestMetricsQuery.data.average.storage_usage_megabytes || 0) / 1024).toFixed(2)} GB
+                  </span>
+                </div>
+                <div className="bg-[#f8f9fa] dark:bg-[#212529] p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e]">
+                  <span className="text-[10px] text-[#6c757d] dark:text-slate-400 block">Network (In+Out)</span>
+                  <span className="font-bold text-[#212529] dark:text-white font-mono">
+                    {fmtKBpsOrMBps(
+                      (latestMetricsQuery.data.average.network_incoming_kbps || 0) +
+                        (latestMetricsQuery.data.average.network_outgoing_kbps || 0)
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 1. Activity Overview */}
       <UsageSvgChart
