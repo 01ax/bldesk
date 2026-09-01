@@ -88,7 +88,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
       </div>
 
       {/* Tax Invoices Table */}
-      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col flex-shrink-0">
         <div className="p-3 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
           <h3 className="font-semibold text-xs text-[#495057] dark:text-[#ced4da]">
             Billing History & Tax Invoices
