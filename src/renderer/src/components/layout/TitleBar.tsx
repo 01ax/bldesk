@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Minus, Square, Copy, X, Search, Key, ShieldCheck, Menu } from 'lucide-react'
 import { AccountProfile } from '@shared/ipc-types'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
+import { UpdateMenu } from './UpdateMenu'
 
 interface TitleBarProps {
   activeProfile: AccountProfile | null
@@ -84,6 +85,11 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
       {/* Profile & Window Controls */}
       <div className="titlebar-no-drag flex items-center gap-2">
+        {/* Version / Auto-update */}
+        <div className="hidden md:block">
+          <UpdateMenu />
+        </div>
+
         {/* Profile Switcher / Auth Button */}
         {activeProfile ? (
           <div className="flex items-center gap-1.5 bg-black/30 border border-white/10 rounded-md px-2 py-0.5">

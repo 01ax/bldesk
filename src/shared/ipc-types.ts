@@ -50,6 +50,33 @@ export interface LocalSshKey {
   privateKeyPath?: string
 }
 
+// --- Auto-update ---
+
+export type UpdateChannel = 'stable' | 'beta'
+
+export type UpdaterStatus =
+  | 'idle' // nothing happening (or dev mode)
+  | 'checking'
+  | 'up-to-date'
+  | 'available' // found, download starting
+  | 'downloading'
+  | 'ready' // downloaded; restart to install
+  | 'error'
+
+export interface UpdaterState {
+  status: UpdaterStatus
+  currentVersion: string
+  channel: UpdateChannel
+  /** false in dev / unpackaged builds and on mobile. */
+  supported: boolean
+  availableVersion?: string
+  releaseNotes?: string
+  /** 0-100 while downloading. */
+  progress?: number
+  error?: string
+  lastCheckedAt?: string
+}
+
 export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
@@ -76,6 +103,14 @@ export interface IpcApi {
   
   // Shell / Browser
   openExternal: (url: string) => Promise<void>
+
+  // Auto-update
+  getUpdaterState: () => Promise<UpdaterState>
+  checkForUpdates: () => Promise<UpdaterState>
+  installUpdate: () => Promise<void>
+  setUpdateChannel: (channel: UpdateChannel) => Promise<UpdaterState>
+  /** Subscribe to state changes; returns an unsubscribe function. */
+  onUpdaterState: (listener: (state: UpdaterState) => void) => () => void
 }
 
 declare global {

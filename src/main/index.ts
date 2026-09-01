@@ -4,7 +4,8 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
-import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions } from '../shared/ipc-types'
+import { UpdaterManager } from './updater'
+import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, UpdateChannel } from '../shared/ipc-types'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -276,6 +277,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle('shell:openExternal', async (_, url: string) => {
     await shell.openExternal(url)
   })
+
+  // Auto-update
+  ipcMain.handle('updater:getState', () => UpdaterManager.getState())
+  ipcMain.handle('updater:check', () => UpdaterManager.check())
+  ipcMain.handle('updater:install', () => UpdaterManager.install())
+  ipcMain.handle('updater:setChannel', (_, channel: UpdateChannel) => UpdaterManager.setChannel(channel))
 }
 
 const gotTheLock = app.requestSingleInstanceLock()
@@ -301,6 +308,7 @@ if (!gotTheLock) {
     registerIpcHandlers()
     createWindow()
     createTray()
+    UpdaterManager.init()
 
     app.on('activate', function () {
       if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
@@ -314,5 +322,9 @@ if (!gotTheLock) {
 
   app.on('window-all-closed', () => {
     app.quit()
+  })
+
+  app.on('before-quit', () => {
+    UpdaterManager.dispose()
   })
 }
