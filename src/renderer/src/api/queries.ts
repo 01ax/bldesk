@@ -627,3 +627,123 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
     }
   })
 }
+
+// --- SERVER NETWORKING (async actions, polled to completion) ---
+
+type ServerAction = components['schemas']['Action']
+
+/** Turn an openapi-fetch error body into something a human can read. */
+export function describeApiError(error: unknown): string {
+  if (!error) return 'Unknown error'
+  if (typeof error === 'string') return error
+  const e = error as { message?: string; detail?: string; title?: string; errors?: Record<string, string[]> }
+  if (e.message) return e.message
+  if (e.detail) return e.detail
+  if (e.errors) {
+    return Object.entries(e.errors)
+      .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+      .join('; ')
+  }
+  return e.title || JSON.stringify(error)
+}
+
+/** The server actions the Network tab is allowed to submit — typed against the generated schema. */
+export type NetworkActionPayload =
+  | components['schemas']['ChangeIpv6']
+  | components['schemas']['ChangeIpv6ReverseNameservers']
+  | components['schemas']['ChangeReverseName']
+  | components['schemas']['ChangePortBlocking']
+  | components['schemas']['ChangeVpcIpv4']
+  | components['schemas']['ChangeNetwork']
+  | components['schemas']['ChangeSeparatePrivateNetworkInterface']
+
+const ACTION_POLL_INTERVAL_MS = 2000
+const ACTION_POLL_TIMEOUT_MS = 90_000
+/** Per-request cap: a black-holed connection must not wedge the mutation (and the UI) forever. */
+const ACTION_REQUEST_TIMEOUT_MS = 15_000
+
+const isTimeoutError = (err: unknown): boolean =>
+  err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
+
+/**
+ * Submit a server action and poll it until BinaryLane reports it finished.
+ * Network changes (IPv6, port blocking, VPC moves, reverse DNS) are asynchronous
+ * on the BL side, so a bare POST returning 200 only means "queued". Resolves only
+ * on `completed`; anything else (errored, timeout, lost action) throws so the UI
+ * never reports success it hasn't seen. The server cache is refetched before the
+ * promise settles, so callers can trust `server.networks` once `mutateAsync` returns.
+ */
+export const networkActionMutationKey = (serverId: number | null) => ['network-action', serverId] as const
+
+export function useNetworkActionMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation<ServerAction, Error, NetworkActionPayload>({
+    // Keyed so `useIsMutating(networkActionMutationKey(id))` can report an in-flight action
+    // even after the component that started it unmounted (tab switch mid-action).
+    mutationKey: networkActionMutationKey(serverId),
+    mutationFn: async (actionPayload) => {
+      if (!client || !serverId) throw new Error('No client available')
+      let submitted: { data?: { action?: ServerAction }; error?: unknown }
+      try {
+        submitted = await client.POST('/v2/servers/{server_id}/actions', {
+          params: { path: { server_id: serverId } },
+          body: actionPayload,
+          signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
+        })
+      } catch (err) {
+        if (isTimeoutError(err)) {
+          throw new Error(
+            `BinaryLane did not answer the "${actionPayload.type}" request within ${ACTION_REQUEST_TIMEOUT_MS / 1000}s. It may or may not have been applied — check the interfaces above once they refresh.`
+          )
+        }
+        throw err
+      }
+      if (submitted.error) throw new Error(describeApiError(submitted.error))
+
+      const queued = submitted.data?.action
+      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+
+      let action: ServerAction = queued
+      const deadline = Date.now() + ACTION_POLL_TIMEOUT_MS
+      while (action.status === 'in-progress') {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `"${actionPayload.type}" is still in progress after ${ACTION_POLL_TIMEOUT_MS / 1000}s (action #${action.id}). It may still complete; this page refreshes automatically.`
+          )
+        }
+        await new Promise((r) => setTimeout(r, ACTION_POLL_INTERVAL_MS))
+        let poll: { data?: { action?: ServerAction }; error?: unknown }
+        try {
+          poll = await client.GET('/v2/actions/{action_id}', {
+            params: { path: { action_id: action.id } },
+            signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
+          })
+        } catch (err) {
+          // One slow poll is not a lost action — the deadline check above bounds the total wait.
+          if (isTimeoutError(err)) continue
+          throw err
+        }
+        if (poll.error) throw new Error(`Lost track of action #${action.id}: ${describeApiError(poll.error)}`)
+        if (poll.data?.action) action = poll.data.action
+      }
+      if (action.status !== 'completed') {
+        throw new Error(action.reason || `"${actionPayload.type}" ${action.status}`)
+      }
+      return action
+    },
+    onSettled: async () => {
+      // Await the refetch so the mutation lock only releases once the UI has fresh data —
+      // whole-list writes (IPv6 reverse nameservers) must never be built from a stale server.
+      // refetchType 'all' also refreshes the server query when its tab is currently unmounted,
+      // so a remount never briefly renders the pre-action snapshot.
+      // The wait is capped: the refetch GETs have no timeout of their own, and a wedged
+      // connection must not hold the UI lock after the action itself has already timed out.
+      // The refetch keeps running in the background past the cap.
+      const refetch = Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['server', serverId], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] })
+      ])
+      await Promise.race([refetch, new Promise((r) => setTimeout(r, ACTION_REQUEST_TIMEOUT_MS))])
+    }
+  })
+}
