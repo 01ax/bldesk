@@ -223,7 +223,7 @@ export const ServerList: React.FC<ServerListProps> = ({
 
       {/* View 1: Authentic PanelSite Table View */}
       {!isLoading && filteredServers.length > 0 && viewMode === 'table' && (
-        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex-shrink-0">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] text-[#495057] dark:text-[#ced4da] font-semibold">
