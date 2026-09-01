@@ -31,6 +31,53 @@ async function safeNormalizeResponse(response: Response): Promise<Response> {
   return response
 }
 
+async function executeFetch(input: RequestInfo | URL, init?: RequestInit, token?: string): Promise<Response> {
+  const cap = typeof window !== 'undefined' ? (window as any).Capacitor : undefined
+  if (cap?.isNativePlatform?.() && cap?.Plugins?.CapacitorHttp) {
+    try {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+      const method = (init?.method || 'GET').toUpperCase()
+      const headers: Record<string, string> = {
+        Authorization: token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(init?.headers as Record<string, string>)
+      }
+
+      let parsedData: any = undefined
+      if (init?.body) {
+        if (typeof init.body === 'string') {
+          try {
+            parsedData = JSON.parse(init.body)
+          } catch {
+            parsedData = init.body
+          }
+        } else {
+          parsedData = init.body
+        }
+      }
+
+      const res = await cap.Plugins.CapacitorHttp.request({
+        url,
+        method,
+        headers,
+        data: parsedData
+      })
+
+      const responseBody = typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
+      return new Response(responseBody, {
+        status: res.status,
+        statusText: res.status === 200 ? 'OK' : '',
+        headers: new Headers(res.headers as Record<string, string>)
+      })
+    } catch (err) {
+      console.warn('[NativeFetch] CapacitorHttp fallback triggered:', err)
+    }
+  }
+
+  return window.fetch(input, init)
+}
+
 export function createBinaryLaneClient(token: string) {
   const cleanToken = token?.trim() || ''
 
@@ -70,7 +117,7 @@ export function createBinaryLaneClient(token: string) {
 
       const executionPromise = (async () => {
         try {
-          const rawResponse = await window.fetch(input, init)
+          const rawResponse = await executeFetch(input, init, cleanToken)
           const response = await safeNormalizeResponse(rawResponse)
 
           if (response.status === 401 || response.status === 403) {
@@ -88,7 +135,7 @@ export function createBinaryLaneClient(token: string) {
     }
 
     // Standard GET / read query path
-    const rawResponse = await window.fetch(input, init)
+    const rawResponse = await executeFetch(input, init, cleanToken)
     const response = await safeNormalizeResponse(rawResponse)
     if (response.status === 401 || response.status === 403) {
       window.dispatchEvent(new CustomEvent('bldesk:auth_error', { detail: { status: response.status } }))
