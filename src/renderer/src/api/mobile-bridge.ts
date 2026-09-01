@@ -1,9 +1,16 @@
 import { Preferences } from '@capacitor/preferences'
-import { AccountProfile, IpcApi } from '@shared/ipc-types'
+import { AccountProfile, IpcApi, UpdaterState } from '@shared/ipc-types'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
 const PROFILES_KEY = 'bldesk_profiles_v1'
 const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
+
+const mobileUpdaterState: UpdaterState = {
+  status: 'idle',
+  currentVersion: __APP_VERSION__,
+  channel: 'stable',
+  supported: false
+}
 
 export async function initMobileBridge(): Promise<void> {
   if (typeof window === 'undefined') return
@@ -124,7 +131,14 @@ export async function initMobileBridge(): Promise<void> {
     isMaximized: async () => false,
     openExternal: async (url: string) => {
       window.open(url, '_blank')
-    }
+    },
+
+    // Auto-update: not applicable on mobile/web (APK updates come from the store / sideload)
+    getUpdaterState: async () => mobileUpdaterState,
+    checkForUpdates: async () => mobileUpdaterState,
+    installUpdate: async () => {},
+    setUpdateChannel: async () => mobileUpdaterState,
+    onUpdaterState: () => () => {}
   }
 
   ;(window as any).bldeskApi = mobileApi

@@ -1,0 +1,171 @@
+import { app, BrowserWindow, Notification } from 'electron'
+import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater'
+import { join } from 'path'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
+
+/**
+ * Auto-update via electron-updater against GitHub Releases.
+ *
+ * Channel model: package.json "version" with no prerelease component publishes
+ * `latest.yml` (stable); a `-beta.N` version publishes `beta.yml`. A client on
+ * the beta channel reads beta.yml and will also accept stable releases newer
+ * than its current version, so beta users are never stranded behind stable.
+ *
+ * The update feed URL is static (GitHub Releases today); switching to a
+ * self-hosted "generic" provider later only needs `setFeedURL` here.
+ */
+
+const SETTINGS_FILE = 'updater.json'
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h
+const INITIAL_DELAY_MS = 15 * 1000 // let the UI settle before hitting GitHub
+
+interface UpdaterSettings {
+  channel: UpdateChannel
+}
+
+function settingsPath(): string {
+  return join(app.getPath('userData'), SETTINGS_FILE)
+}
+
+function readSettings(): UpdaterSettings {
+  try {
+    const p = settingsPath()
+    if (existsSync(p)) {
+      const parsed = JSON.parse(readFileSync(p, 'utf8'))
+      if (parsed?.channel === 'beta' || parsed?.channel === 'stable') return { channel: parsed.channel }
+    }
+  } catch (err) {
+    console.warn('[Updater] Failed to read settings:', err)
+  }
+  return { channel: 'stable' }
+}
+
+function writeSettings(s: UpdaterSettings): void {
+  try {
+    writeFileSync(settingsPath(), JSON.stringify(s, null, 2), 'utf8')
+  } catch (err) {
+    console.warn('[Updater] Failed to write settings:', err)
+  }
+}
+
+export class UpdaterManager {
+  private static state: UpdaterState = {
+    status: 'idle',
+    currentVersion: app.getVersion(),
+    channel: 'stable',
+    supported: app.isPackaged
+  }
+  private static timer: NodeJS.Timeout | null = null
+  private static initialised = false
+
+  static init(): void {
+    if (this.initialised) return
+    this.initialised = true
+
+    const settings = readSettings()
+    this.state.channel = settings.channel
+
+    if (!app.isPackaged) {
+      console.log('[Updater] Not packaged; auto-update disabled (dev mode).')
+      this.setState({ status: 'idle' })
+      return
+    }
+
+    autoUpdater.logger = {
+      info: (m) => console.log('[Updater]', m),
+      warn: (m) => console.warn('[Updater]', m),
+      error: (m) => console.error('[Updater]', m),
+      debug: (m) => console.debug('[Updater]', m)
+    }
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+    this.applyChannel(settings.channel)
+
+    autoUpdater.on('checking-for-update', () => this.setState({ status: 'checking', error: undefined }))
+    autoUpdater.on('update-available', (info: UpdateInfo) =>
+      this.setState({ status: 'available', availableVersion: info.version, releaseNotes: notesToString(info) })
+    )
+    autoUpdater.on('update-not-available', () =>
+      this.setState({ status: 'up-to-date', availableVersion: undefined, lastCheckedAt: new Date().toISOString() })
+    )
+    autoUpdater.on('download-progress', (p: ProgressInfo) =>
+      this.setState({ status: 'downloading', progress: Math.round(p.percent) })
+    )
+    autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+      this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
+      if (Notification.isSupported()) {
+        new Notification({
+          title: `BLDesk ${info.version} is ready`,
+          body: 'Restart BLDesk to finish installing the update.'
+        }).show()
+      }
+    })
+    autoUpdater.on('error', (err: Error) => {
+      // Offline / rate-limited / no release yet are all routine; surface but don't nag.
+      this.setState({ status: 'error', error: err?.message || String(err) })
+    })
+
+    setTimeout(() => this.check(), INITIAL_DELAY_MS)
+    this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS)
+  }
+
+  static getState(): UpdaterState {
+    return { ...this.state }
+  }
+
+  static async check(): Promise<UpdaterState> {
+    if (!app.isPackaged) return this.getState()
+    if (this.state.status === 'checking' || this.state.status === 'downloading') return this.getState()
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (err: any) {
+      this.setState({ status: 'error', error: err?.message || String(err) })
+    }
+    return this.getState()
+  }
+
+  static install(): void {
+    if (this.state.status !== 'ready') return
+    // isSilent=false shows the installer UI on Windows; forceRunAfter restarts the app.
+    setImmediate(() => autoUpdater.quitAndInstall(false, true))
+  }
+
+  static setChannel(channel: UpdateChannel): UpdaterState {
+    if (channel !== 'stable' && channel !== 'beta') return this.getState()
+    writeSettings({ channel })
+    this.applyChannel(channel)
+    this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined })
+    if (app.isPackaged) void this.check()
+    return this.getState()
+  }
+
+  static dispose(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+  }
+
+  private static applyChannel(channel: UpdateChannel): void {
+    if (!app.isPackaged) return
+    // "latest" is electron-updater's name for the stable channel file.
+    autoUpdater.channel = channel === 'beta' ? 'beta' : 'latest'
+    autoUpdater.allowPrerelease = channel === 'beta'
+    autoUpdater.allowDowngrade = false
+  }
+
+  private static setState(patch: Partial<UpdaterState>): void {
+    this.state = { ...this.state, ...patch }
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('updater:state', this.state)
+    }
+  }
+}
+
+function notesToString(info: UpdateInfo): string | undefined {
+  const notes = info.releaseNotes
+  if (!notes) return undefined
+  if (typeof notes === 'string') return notes
+  return notes.map((n) => (typeof n === 'string' ? n : n.note || '')).join('\n')
+}
+
+export type { UpdaterStatus }
