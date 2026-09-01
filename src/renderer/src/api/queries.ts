@@ -435,7 +435,7 @@ export function useSampleSets(
       if (!client || !serverId) return []
       const query: Record<string, any> = {
         data_interval: interval,
-        per_page: 300
+        per_page: 200
       }
       if (start) query.start = start
       if (end) query.end = end
