@@ -1,11 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BinaryLaneClient } from './client'
+import { components } from '@shared/api/schema'
+
+type ServerResponse = components['schemas']['Server']
 
 // --- SERVERS & COMPUTE ---
 
-export function useServers(client: BinaryLaneClient | null) {
-  return useQuery({
-    queryKey: ['servers'],
+export function useServers(client: BinaryLaneClient | null, profileId?: string) {
+  return useQuery<ServerResponse[]>({
+    queryKey: ['servers', profileId || 'default'],
     queryFn: async () => {
       if (!client) return []
       let allServers: any[] = []
@@ -16,7 +19,10 @@ export function useServers(client: BinaryLaneClient | null) {
         const { data, error } = await client.GET('/v2/servers', {
           params: { query: { per_page: 200, page } }
         })
-        if (error) break
+        if (error) {
+          console.warn('[useServers] Query error:', error)
+          break
+        }
         const pageServers = data?.servers || []
         allServers = [...allServers, ...pageServers]
         if (!data?.links?.pages?.next || pageServers.length === 0) {
@@ -25,10 +31,30 @@ export function useServers(client: BinaryLaneClient | null) {
           page++
         }
       }
+
+      // Persist to local cache for instant cold-start loading
+      try {
+        if (profileId && allServers.length > 0) {
+          localStorage.setItem(`bldesk_cached_servers_${profileId}`, JSON.stringify(allServers))
+        }
+      } catch {
+        // ignore quota
+      }
+
       return allServers
     },
+    initialData: () => {
+      if (!profileId) return undefined
+      try {
+        const raw = localStorage.getItem(`bldesk_cached_servers_${profileId}`)
+        return raw ? JSON.parse(raw) : undefined
+      } catch {
+        return undefined
+      }
+    },
     enabled: !!client,
-    refetchInterval: 15000 // auto poll fleet every 15s
+    refetchInterval: 15000,
+    staleTime: 10000
   })
 }
 

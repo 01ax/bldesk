@@ -10,12 +10,32 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
 function getPreloadPath(): string {
-  const mjsPath = join(__dirname, '../preload/index.mjs')
-  const jsPath = join(__dirname, '../preload/index.js')
-  const cjsPath = join(__dirname, '../preload/index.cjs')
-  if (existsSync(mjsPath)) return mjsPath
-  if (existsSync(jsPath)) return jsPath
-  return cjsPath
+  const appPath = app.getAppPath()
+  const candidatePaths = [
+    join(appPath, 'out/preload/index.mjs'),
+    join(appPath, 'out/preload/index.js'),
+    join(appPath, 'out/preload/index.cjs'),
+    join(__dirname, '../preload/index.mjs'),
+    join(__dirname, '../preload/index.js'),
+    join(__dirname, '../preload/index.cjs')
+  ]
+  for (const p of candidatePaths) {
+    if (existsSync(p)) return p
+  }
+  return candidatePaths[0]
+}
+
+function getRendererPath(): string {
+  const appPath = app.getAppPath()
+  const candidatePaths = [
+    join(appPath, 'out/renderer/index.html'),
+    join(__dirname, '../renderer/index.html'),
+    join(process.resourcesPath, 'app.asar/out/renderer/index.html')
+  ]
+  for (const p of candidatePaths) {
+    if (existsSync(p)) return p
+  }
+  return candidatePaths[0]
 }
 
 import { APP_ICON_DATA_URL, TRAY_ICON_DATA_URL } from './embedded-icons'
@@ -72,17 +92,18 @@ function createWindow(): void {
     height: 840,
     minWidth: 1024,
     minHeight: 680,
-    show: true,
+    show: false,
     title: 'BLDesk - BinaryLane Desktop',
     icon: appIcon,
     frame: true, // Native window frame for guaranteed desktop rendering
-    backgroundColor: '#020617', // slate-950
+    backgroundColor: '#212529', // PanelSite dark
     autoHideMenuBar: true,
     webPreferences: {
       preload,
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webSecurity: false
     }
   })
 
@@ -91,13 +112,25 @@ function createWindow(): void {
     console.log(`[Renderer] [${level}] ${message} (${sourceId}:${line})`)
   })
 
-  mainWindow.on('ready-to-show', () => {
-    console.log('[Main] Window ready to show - forcing focus to foreground')
+  mainWindow.once('ready-to-show', () => {
+    console.log('[Main] Window ready to show - presenting rendered UI')
     if (mainWindow) {
       mainWindow.show()
-      mainWindow.setAlwaysOnTop(true)
       mainWindow.focus()
-      mainWindow.setAlwaysOnTop(false)
+      mainWindow.webContents.invalidate()
+    }
+  })
+
+  // Enable Cmd+Option+I and F12 to toggle DevTools, and Cmd+R / F5 to reload
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') {
+      if (input.key === 'F12' || (input.meta && input.alt && input.key.toLowerCase() === 'i')) {
+        mainWindow?.webContents.toggleDevTools()
+        event.preventDefault()
+      } else if (input.key === 'F5' || (input.meta && input.key.toLowerCase() === 'r')) {
+        mainWindow?.webContents.reload()
+        event.preventDefault()
+      }
     }
   })
 
@@ -115,9 +148,16 @@ function createWindow(): void {
     console.log('[Main] Loading dev URL:', process.env['ELECTRON_RENDERER_URL'])
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    console.log('[Main] Loading production file...')
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    const rendererPath = getRendererPath()
+    console.log('[Main] Loading production file from:', rendererPath)
+    mainWindow.loadFile(rendererPath).catch((err) => {
+      console.error('[Main] Failed to loadFile:', err)
+    })
   }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
 }
 
 function createTray(): void {
@@ -238,24 +278,41 @@ function registerIpcHandlers(): void {
   })
 }
 
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.termau.bldesk')
+const gotTheLock = app.requestSingleInstanceLock()
 
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
   })
 
-  registerIpcHandlers()
-  createWindow()
-  createTray()
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.termau.bldesk')
 
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    registerIpcHandlers()
+    createWindow()
+    createTray()
+
+    app.on('activate', function () {
+      if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      } else {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    })
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  app.on('window-all-closed', () => {
     app.quit()
-  }
-})
+  })
+}

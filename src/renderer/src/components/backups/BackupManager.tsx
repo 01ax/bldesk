@@ -8,7 +8,8 @@ import {
   Server,
   Disc,
   Clock,
-  ShieldCheck
+  
+  X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import {
@@ -57,338 +58,327 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const backups = backupsQuery.data || []
   const snapshots = snapshotsQuery.data || []
 
-  // Combine and deduplicate images
-  const allImages = [...backups, ...snapshots].filter(
-    (img, index, self) => index === self.findIndex((t) => t.id === img.id)
-  )
+  const allImages = [...snapshots, ...backups]
+  const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
 
-  const isBackupsEnabled = Boolean(
-    (activeServer as any)?.backup_settings?.enabled ||
-    (activeServer as any)?.next_backup_window ||
-    (activeServer?.features || []).includes('backups' as any)
-  )
-
-  const isAttachedBackup = Boolean((activeServer as any)?.attached_backup)
-
-  // Handle Take Snapshot
+  // Take manual snapshot
   const handleTakeSnapshot = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activeServerId) return
 
     try {
       await takeBackupMutation.mutateAsync(snapshotLabel.trim() || undefined)
+      window.bldeskApi?.sendNotification?.({
+        title: 'Snapshot Initiated',
+        body: `Snapshot creation started for server #${activeServerId}.`
+      })
       setIsTakingSnapshot(false)
       setSnapshotLabel('')
-      window.bldeskApi.sendNotification({
-        title: 'Snapshot Initiated',
-        body: `Snapshot creation started for server "${activeServer?.name || activeServerId}".`
-      })
     } catch (err: any) {
-      alert(`Failed to take snapshot: ${err.message}`)
+      alert(`Snapshot failed: ${err.message}`)
     }
   }
 
-  // Handle Restore
-  const handleRestore = async (imageId: number, imageName: string) => {
-    const confirmed = confirm(
-      `⚠️ RESTORE WARNING:\n\nAre you sure you want to restore "${imageName}" to server "${activeServer?.name}"?\n\nThe server's current disk will be overwritten with this point-in-time image.`
-    )
-    if (!confirmed) return
+  // Restore snapshot
+  const handleRestore = async (imageId: number, name: string) => {
+    if (!activeServerId) return
+    if (!confirm(`RESTORE server #${activeServerId} to image "${name}" (#${imageId})? Current disk data will be overwritten.`)) return
 
     setActionProcessingId(imageId)
     try {
       await restoreBackupMutation.mutateAsync(imageId)
-      window.bldeskApi.sendNotification({
-        title: 'Server Restore Initiated',
-        body: `Restoring "${imageName}" to "${activeServer?.name}".`
+      window.bldeskApi?.sendNotification?.({
+        title: 'Restore Initiated',
+        body: `Server #${activeServerId} is restoring from image #${imageId}.`
       })
     } catch (err: any) {
-      alert(`Failed to restore backup: ${err.message}`)
+      alert(`Restore failed: ${err.message}`)
     } finally {
       setActionProcessingId(null)
     }
   }
 
-  // Handle Attach as Secondary Disk
-  const handleAttach = async (imageId: number, imageName: string) => {
+  // Attach disk image as secondary read-only drive
+  const handleAttach = async (imageId: number, name: string) => {
+    if (!activeServerId) return
     setActionProcessingId(imageId)
     try {
       await attachBackupMutation.mutateAsync(imageId)
-      window.bldeskApi.sendNotification({
-        title: 'Backup Mounted as Disk',
-        body: `Attached "${imageName}" as secondary drive on "${activeServer?.name}".`
+      window.bldeskApi?.sendNotification?.({
+        title: 'Backup Attached',
+        body: `Image "${name}" mounted as secondary drive.`
       })
     } catch (err: any) {
-      alert(`Failed to attach backup: ${err.message}`)
+      alert(`Attach failed: ${err.message}`)
     } finally {
       setActionProcessingId(null)
     }
   }
 
-  // Handle Detach Disk
+  // Detach secondary drive
   const handleDetach = async () => {
+    if (!activeServerId) return
     try {
       await detachBackupMutation.mutateAsync()
-      window.bldeskApi.sendNotification({
-        title: 'Backup Disk Detached',
-        body: `Unmounted backup disk from "${activeServer?.name}".`
+      window.bldeskApi?.sendNotification?.({
+        title: 'Drive Detached',
+        body: `Secondary backup drive unmounted successfully.`
       })
     } catch (err: any) {
-      alert(`Failed to detach backup: ${err.message}`)
+      alert(`Detach failed: ${err.message}`)
+    }
+  }
+
+  // Toggle Automated Backups
+  const handleToggleAuto = async () => {
+    if (!activeServerId) return
+    const enable = !isAutoBackupEnabled
+    if (!confirm(`${enable ? 'Enable' : 'Disable'} automated nightly backups for ${activeServer?.name}?`)) return
+
+    try {
+      await toggleAutomatedBackups.mutateAsync(enable)
+      window.bldeskApi?.sendNotification?.({
+        title: 'Backup Schedule Updated',
+        body: `Automated backups ${enable ? 'enabled' : 'disabled'} for server #${activeServerId}.`
+      })
+    } catch (err: any) {
+      alert(`Schedule update failed: ${err.message}`)
     }
   }
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto select-text">
-      {/* Header & Server Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
+      {/* Header & Target Selector */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <Archive className="w-5 h-5 text-purple-400" />
-            <span>Server Backups & Snapshots</span>
+          <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
+            <Archive className="w-5 h-5 text-[#017cb6]" />
+            <span>Server Backups & Disk Snapshots</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Automated recovery points, manual point-in-time snapshots, and disk image restores
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+            Create on-demand point-in-time snapshots or mount backup images as live secondary drives for file recovery.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Server Switcher Dropdown */}
-          <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 border border-slate-800 rounded-xl">
-            <Server className="w-3.5 h-3.5 text-slate-400" />
+          <div className="flex items-center gap-2 bg-white dark:bg-[#2b3035] px-3 py-1.5 border border-[#ced4da] dark:border-[#373b3e] rounded shadow-sm">
+            <Server className="w-3.5 h-3.5 text-[#017cb6]" />
             <select
               value={activeServerId || ''}
               onChange={(e) => setSelectedServerId(Number(e.target.value))}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs text-[#212529] dark:text-white focus:outline-none cursor-pointer max-w-[160px]"
             >
               {servers.map((s) => (
-                <option key={s.id} value={s.id} className="bg-slate-900 text-white">
-                  {s.name} ({s.networks?.v4?.[0]?.ip_address || `#${s.id}`})
+                <option key={s.id} value={s.id} className="bg-white dark:bg-[#2b3035]">
+                  {s.name} (#{s.id})
                 </option>
               ))}
             </select>
           </div>
 
           <button
-            onClick={() => setIsTakingSnapshot(!isTakingSnapshot)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition shadow"
+            onClick={() => setIsTakingSnapshot(true)}
+            disabled={!activeServerId || takeBackupMutation.isPending}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-50"
           >
-            <Plus className="w-3.5 h-3.5" />
+            {takeBackupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             <span>Take Snapshot</span>
           </button>
         </div>
       </div>
 
-      {/* Snapshot Form */}
-      {isTakingSnapshot && (
-        <form
-          onSubmit={handleTakeSnapshot}
-          className="p-4 bg-slate-900/90 border border-purple-500/40 rounded-2xl flex flex-col sm:flex-row items-end gap-3 text-xs animate-in fade-in shadow-xl"
-        >
-          <div className="flex-1 w-full">
-            <label className="text-[11px] text-slate-400 block mb-1 font-semibold">
-              Snapshot Label / Reason
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Pre-Deployment Backup / Config Backup"
-              value={snapshotLabel}
-              onChange={(e) => setSnapshotLabel(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setIsTakingSnapshot(false)}
-              className="px-3 py-2 bg-slate-800 text-slate-400 hover:text-white rounded-xl transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={takeBackupMutation.isPending}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition shadow disabled:opacity-50"
-            >
-              {takeBackupMutation.isPending ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Taking Snapshot...</span>
-                </>
-              ) : (
-                <>
-                  <Disc className="w-3.5 h-3.5" />
-                  <span>Create Snapshot Now</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Automated Backups Status Banner */}
-      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className={`p-2.5 rounded-xl ${isBackupsEnabled ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'}`}>
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold text-white">
-                Automated Daily Backups: {isBackupsEnabled ? 'ACTIVE' : 'DISABLED'}
-              </h2>
-              <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${isBackupsEnabled ? 'bg-emerald-950 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
-                {isBackupsEnabled ? 'Protected' : 'Off'}
-              </span>
+      {/* Automated Backup Schedule Banner */}
+      {activeServer && (
+        <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-[#017cb6]/10 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-[#017cb6]" />
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {isBackupsEnabled
-                ? 'BinaryLane automatically retains daily and weekly recovery slots for this instance.'
-                : 'Enable automated backups to ensure continuous disaster recovery points for this server.'}
-            </p>
+            <div>
+              <div className="text-xs font-bold text-[#212529] dark:text-white flex items-center gap-2">
+                <span>Automated Nightly Backups</span>
+                <span
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
+                    isAutoBackupEnabled
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                  }`}
+                >
+                  {isAutoBackupEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
+                {isAutoBackupEnabled
+                  ? 'BinaryLane captures an automated delta snapshot nightly during your scheduled maintenance window.'
+                  : 'Automated backups are currently turned off for this server.'}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <button
-          onClick={() => toggleAutomatedBackups.mutate(!isBackupsEnabled)}
-          disabled={toggleAutomatedBackups.isPending}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition shadow ${
-            isBackupsEnabled
-              ? 'bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-400 border border-slate-700'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-          }`}
-        >
-          {toggleAutomatedBackups.isPending
-            ? 'Updating...'
-            : isBackupsEnabled
-            ? 'Disable Automated Backups'
-            : 'Enable Daily Backups'}
-        </button>
-      </div>
-
-      {/* Attached Backup Notice */}
-      {isAttachedBackup && (
-        <div className="p-3.5 bg-amber-950/40 border border-amber-800/50 rounded-2xl flex items-center justify-between text-xs text-amber-300">
-          <div className="flex items-center gap-2">
-            <HardDrive className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span>A backup disk is currently attached to this server for file inspection.</span>
-          </div>
           <button
-            onClick={handleDetach}
-            disabled={detachBackupMutation.isPending}
-            className="px-2.5 py-1 bg-amber-900/80 hover:bg-amber-800 text-white font-medium rounded-lg transition"
+            onClick={handleToggleAuto}
+            disabled={toggleAutomatedBackups.isPending}
+            className={`px-3 py-1.5 text-xs font-medium rounded transition border ${
+              isAutoBackupEnabled
+                ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
+                : 'text-[#017cb6] bg-[#017cb6]/10 border-[#017cb6]/30 hover:bg-[#017cb6]/20'
+            }`}
           >
-            {detachBackupMutation.isPending ? 'Detaching...' : 'Detach Disk'}
+            {isAutoBackupEnabled ? 'Disable Schedule' : 'Enable Nightly Backups'}
           </button>
         </div>
       )}
 
-      {/* Backups & Snapshots Table */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4 flex-1">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-white">Recovery Points & Images ({allImages.length})</h2>
-          </div>
-          <span className="text-[11px] text-slate-500 font-mono">
-            {activeServer?.name} ({activeServer?.region?.slug?.toUpperCase()})
-          </span>
+      {/* Snapshots & Backups List */}
+      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col flex-1">
+        <div className="p-3.5 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
+          <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-[#017cb6]" />
+            <span>Available Disk Images for {activeServer?.name || `Server #${activeServerId}`}</span>
+          </h3>
+          <button
+            onClick={handleDetach}
+            disabled={detachBackupMutation.isPending}
+            className="text-[11px] text-[#6c757d] hover:text-amber-500 hover:underline"
+            title="Unmount secondary drive"
+          >
+            Detach Secondary Backup Disk
+          </button>
         </div>
 
         {(backupsQuery.isLoading || snapshotsQuery.isLoading) && (
-          <div className="py-12 flex justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          <div className="p-12 text-center text-xs text-[#6c757d]">
+            <Loader2 className="w-6 h-6 animate-spin text-[#017cb6] mx-auto mb-2" />
+            <span>Querying disk snapshots from storage array...</span>
           </div>
         )}
 
         {!backupsQuery.isLoading && !snapshotsQuery.isLoading && allImages.length === 0 && (
-          <div className="text-xs text-slate-400 p-8 text-center bg-slate-950/40 border border-slate-800/80 rounded-2xl space-y-2">
-            <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mx-auto text-purple-400">
-              <Archive className="w-5 h-5" />
-            </div>
-            <div className="font-semibold text-white">No Backups or Snapshots Available</div>
-            <p className="text-slate-500 max-w-sm mx-auto text-[11px]">
-              Take a manual snapshot or enable automated backups above to establish recovery points for this server.
+          <div className="p-12 text-center text-xs text-[#6c757d] space-y-2">
+            <Disc className="w-8 h-8 text-[#6c757d]/50 mx-auto" />
+            <div className="font-semibold text-[#212529] dark:text-white">No Snapshots Found</div>
+            <p className="text-[#6c757d] max-w-sm mx-auto text-[11px]">
+              Take an instant snapshot before making configuration updates to ensure full rollback capabilities.
             </p>
+            <button
+              onClick={() => setIsTakingSnapshot(true)}
+              className="mt-2 px-3.5 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"
+            >
+              Take First Snapshot
+            </button>
           </div>
         )}
 
         {!backupsQuery.isLoading && !snapshotsQuery.isLoading && allImages.length > 0 && (
-          <div className="space-y-2">
-            {allImages.map((image) => {
-              const isProcessing = actionProcessingId === image.id
-              const createdDate = image.created_at
-                ? new Date(image.created_at).toLocaleString()
-                : 'Point-in-time'
-              const sizeGb = (image as any).size_gigabytes || (image as any).min_disk_size || activeServer?.disk || 20
-              const isSnapshot = image.type === 'snapshot' || !(image as any).backup_info
-
-              return (
-                <div
-                  key={image.id}
-                  className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-slate-700 transition"
-                >
-                  <div className="flex items-start sm:items-center gap-3">
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-purple-400">
-                      <HardDrive className="w-4 h-4" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-xs">{image.name || `Image #${image.id}`}</span>
-                        <span
-                          className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded ${
-                            isSnapshot
-                              ? 'bg-sky-950 text-sky-400 border border-sky-800/50'
-                              : 'bg-purple-950 text-purple-400 border border-purple-800/50'
-                          }`}
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#ced4da] dark:border-[#373b3e] text-[#6c757d]">
+                <th className="py-2.5 px-4">Name / Label</th>
+                <th className="py-2.5 px-4">Created Date</th>
+                <th className="py-2.5 px-4">Min Disk Size</th>
+                <th className="py-2.5 px-4">Type</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+              {allImages.map((img) => {
+                const isProcessing = actionProcessingId === img.id
+                return (
+                  <tr key={img.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-[#017cb6]">{img.name || `Snapshot #${img.id}`}</div>
+                      <div className="text-[11px] text-[#6c757d] dark:text-slate-400 font-mono">#{img.id}</div>
+                    </td>
+                    <td className="py-3 px-4 text-[#6c757d] dark:text-slate-300">
+                      {img.created_at ? new Date(img.created_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="py-3 px-4 font-mono font-medium text-[#212529] dark:text-white">
+                      {img.min_disk_size || activeServer?.disk || 20} GB
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#017cb6]/10 text-[#017cb6] uppercase">
+                        {img.type || 'snapshot'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleAttach(img.id, img.name)}
+                          disabled={isProcessing}
+                          className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition"
+                          title="Mount as secondary drive to extract files"
                         >
-                          {isSnapshot ? 'Manual Snapshot' : 'Automated Backup'}
-                        </span>
+                          {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Mount'}
+                        </button>
+                        <button
+                          onClick={() => handleRestore(img.id, img.name)}
+                          disabled={isProcessing}
+                          className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded transition border border-rose-200 dark:border-rose-800"
+                          title="Restore server back to this point in time"
+                        >
+                          <RotateCcw className="w-3 h-3 inline mr-1" />
+                          <span>Restore</span>
+                        </button>
                       </div>
-
-                      <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5 font-mono">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{createdDate}</span>
-                        <span className="text-slate-600">•</span>
-                        <span>{sizeGb} GB Disk</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    {/* Attach / Mount as Disk */}
-                    <button
-                      onClick={() => handleAttach(image.id, image.name || `#${image.id}`)}
-                      disabled={isProcessing}
-                      className="px-2.5 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition"
-                      title="Attach as secondary drive to inspect files"
-                    >
-                      Mount Disk
-                    </button>
-
-                    {/* Restore Button */}
-                    <button
-                      onClick={() => handleRestore(image.id, image.name || `#${image.id}`)}
-                      disabled={isProcessing}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-950/60 hover:bg-amber-900 border border-amber-800/60 rounded-xl transition shadow disabled:opacity-50"
-                      title="Restore server from this backup image"
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      )}
-                      <span>Restore</span>
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         )}
       </div>
+
+      {/* Take Snapshot Modal */}
+      {isTakingSnapshot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Create Disk Snapshot</h2>
+              <button onClick={() => setIsTakingSnapshot(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTakeSnapshot} className="space-y-4 text-xs">
+              <p className="text-[#6c757d] dark:text-slate-400">
+                Captures a full point-in-time image of the active disk drive for {activeServer?.name}.
+              </p>
+
+              <div>
+                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Snapshot Name / Description
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pre-upgrade Docker backup"
+                  value={snapshotLabel}
+                  onChange={(e) => setSnapshotLabel(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
+                <button
+                  type="button"
+                  onClick={() => setIsTakingSnapshot(false)}
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={takeBackupMutation.isPending}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+                >
+                  {takeBackupMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Start Snapshot</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

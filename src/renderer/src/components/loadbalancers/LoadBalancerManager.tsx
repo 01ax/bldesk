@@ -4,7 +4,6 @@ import {
   Plus,
   Server,
   Loader2,
-  ArrowRight,
   UserPlus,
   Unlink,
   Trash2,
@@ -45,7 +44,6 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   const [lbName, setLbName] = useState('')
   const [lbRegion, setLbRegion] = useState('syd')
   const [entryProtocol, setEntryProtocol] = useState<'http' | 'https'>('http')
-  const [healthPath, setHealthPath] = useState('/')
   const [selectedServerIds, setSelectedServerIds] = useState<number[]>([])
   const [createError, setCreateError] = useState<string | null>(null)
 
@@ -73,14 +71,12 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
     setTimeout(() => setCopiedIp(null), 1500)
   }
 
-  // Toggle server in create form
   const handleToggleCreateServer = (serverId: number) => {
     setSelectedServerIds((prev) =>
       prev.includes(serverId) ? prev.filter((id) => id !== serverId) : [...prev, serverId]
     )
   }
 
-  // Create Load Balancer Submit
   const handleCreateLb = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreateError(null)
@@ -99,26 +95,22 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
             entry_protocol: entryProtocol
           }
         ],
-        server_ids: selectedServerIds.length > 0 ? selectedServerIds : undefined,
-        health_check: {
-          protocol: entryProtocol,
-          path: healthPath.startsWith('/') ? healthPath : `/${healthPath}`
-        }
+        server_ids: selectedServerIds
+      })
+
+      window.bldeskApi?.sendNotification?.({
+        title: 'Load Balancer Created',
+        body: `Load balancer "${lbName}" provisioned successfully.`
       })
 
       setIsCreating(false)
       setLbName('')
       setSelectedServerIds([])
-      window.bldeskApi.sendNotification({
-        title: 'Load Balancer Provisioned',
-        body: `Created load balancer "${lbName}".`
-      })
     } catch (err: any) {
       setCreateError(err.message || 'Failed to create load balancer.')
     }
   }
 
-  // Add Server to LB Pool
   const handleAttachServer = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!attachModalLb || !selectedServerToAttach) return
@@ -129,38 +121,32 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
         serverId: selectedServerToAttach
       })
 
-      const targetServerName =
-        servers.find((s) => s.id === selectedServerToAttach)?.name || selectedServerToAttach
-
-      window.bldeskApi.sendNotification({
-        title: 'Server Added to Pool',
-        body: `Attached "${targetServerName}" to load balancer "${attachModalLb.name}".`
+      const sName = servers.find((s) => s.id === selectedServerToAttach)?.name || selectedServerToAttach
+      window.bldeskApi?.sendNotification?.({
+        title: 'Backend Pool Updated',
+        body: `Added "${sName}" to ${attachModalLb.name}.`
       })
 
       setAttachModalLb(null)
       setSelectedServerToAttach(null)
     } catch (err: any) {
-      alert(`Failed to add server to pool: ${err.message}`)
+      alert(`Failed to add server: ${err.message}`)
     }
   }
 
-  // Remove Server from LB Pool
-  const handleRemoveServer = async (lb: any, server: ServerResponse) => {
-    const confirmed = confirm(
-      `Remove server "${server.name}" from load balancer "${lb.name}"?\n\nTraffic will no longer be routed to this instance.`
-    )
-    if (!confirmed) return
+  const handleRemoveServer = async (lbId: number, lbName: string, serverId: number, serverName: string) => {
+    if (!confirm(`Remove server "${serverName}" (#${serverId}) from load balancer "${lbName}"?`)) return
 
-    setActionServerId(server.id)
+    setActionServerId(serverId)
     try {
       await removeServerMutation.mutateAsync({
-        loadBalancerId: lb.id,
-        serverId: server.id
+        loadBalancerId: lbId,
+        serverId
       })
 
-      window.bldeskApi.sendNotification({
-        title: 'Server Removed from Pool',
-        body: `Removed "${server.name}" from load balancer "${lb.name}".`
+      window.bldeskApi?.sendNotification?.({
+        title: 'Backend Member Removed',
+        body: `Removed "${serverName}" from ${lbName}.`
       })
     } catch (err: any) {
       alert(`Failed to remove server: ${err.message}`)
@@ -169,399 +155,210 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
     }
   }
 
-  // Delete Load Balancer
   const handleDeleteLb = async (lbId: number, name: string) => {
-    const confirmed = confirm(
-      `Are you sure you want to permanently delete load balancer "${name}"?\n\nIts IP address and routing will be released.`
-    )
-    if (!confirmed) return
+    if (!confirm(`Delete Load Balancer "${name}" (#${lbId})? This will immediately stop traffic distribution.`)) return
 
     try {
       await deleteLbMutation.mutateAsync(lbId)
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: 'Load Balancer Deleted',
-        body: `Load balancer "${name}" was deleted.`
+        body: `Deleted Load Balancer #${lbId}.`
       })
     } catch (err: any) {
-      alert(`Failed to delete load balancer: ${err.message}`)
+      alert(`Delete failed: ${err.message}`)
     }
   }
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto select-text">
+    <div className="h-full flex flex-col p-6 space-y-6 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <Layers className="w-5 h-5 text-sky-400" />
-            <span>Load Balancers & Traffic Routing</span>
+          <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
+            <Layers className="w-5 h-5 text-[#017cb6]" />
+            <span>High-Availability Load Balancers</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            High-availability traffic distribution, health checking, and automatic failover
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+            Distribute incoming HTTP/HTTPS/TCP traffic across backend virtual servers with health checks.
           </p>
         </div>
 
         <button
-          onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow"
+          onClick={() => setIsCreating(true)}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
           <span>Deploy Load Balancer</span>
         </button>
       </div>
 
-      {/* Deploy Load Balancer Modal / Form */}
-      {isCreating && (
-        <form
-          onSubmit={handleCreateLb}
-          className="p-5 bg-slate-900/90 border border-sky-500/40 rounded-2xl space-y-4 text-xs animate-in fade-in shadow-2xl"
-        >
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-sky-400" />
-              <h2 className="text-xs font-bold text-white">Deploy New Load Balancer</h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsCreating(false)}
-              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1 font-semibold">
-                Hostname / Identifier
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. lb-prod-australia"
-                value={lbName}
-                onChange={(e) => setLbName(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1 font-semibold">Region</label>
-              <select
-                value={lbRegion}
-                onChange={(e) => setLbRegion(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white"
-              >
-                <option value="anycast">🌍 Global Anycast (Multi-Region Routing)</option>
-                {regions.map((r) => (
-                  <option key={r.slug} value={r.slug}>
-                    {r.name} ({r.slug.toUpperCase()})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Forwarding Rule & Health Check Settings */}
-          <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-2">
-            <span className="text-[11px] font-semibold text-slate-300">Routing & Health Check Configuration:</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-0.5 font-semibold">Forwarding Protocol</label>
-                <select
-                  value={entryProtocol}
-                  onChange={(e) => setEntryProtocol(e.target.value as any)}
-                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white uppercase font-mono"
-                >
-                  <option value="http">HTTP (Port 80)</option>
-                  <option value="https">HTTPS (Port 443)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-0.5 font-semibold">Health Check Path</label>
-                <input
-                  type="text"
-                  placeholder="/"
-                  value={healthPath}
-                  onChange={(e) => setHealthPath(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Initial Backend Server Selection */}
-          <div className="space-y-2">
-            <label className="text-[11px] text-slate-400 block font-semibold">
-              Select Initial Backend Pool Servers (Optional):
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-              {servers.map((s) => {
-                const isSelected = selectedServerIds.includes(s.id)
-                return (
-                  <button
-                    type="button"
-                    key={s.id}
-                    onClick={() => handleToggleCreateServer(s.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition ${
-                      isSelected
-                        ? 'bg-sky-600/20 border-sky-500/50 text-white'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="truncate">
-                      <div className="font-semibold text-xs truncate">{s.name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        {s.networks?.v4?.[0]?.ip_address || `#${s.id}`} • {s.region?.slug?.toUpperCase()}
-                      </div>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-sky-400 flex-shrink-0" />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {createError && (
-            <div className="flex items-center gap-2 p-2.5 bg-rose-950/50 border border-rose-800/60 rounded-lg text-rose-300 text-xs">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{createError}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsCreating(false)}
-              className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createLbMutation.isPending}
-              className="flex items-center gap-1.5 px-4 py-1.5 font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow disabled:opacity-50"
-            >
-              {createLbMutation.isPending ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Provisioning...</span>
-                </>
-              ) : (
-                <>
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>Deploy Load Balancer</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+      {/* Loading State */}
+      {lbsQuery.isLoading && (
+        <div className="flex flex-col items-center justify-center p-12 space-y-3 bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <Loader2 className="w-8 h-8 text-[#017cb6] animate-spin" />
+          <p className="text-xs text-[#6c757d] dark:text-slate-400">Loading load balancers...</p>
+        </div>
       )}
 
-      {/* Load Balancers Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {lbsQuery.isLoading && (
-          <div className="col-span-2 py-12 flex justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-          </div>
-        )}
+      {/* Empty State */}
+      {!lbsQuery.isLoading && loadBalancers.length === 0 && (
+        <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <Layers className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
+          <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No Load Balancers Deployed</h3>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 max-w-sm mt-1 mb-4">
+            Create high-availability reverse proxy endpoints to distribute load and perform health monitoring across multiple servers.
+          </p>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"
+          >
+            Deploy Load Balancer
+          </button>
+        </div>
+      )}
 
-        {!lbsQuery.isLoading && loadBalancers.length === 0 && (
-          <div className="col-span-2 text-xs text-slate-400 p-8 text-center bg-slate-900/30 border border-slate-800/80 rounded-2xl space-y-2">
-            <div className="w-10 h-10 rounded-full bg-sky-500/10 border border-sky-500/30 flex items-center justify-center mx-auto text-sky-400">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div className="font-semibold text-white text-sm">No Load Balancers Deployed</div>
-            <p className="text-slate-500 max-w-sm mx-auto text-[11px]">
-              Deploy a load balancer to automatically distribute HTTP/HTTPS incoming traffic across your backend compute instances.
-            </p>
-          </div>
-        )}
-
+      {/* Load Balancers List */}
+      <div className="space-y-6">
         {loadBalancers.map((lb) => {
-          // Find all servers belonging to this Load Balancer pool (handle number[], string[], and object[])
-          const rawIds = (lb.server_ids || (lb as any).servers || []) as any[]
-          const memberServerIds: number[] = rawIds.map((item: any) =>
-            typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
-          ).filter((n) => !isNaN(n) && n > 0)
-
-          const isHealthy = lb.status === 'active'
+          const lbServerIds = lb.server_ids || []
+          const memberServers = servers.filter((s) => lbServerIds.includes(s.id))
+          const attachableServers = servers.filter((s) => !lbServerIds.includes(s.id))
+          const isActive = lb.status === 'active'
 
           return (
             <div
               key={lb.id}
-              className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between"
+              className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex flex-col"
             >
-              <div>
-                {/* LB Card Header */}
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
+              {/* Header */}
+              <div className="p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-[#f1f1f1] dark:bg-[#262a2e] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-[#017cb6]/10 flex items-center justify-center">
+                    <Layers className="w-4 h-4 text-[#017cb6]" />
+                  </div>
+                  <div>
                     <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm text-[#212529] dark:text-white font-mono">{lb.name}</h3>
                       <span
-                        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                          isHealthy
-                            ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50'
-                            : 'bg-amber-400 animate-pulse'
+                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
+                          isActive
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                         }`}
-                      />
-                      <h3 className="text-sm font-bold text-white">{lb.name}</h3>
-                      <span className="text-[10px] text-slate-500 font-mono">#{lb.id}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-mono text-sky-400 font-semibold">{lb.ip || 'Provisioning IP...'}</span>
-                      {lb.ip && (
-                        <button
-                          onClick={() => handleCopy(lb.ip)}
-                          className="p-1 text-slate-500 hover:text-slate-200 transition"
-                          title="Copy IP"
-                        >
-                          {copiedIp === lb.ip ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-slate-800 text-slate-300">
-                      {lb.region?.slug?.toUpperCase() || 'Global Anycast'}
-                    </span>
-
-                    <button
-                      onClick={() => handleDeleteLb(lb.id, lb.name)}
-                      disabled={deleteLbMutation.isPending}
-                      className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition"
-                      title="Delete Load Balancer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Forwarding Rules & Health Check Badges */}
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-                  {(lb.forwarding_rules || []).map((rule, idx) => (
-                    <span
-                      key={idx}
-                      className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-950 border border-slate-800 rounded-md text-slate-300 font-mono"
-                    >
-                      <ArrowRightLeft className="w-3 h-3 text-sky-400" />
-                      <span>{rule.entry_protocol?.toUpperCase()} Routing</span>
-                    </span>
-                  ))}
-
-                  {lb.health_check && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 bg-slate-950 border border-slate-800 rounded-md text-emerald-400 font-mono">
-                      <Activity className="w-3 h-3" />
-                      <span>Health Check: {lb.health_check.protocol?.toUpperCase()} {lb.health_check.path}</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* Backend Server Pool Section */}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Server className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Backend Server Pool ({memberServerIds.length})</span>
-                    </span>
-
-                    {/* Add Server Button */}
-                    <button
-                      onClick={() => {
-                        const candidates = servers.filter((s) => !memberServerIds.some((mid) => mid === s.id))
-                        if (candidates.length > 0) {
-                          setSelectedServerToAttach(candidates[0].id)
-                        }
-                        setAttachModalLb(lb)
-                      }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-sky-400 hover:text-sky-300 bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 rounded transition"
-                      title="Add a compute server to this load balancer pool"
-                    >
-                      <UserPlus className="w-3 h-3" />
-                      <span>+ Add Server</span>
-                    </button>
-                  </div>
-
-                  {memberServerIds.length === 0 ? (
-                    <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-800/80 text-center text-xs text-slate-500 space-y-2">
-                      <div>No compute servers currently in this backend pool.</div>
-                      <button
-                        onClick={() => {
-                          const candidates = servers.filter((s) => !memberServerIds.some((mid) => mid === s.id))
-                          if (candidates.length > 0) setSelectedServerToAttach(candidates[0].id)
-                          setAttachModalLb(lb)
-                        }}
-                        className="px-2.5 py-1 text-[11px] text-sky-400 bg-sky-950/80 hover:bg-sky-900 border border-sky-800/80 rounded-lg transition"
                       >
-                        Add Existing Server to Pool
+                        {lb.status || 'Active'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
+                      <span>#{lb.id}</span>
+                      <span>•</span>
+                      <span>Region: {lb.region?.name || lb.region?.slug?.toUpperCase() || 'Global Anycast'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* VIP Address & Delete */}
+                <div className="flex items-center gap-3">
+                  {lb.ip && (
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-2.5 py-1 rounded text-xs">
+                      <span className="text-[10px] text-[#6c757d] uppercase font-bold">VIP</span>
+                      <span className="font-mono text-[#212529] dark:text-slate-200">{lb.ip}</span>
+                      <button
+                        onClick={() => handleCopy(lb.ip!)}
+                        className="text-[#6c757d] hover:text-[#017cb6] ml-1"
+                        title="Copy VIP IP"
+                      >
+                        {copiedIp === lb.ip ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                       </button>
                     </div>
+                  )}
+
+                  <button
+                    onClick={() => handleDeleteLb(lb.id, lb.name)}
+                    className="p-1.5 text-[#6c757d] hover:text-rose-500 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                    title="Delete Load Balancer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body: Forwarding Rules & Backend Pool */}
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Forwarding Rules */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-[#495057] dark:text-[#ced4da] flex items-center gap-1.5">
+                    <ArrowRightLeft className="w-3.5 h-3.5 text-[#017cb6]" />
+                    <span>Forwarding Rules</span>
+                  </h4>
+                  <div className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-3 text-xs space-y-1.5">
+                    {(lb.forwarding_rules || []).map((rule: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between font-mono text-[11px]">
+                        <span className="text-[#017cb6] uppercase font-bold">
+                          {rule.entry_protocol}:{rule.entry_port || (rule.entry_protocol === 'https' ? 443 : 80)}
+                        </span>
+                        <span className="text-[#6c757d]">➔</span>
+                        <span className="text-[#212529] dark:text-slate-200 uppercase font-medium">
+                          {rule.target_protocol || rule.entry_protocol}:{rule.target_port || (rule.target_protocol === 'https' ? 443 : 80)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Backend Pool Members */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-[#495057] dark:text-[#ced4da] flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-[#017cb6]" />
+                      <span>Backend Target Pool ({memberServers.length})</span>
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setAttachModalLb(lb)
+                        if (attachableServers.length > 0) {
+                          setSelectedServerToAttach(attachableServers[0].id)
+                        }
+                      }}
+                      className="text-xs text-[#017cb6] hover:underline font-medium flex items-center gap-1"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      <span>Add Target</span>
+                    </button>
+                  </div>
+
+                  {memberServers.length === 0 ? (
+                    <div className="p-3 bg-[#f8f9fa] dark:bg-[#212529] border border-dashed border-[#ced4da] dark:border-[#373b3e] rounded text-center text-xs text-[#6c757d]">
+                      No servers in pool. Traffic will fail health checks.
+                    </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {memberServerIds.map((serverId) => {
-                        const server = servers.find((s) => s.id === serverId)
-                        const isRunning = server ? server.status === 'active' : true
-                        const isProcessing = actionServerId === serverId
-                        const name = server?.name || `Server #${serverId}`
-                        const publicIp =
-                          server?.networks?.v4?.find((v: any) => v.type === 'public')?.ip_address ||
-                          server?.networks?.v4?.[0]?.ip_address ||
-                          'Resolving IP...'
-                        const privateIp = server?.networks?.v4?.find((v: any) => v.type === 'private')?.ip_address
+                    <div className="space-y-1.5">
+                      {memberServers.map((s) => {
+                        const sIp = s.networks?.v4?.find((n: any) => n.type === 'public')?.ip_address || s.networks?.v4?.[0]?.ip_address
+                        const isRemoving = actionServerId === s.id
 
                         return (
                           <div
-                            key={serverId}
-                            className="flex items-center justify-between p-2.5 bg-slate-950/70 border border-slate-800/90 rounded-xl text-xs hover:border-slate-700 transition"
+                            key={s.id}
+                            className="flex items-center justify-between p-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded"
                           >
-                            <div className="flex items-center gap-2.5 truncate">
-                              <span
-                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                  isRunning ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400'
-                                }`}
-                              />
-                              <div className="truncate">
-                                <div className="font-semibold text-slate-100 truncate">{name}</div>
-                                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
-                                  <span>{publicIp}</span>
-                                  {privateIp && (
-                                    <>
-                                      <span className="text-slate-600">•</span>
-                                      <span className="text-sky-400">{privateIp}</span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
+                            <div
+                              onClick={() => onSelectServer && onSelectServer(s)}
+                              className="flex items-center gap-2 cursor-pointer flex-1"
+                            >
+                              <Server className="w-3 h-3 text-[#017cb6]" />
+                              <span className="text-xs font-medium text-[#017cb6] hover:underline">{s.name}</span>
+                              <span className="text-[10px] text-[#6c757d] font-mono">({sIp})</span>
                             </div>
 
-                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                              {server && onSelectServer && (
-                                <button
-                                  onClick={() => onSelectServer(server)}
-                                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition"
-                                  title="Open Server Management"
-                                >
-                                  <span>Manage</span>
-                                  <ArrowRight className="w-3 h-3" />
-                                </button>
-                              )}
-
-                              {/* Remove Server from Pool */}
-                              <button
-                                onClick={() => handleRemoveServer(lb, server || ({ id: serverId, name } as any))}
-                                disabled={isProcessing}
-                                className="p-1 text-slate-500 hover:text-rose-400 bg-slate-800/50 hover:bg-rose-950/60 hover:border-rose-800/50 border border-transparent rounded transition"
-                                title="Remove server from backend pool"
-                              >
-                                {isProcessing ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
-                                ) : (
-                                  <Unlink className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handleRemoveServer(lb.id, lb.name, s.id, s.name)}
+                              disabled={isRemoving}
+                              className="text-[#6c757d] hover:text-rose-500 p-1 rounded"
+                              title="Remove from pool"
+                            >
+                              {isRemoving ? <Loader2 className="w-3 h-3 animate-spin text-[#017cb6]" /> : <Unlink className="w-3 h-3" />}
+                            </button>
                           </div>
                         )
                       })}
@@ -569,105 +366,169 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                   )}
                 </div>
               </div>
-
-              {/* Card Footer Info */}
-              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Status: {lb.status?.toUpperCase()}</span>
-                <span>Automatic Failover Active</span>
-              </div>
             </div>
           )
         })}
       </div>
 
-      {/* --- ADD SERVER TO POOL MODAL --- */}
-      {attachModalLb && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in select-text">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/80">
-              <div className="flex items-center gap-2.5">
-                <Layers className="w-4 h-4 text-sky-400" />
-                <h3 className="text-sm font-semibold text-white">
-                  Add Server to {attachModalLb.name}
-                </h3>
-              </div>
-              <button
-                onClick={() => setAttachModalLb(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              >
+      {/* Create Load Balancer Modal */}
+      {isCreating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Deploy High-Availability Load Balancer</h2>
+              <button onClick={() => setIsCreating(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleAttachServer} className="p-5 space-y-4 text-xs">
-              <p className="text-slate-400">
-                Select a server to add to the load balancer pool for{' '}
-                <strong className="text-sky-400">{attachModalLb.name}</strong>:
-              </p>
+            {createError && (
+              <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{createError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateLb} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Load Balancer Name / FQDN
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. app-lb.production"
+                  value={lbName}
+                  onChange={(e) => setLbName(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                    Region
+                  </label>
+                  <select
+                    value={lbRegion}
+                    onChange={(e) => setLbRegion(e.target.value)}
+                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                  >
+                    <option value="anycast">Global Anycast</option>
+                    {regions.map((r) => (
+                      <option key={r.slug} value={r.slug}>
+                        {r.name} ({r.slug.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                    Default Protocol
+                  </label>
+                  <select
+                    value={entryProtocol}
+                    onChange={(e) => setEntryProtocol(e.target.value as any)}
+                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                  >
+                    <option value="http">HTTP (Port 80)</option>
+                    <option value="https">HTTPS (Port 443)</option>
+                  </select>
+                </div>
+              </div>
 
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1 font-semibold">
+                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Select Initial Pool Servers
+                </label>
+                <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded">
+                  {servers.map((s) => (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-2 cursor-pointer text-xs p-1 hover:bg-[#e9ecef] dark:hover:bg-[#343a40] rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedServerIds.includes(s.id)}
+                        onChange={() => handleToggleCreateServer(s.id)}
+                        className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+                      />
+                      <span className="font-medium text-[#212529] dark:text-white">{s.name}</span>
+                      <span className="text-[10px] text-[#6c757d] font-mono">#{s.id}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(false)}
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLbMutation.isPending}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+                >
+                  {createLbMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Provision Load Balancer</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Attach Modal */}
+      {attachModalLb && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Add Server to Pool</h2>
+              <button onClick={() => setAttachModalLb(null)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAttachServer} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
                   Select Server
                 </label>
                 <select
                   value={selectedServerToAttach || ''}
                   onChange={(e) => setSelectedServerToAttach(Number(e.target.value))}
-                  required
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium"
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
                 >
                   {servers
-                    .filter((s) => {
-                      const raw = (attachModalLb.server_ids || (attachModalLb as any).servers || []) as any[]
-                      const existingIds = raw.map((item: any) =>
-                        typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
-                      )
-                      return !existingIds.some((eid) => eid === s.id)
-                    })
+                    .filter((s) => !(attachModalLb.server_ids || []).includes(s.id))
                     .map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} ({s.networks?.v4?.[0]?.ip_address || `#${s.id}`}) — {s.region?.slug?.toUpperCase()}
+                        {s.name} (#{s.id})
                       </option>
                     ))}
                 </select>
               </div>
 
-              {servers.filter((s) => {
-                const raw = (attachModalLb.server_ids || (attachModalLb as any).servers || []) as any[]
-                const existingIds = raw.map((item: any) =>
-                  typeof item === 'object' && item !== null ? Number(item.id) : Number(item)
-                )
-                return !existingIds.some((eid) => eid === s.id)
-              }).length === 0 && (
-                <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>All your servers are already in this load balancer pool!</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
                 <button
                   type="button"
                   onClick={() => setAttachModalLb(null)}
-                  className="px-3 py-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-lg"
+                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addServerMutation.isPending || !selectedServerToAttach}
-                  className="flex items-center gap-1.5 px-4 py-1.5 font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                 >
-                  {addServerMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Adding to Pool...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Add to Pool</span>
-                    </>
-                  )}
+                  {addServerMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Add Target</span>
                 </button>
               </div>
             </form>

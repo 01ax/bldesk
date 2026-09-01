@@ -30,6 +30,14 @@
     "directories": {
       "output": "release"
     },
+    "mac": {
+      "icon": "resources/icon.png",
+      "target": [
+        "dmg",
+        "zip",
+        "dir"
+      ]
+    },
     "files": [
       "out/**/*"
     ],

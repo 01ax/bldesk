@@ -3,21 +3,22 @@ import {
   Server as ServerIcon,
   Play,
   RotateCw,
+  Loader2,
   Power,
   Terminal,
   Search,
   Copy,
   Check,
-  Cpu,
-  HardDrive,
-  Activity,
-  Loader2,
-  Plus
+  Plus,
+  LayoutGrid,
+  List,
+  ShieldAlert
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useServerActionMutation } from '../../api/queries'
 import { CreateServerModal } from './CreateServerModal'
+import { logoForDistribution } from '../../lib/distroHelper'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -34,13 +35,15 @@ export const ServerList: React.FC<ServerListProps> = ({
   isLoading,
   client,
   onSelectServer,
-  onOpenTerminal
+  onOpenTerminal: _onOpenTerminal
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [actionInProgressServerId, setActionInProgressServerId] = useState<number | null>(null)
 
   const serverAction = useServerActionMutation(client)
 
@@ -53,25 +56,29 @@ export const ServerList: React.FC<ServerListProps> = ({
 
   const handleAction = async (serverId: number, actionType: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    if (actionInProgressServerId !== null) return
     if (!confirm(`Are you sure you want to perform "${actionType}" on server #${serverId}?`)) return
 
+    setActionInProgressServerId(serverId)
     try {
       await serverAction.mutateAsync({
         serverId,
         actionPayload: { type: actionType }
       })
-      window.bldeskApi.sendNotification({
+      window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${actionType}`,
         body: `Action requested successfully for server #${serverId}.`
       })
     } catch (err: any) {
       alert(`Action failed: ${err.message || 'Unknown error'}`)
+    } finally {
+      setActionInProgressServerId(null)
     }
   }
 
   const handleLaunchNativeSsh = (ip: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    window.bldeskApi.launchNativeTerminal({ host: ip, username: 'root' })
+    window.bldeskApi?.launchNativeTerminal?.({ host: ip, username: 'root' })
   }
 
   const filteredServers = servers.filter((s) => {
@@ -90,237 +97,383 @@ export const ServerList: React.FC<ServerListProps> = ({
   const availableRegions = Array.from(new Set(servers.map((s) => s.region?.slug).filter(Boolean)))
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-5 overflow-y-auto">
-      {/* Header & Controls */}
+    <div className="h-full flex flex-col p-6 space-y-4 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
+      {/* Header & Main Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <ServerIcon className="w-5 h-5 text-sky-400" />
+          <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
+            <ServerIcon className="w-5 h-5 text-[#017cb6]" />
             <span>Virtual Servers</span>
-            <span className="text-xs font-normal text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700">
-              {servers.length} total
+            <span className="text-xs font-normal text-[#6c757d] dark:text-slate-400 bg-[#e9ecef] dark:bg-[#2b3035] px-2 py-0.5 rounded-full border border-[#ced4da] dark:border-[#373b3e]">
+              {filteredServers.length} {filteredServers.length === 1 ? 'server' : 'servers'}
             </span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">High-performance cloud compute instances across Australia & Asia</p>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+            Manage compute instances, view live network routes and launch instant terminals.
+          </p>
         </div>
 
-        {/* Search & Filter bar & Deploy Button */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by name, IP, tag..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition w-48"
-            />
+        <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex items-center bg-[#e9ecef] dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded p-0.5">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded transition ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-[#343a40] text-[#017cb6] shadow-sm'
+                  : 'text-[#6c757d] dark:text-slate-400 hover:text-[#212529] dark:hover:text-white'
+              }`}
+              title="Table View (mPanel style)"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded transition ${
+                viewMode === 'grid'
+                  ? 'bg-white dark:bg-[#343a40] text-[#017cb6] shadow-sm'
+                  : 'text-[#6c757d] dark:text-slate-400 hover:text-[#212529] dark:hover:text-white'
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
           </div>
-
-          <select
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none cursor-pointer"
-          >
-            <option value="all">All Regions</option>
-            {availableRegions.map((reg) => (
-              <option key={reg} value={reg!}>
-                {reg?.toUpperCase()}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="off">Powered Off</option>
-            <option value="archive">Archived</option>
-          </select>
 
           <button
             onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition shadow-md shadow-sky-950/40"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Deploy Instance</span>
+            <Plus className="w-4 h-4" />
+            <span>Add Server</span>
           </button>
         </div>
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-          <p className="text-xs">Synchronizing fleet status...</p>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && filteredServers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3 bg-slate-900/30 rounded-2xl border border-slate-800/60">
-          <ServerIcon className="w-10 h-10 text-slate-600" />
-          <div className="text-center">
-            <h3 className="text-sm font-semibold text-slate-300">No servers found</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              {servers.length === 0 ? 'No instances provisioned in this account.' : 'Try adjusting your search filters.'}
-            </p>
+      {/* Filter & Search Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#2b3035] p-3 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
+        <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+          <div className="relative w-full max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6c757d] dark:text-slate-400" />
+            <input
+              type="text"
+              placeholder="Filter servers by name, IP, or tag..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] pl-9 pr-4 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+            />
           </div>
         </div>
+
+        <div className="flex items-center gap-2">
+          {/* Region Filter */}
+          <select
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value)}
+            className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+          >
+            <option value="all">All Regions</option>
+            {availableRegions.map((r) => (
+              <option key={r} value={r!}>
+                {r?.toUpperCase()}
+              </option>
+            ))}
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active / Running</option>
+            <option value="off">Off / Stopped</option>
+            <option value="archive">Archive</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Loading Skeleton */}
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center p-12 space-y-3 bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <div className="w-8 h-8 border-2 border-[#017cb6] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400">Loading server fleet...</p>
+        </div>
       )}
 
-      {/* Servers Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {filteredServers.map((server) => {
-          const primaryV4 = server.networks?.v4?.find((v) => v.type === 'public')?.ip_address || server.networks?.v4?.[0]?.ip_address || 'No IPv4'
-          const isRunning = server.status === 'active'
+      {/* Empty State */}
+      {!isLoading && filteredServers.length === 0 && (
+        <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
+          <ServerIcon className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
+          <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No servers found</h3>
+          <p className="text-xs text-[#6c757d] dark:text-slate-400 max-w-sm mt-1 mb-4">
+            {searchTerm || regionFilter !== 'all' || statusFilter !== 'all'
+              ? 'Try adjusting your search criteria or filter options.'
+              : 'You do not have any virtual servers configured yet in this account.'}
+          </p>
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition"
+          >
+            Deploy New Server
+          </button>
+        </div>
+      )}
 
-          return (
-            <div
-              key={server.id}
-              onClick={() => onSelectServer(server)}
-              className="group bg-slate-900/70 hover:bg-slate-900 border border-slate-800/80 hover:border-sky-500/40 rounded-xl p-4 transition duration-150 cursor-pointer shadow-lg hover:shadow-sky-950/20 flex flex-col justify-between space-y-4"
-            >
-              {/* Top Row: Name, Status & Region */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-white group-hover:text-sky-300 transition">
-                      {server.name}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">#{server.id}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span className="font-mono text-slate-300 flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
-                      {primaryV4}
-                      <button
-                        onClick={(e) => handleCopyIp(primaryV4, e)}
-                        className="text-slate-500 hover:text-slate-300 p-0.5"
-                        title="Copy IP"
-                      >
-                        {copiedIp === primaryV4 ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      </button>
-                    </span>
-                    <span>•</span>
-                    <span className="text-[11px] text-slate-400 uppercase font-medium">
-                      {server.image?.distribution} {server.image?.name}
-                    </span>
-                  </div>
-                </div>
+      {/* View 1: Authentic PanelSite Table View */}
+      {!isLoading && filteredServers.length > 0 && viewMode === 'table' && (
+        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] text-[#495057] dark:text-[#ced4da] font-semibold">
+                <th className="py-2.5 px-4">Server</th>
+                <th className="py-2.5 px-4">Public IP</th>
+                <th className="py-2.5 px-4">Private IP / VPC</th>
+                <th className="py-2.5 px-4">Configuration</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+              {filteredServers.map((server) => {
+                const publicIps = (server.networks?.v4 || []).filter((n) => n.type === 'public')
+                const privateIps = (server.networks?.v4 || []).filter((n) => n.type === 'private')
+                const isRunning = server.status === 'active'
+                const ramGB = (server.memory / 1024).toFixed(0)
+                const distroIcon = logoForDistribution(server.image?.distribution)
 
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded bg-slate-800 text-slate-300 border border-slate-700">
-                    {server.region?.slug?.toUpperCase()}
-                  </span>
-                  <span
-                    className={`flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded-full ${
-                      isRunning
-                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
-                        : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
-                    }`}
+                return (
+                  <tr
+                    key={server.id}
+                    onClick={() => onSelectServer(server)}
+                    className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] cursor-pointer transition"
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
-                    {isRunning ? 'Running' : 'Stopped'}
-                  </span>
-                </div>
-              </div>
+                    {/* Server Name & Distro */}
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span>{server.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
+                        <img src={distroIcon} alt="" className="w-4 h-4 object-contain" />
+                        <span>{server.image?.full_name || server.image?.name || 'Linux'}</span>
+                      </div>
+                      {server.cancelled_at && (
+                        <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                          <ShieldAlert className="w-3 h-3" />
+                          <span>Cancelled</span>
+                        </div>
+                      )}
+                    </td>
 
-              {/* Middle Row: Specs Chips */}
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="flex items-center gap-2 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                  <Cpu className="w-3.5 h-3.5 text-sky-400" />
-                  <div>
-                    <div className="text-[10px] text-slate-500 font-medium">vCPU</div>
-                    <div className="text-slate-200 font-semibold">{server.vcpus || server.size?.vcpus || 1} Cores</div>
-                  </div>
-                </div>
+                    {/* Public IP */}
+                    <td className="py-3 px-4">
+                      {publicIps.length > 0 ? (
+                        publicIps.map((ip) => (
+                          <div key={ip.ip_address} className="flex items-center gap-1.5 group/ip mb-1">
+                            <span className="font-mono text-xs text-[#212529] dark:text-slate-200">
+                              {ip.ip_address}
+                            </span>
+                            <button
+                              onClick={(e) => handleCopyIp(ip.ip_address, e)}
+                              className="text-[#6c757d] hover:text-[#017cb6] p-0.5 transition"
+                              title="Copy IP"
+                            >
+                              {copiedIp === ip.ip_address ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[#6c757d] text-[11px]">None</span>
+                      )}
+                    </td>
 
-                <div className="flex items-center gap-2 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                  <Activity className="w-3.5 h-3.5 text-purple-400" />
-                  <div>
-                    <div className="text-[10px] text-slate-500 font-medium">Memory</div>
-                    <div className="text-slate-200 font-semibold">{Math.round((server.memory || server.size?.memory || 1024) / 1024)} GB</div>
-                  </div>
-                </div>
+                    {/* Private IP / VPC */}
+                    <td className="py-3 px-4">
+                      {privateIps.length > 0 ? (
+                        privateIps.map((ip) => (
+                          <div key={ip.ip_address} className="font-mono text-xs text-[#6c757d] dark:text-slate-300">
+                            {ip.ip_address}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[#6c757d] text-[11px]">None</span>
+                      )}
+                      {server.vpc_id && (
+                        <div className="text-[10px] text-[#017cb6] font-medium mt-0.5">
+                          VPC #{server.vpc_id}
+                        </div>
+                      )}
+                    </td>
 
-                <div className="flex items-center gap-2 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                  <HardDrive className="w-3.5 h-3.5 text-amber-400" />
-                  <div>
-                    <div className="text-[10px] text-slate-500 font-medium">Storage</div>
-                    <div className="text-slate-200 font-semibold">{server.disk || server.size?.disk || 20} GB</div>
-                  </div>
-                </div>
-              </div>
+                    {/* Configuration */}
+                    <td className="py-3 px-4">
+                      <div className="text-xs text-[#212529] dark:text-slate-200 font-medium">
+                        {server.vcpus} vCPU • {ramGB} GB RAM
+                      </div>
+                      <div className="text-[11px] text-[#6c757d] dark:text-slate-400">
+                        {server.disk} GB Disk • {server.region?.name || server.region?.slug?.toUpperCase()}
+                      </div>
+                    </td>
 
-              {/* Bottom Row: Quick Action Toolbar */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
-                <div className="flex items-center gap-1.5">
-                  {/* Terminal Launcher Buttons */}
-                  <button
-                    onClick={(e) => handleLaunchNativeSsh(primaryV4, e)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md transition"
-                    title="Launch in Native OS Terminal (Windows Terminal / iTerm2)"
-                  >
-                    <Terminal className="w-3 h-3 text-sky-400" />
-                    <span>SSH Terminal</span>
-                  </button>
+                    {/* Action Buttons */}
+                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {publicIps[0]?.ip_address && (
+                          <button
+                            onClick={(e) => handleLaunchNativeSsh(publicIps[0].ip_address, e)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-[#017cb6] hover:bg-[#016594] text-white rounded text-xs font-medium transition shadow-sm"
+                            title="Launch Native SSH"
+                          >
+                            <Terminal className="w-3 h-3" />
+                            <span>SSH</span>
+                          </button>
+                        )}
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onOpenTerminal(primaryV4)
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-md transition"
-                    title="Open Inline Embedded Terminal"
-                  >
-                    <span>Inline</span>
-                  </button>
-                </div>
+                        {actionInProgressServerId === server.id ? (
+                          <div className="p-1.5 flex items-center justify-center">
+                            <Loader2 className="w-3.5 h-3.5 text-[#017cb6] animate-spin" />
+                          </div>
+                        ) : isRunning ? (
+                          <>
+                            <button
+                              onClick={(e) => handleAction(server.id, 'reboot', e)}
+                              disabled={actionInProgressServerId !== null}
+                              className="p-1.5 text-[#6c757d] hover:text-amber-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.06] rounded transition disabled:opacity-30"
+                              title="Reboot"
+                            >
+                              <RotateCw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleAction(server.id, 'shutdown', e)}
+                              disabled={actionInProgressServerId !== null}
+                              className="p-1.5 text-[#6c757d] hover:text-rose-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.06] rounded transition disabled:opacity-30"
+                              title="Shutdown"
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => handleAction(server.id, 'power_on', e)}
+                            disabled={actionInProgressServerId !== null}
+                            className="flex items-center gap-1 px-2 py-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded text-xs transition hover:bg-emerald-500/20 disabled:opacity-30"
+                            title="Power On"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>On</span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                {/* Power Control Buttons */}
-                <div className="flex items-center gap-1">
-                  {isRunning ? (
-                    <>
-                      <button
-                        onClick={(e) => handleAction(server.id, 'reboot', e)}
-                        className="p-1.5 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded-md transition"
-                        title="Reboot Server"
-                      >
-                        <RotateCw className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => handleAction(server.id, 'shutdown', e)}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition"
-                        title="Graceful Shutdown"
-                      >
-                        <Power className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={(e) => handleAction(server.id, 'power_on', e)}
-                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-400 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-800/60 rounded-md transition"
-                      title="Power On Server"
+      {/* View 2: Grid Cards */}
+      {!isLoading && filteredServers.length > 0 && viewMode === 'grid' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredServers.map((server) => {
+            const primaryIp = server.networks?.v4?.find((n) => n.type === 'public')?.ip_address || server.networks?.v4?.[0]?.ip_address
+            const isRunning = server.status === 'active'
+            const distroIcon = logoForDistribution(server.image?.distribution)
+            const ramGB = (server.memory / 1024).toFixed(0)
+
+            return (
+              <div
+                key={server.id}
+                onClick={() => onSelectServer(server)}
+                className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 shadow-sm hover:border-[#017cb6] transition cursor-pointer flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <img src={distroIcon} alt="" className="w-5 h-5 object-contain" />
+                      <div>
+                        <h3 className="font-bold text-sm text-[#017cb6] hover:underline truncate max-w-[180px]">
+                          {server.name}
+                        </h3>
+                        <span className="text-[11px] text-[#6c757d] dark:text-slate-400 font-mono">
+                          #{server.id}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
+                        isRunning
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                      }`}
                     >
-                      <Play className="w-3 h-3 fill-emerald-400" />
-                      <span>Power On</span>
+                      {isRunning ? 'Running' : 'Stopped'}
+                    </span>
+                  </div>
+
+                  {/* Specs */}
+                  <div className="mt-3 py-2 border-t border-b border-[#ced4da]/60 dark:border-[#373b3e] grid grid-cols-3 gap-2 text-center text-xs">
+                    <div>
+                      <div className="text-[10px] text-[#6c757d] uppercase">CPU</div>
+                      <div className="font-semibold">{server.vcpus} vCPU</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[#6c757d] uppercase">RAM</div>
+                      <div className="font-semibold">{ramGB} GB</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-[#6c757d] uppercase">Disk</div>
+                      <div className="font-semibold">{server.disk} GB</div>
+                    </div>
+                  </div>
+
+                  {primaryIp && (
+                    <div className="mt-2 flex items-center justify-between text-xs font-mono text-[#6c757d] dark:text-slate-300">
+                      <span>{primaryIp}</span>
+                      <button
+                        onClick={(e) => handleCopyIp(primaryIp, e)}
+                        className="text-[#6c757d] hover:text-[#017cb6]"
+                      >
+                        {copiedIp === primaryIp ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-[#ced4da]/60 dark:border-[#373b3e] flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-[11px] text-[#6c757d] dark:text-slate-400">
+                    {server.region?.name || server.region?.slug?.toUpperCase()}
+                  </span>
+                  {primaryIp && (
+                    <button
+                      onClick={(e) => handleLaunchNativeSsh(primaryIp, e)}
+                      className="px-2.5 py-1 bg-[#017cb6] hover:bg-[#016594] text-white rounded text-xs font-medium transition flex items-center gap-1"
+                    >
+                      <Terminal className="w-3 h-3" />
+                      <span>SSH</span>
                     </button>
                   )}
                 </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
-      {/* Deploy Server Wizard Modal */}
+      {/* Create Server Modal */}
       <CreateServerModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         client={client}
+        onCreated={() => {
+          setIsCreateOpen(false)
+        }}
       />
     </div>
   )

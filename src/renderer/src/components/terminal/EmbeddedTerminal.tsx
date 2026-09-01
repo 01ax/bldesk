@@ -21,14 +21,15 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
 
   useEffect(() => {
     // Discover available local SSH keys
-    window.bldeskApi.getLocalSshKeys().then((keys) => {
-      setLocalKeys(keys)
-      // If there are keys with privateKeyPath, default to the first one
-      const defaultKey = keys.find((k) => k.privateKeyPath)
-      if (defaultKey?.privateKeyPath) {
-        setSelectedKeyPath(defaultKey.privateKeyPath)
-      }
-    })
+    if (window.bldeskApi?.getLocalSshKeys) {
+      window.bldeskApi.getLocalSshKeys().then((keys) => {
+        setLocalKeys(keys)
+        const defaultKey = keys.find((k) => k.privateKeyPath)
+        if (defaultKey?.privateKeyPath) {
+          setSelectedKeyPath(defaultKey.privateKeyPath)
+        }
+      })
+    }
 
     if (!terminalRef.current) return
 
@@ -37,10 +38,10 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
       fontFamily: 'Consolas, "Courier New", monospace',
       fontSize: 13,
       theme: {
-        background: '#020617', // slate-950
-        foreground: '#f8fafc',
-        cursor: '#38bdf8',
-        selectionBackground: '#0369a1'
+        background: '#212529',
+        foreground: '#f8f9fa',
+        cursor: '#f1ca00',
+        selectionBackground: '#017cb6'
       }
     })
 
@@ -49,9 +50,9 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
     term.open(terminalRef.current)
     fitAddon.fit()
 
-    term.writeln('\x1b[1;34m╔══════════════════════════════════════════════════════════════╗\x1b[0m')
-    term.writeln('\x1b[1;34m║\x1b[0m   \x1b[1;36mBLDesk Embedded SSH / Native Console Terminal\x1b[0m              \x1b[1;34m║\x1b[0m')
-    term.writeln('\x1b[1;34m╚══════════════════════════════════════════════════════════════╝\x1b[0m')
+    term.writeln('\x1b[1;36m╔══════════════════════════════════════════════════════════════╗\x1b[0m')
+    term.writeln('\x1b[1;36m║\x1b[0m   \x1b[1;33mBinaryLane Desktop (BLDesk) Terminal Client\x1b[0m                \x1b[1;36m║\x1b[0m')
+    term.writeln('\x1b[1;36m╚══════════════════════════════════════════════════════════════╝\x1b[0m')
     term.writeln('\x1b[90mSelect an SSH key, enter target host, and click Connect to launch.\x1b[0m\r\n')
 
     xtermInstance.current = term
@@ -66,21 +67,13 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
     }
   }, [])
 
-  const handleConnect = () => {
-    if (!hostInput.trim() || !xtermInstance.current) return
-    const term = xtermInstance.current
-    const keyLabel = localKeys.find((k) => k.privateKeyPath === selectedKeyPath)?.name || 'Default'
-    
-    term.writeln(`\r\n\x1b[33mConnecting to ${username}@${hostInput} (Key: ${keyLabel})...\x1b[0m`)
-
-    // Launch native terminal with specified key
-    window.bldeskApi.launchNativeTerminal({
+  const handleLaunchNative = () => {
+    if (!hostInput) return
+    window.bldeskApi?.launchNativeTerminal?.({
       host: hostInput,
-      username,
+      username: username || 'root',
       privateKeyPath: selectedKeyPath || undefined
     })
-    term.writeln(`\x1b[32m[OK] Spawned native SSH session with key "${keyLabel}".\x1b[0m`)
-    term.writeln(`\x1b[90mTip: Native Terminal session is running in your active OS console.\x1b[0m\r\n`)
   }
 
   const handleClear = () => {
@@ -88,71 +81,77 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-950 p-6 space-y-4">
-      {/* Top Toolbar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
+    <div className="h-full flex flex-col bg-[#212529] text-[#f8f9fa] overflow-hidden">
+      {/* Top Connection Bar */}
+      <div className="p-3 bg-white dark:bg-[#2b3035] border-b border-[#ced4da] dark:border-[#373b3e] flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
-            <TermIcon className="w-3.5 h-3.5 text-sky-400" />
-          </div>
-          <div>
-            <h2 className="text-xs font-semibold text-white">Terminal Session</h2>
-            <p className="text-[10px] text-slate-400">Integrated shell & direct SSH connector</p>
-          </div>
+          <TermIcon className="w-4 h-4 text-[#017cb6]" />
+          <span className="font-bold text-[#212529] dark:text-white">SSH Session</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* SSH Key Picker */}
-          <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 border border-slate-800 rounded-lg">
-            <Key className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+          {/* User Input */}
+          <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-2 py-1 rounded">
+            <span className="text-[#6c757d]">User:</span>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="bg-transparent text-[#212529] dark:text-white w-14 focus:outline-none font-mono"
+            />
+          </div>
+
+          {/* Host Input */}
+          <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-2 py-1 rounded">
+            <span className="text-[#6c757d]">Host:</span>
+            <input
+              type="text"
+              placeholder="e.g. 103.x.x.x"
+              value={hostInput}
+              onChange={(e) => setHostInput(e.target.value)}
+              className="bg-transparent text-[#212529] dark:text-white w-32 sm:w-44 focus:outline-none font-mono"
+            />
+          </div>
+
+          {/* SSH Key Selector */}
+          <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-2 py-1 rounded">
+            <Key className="w-3.5 h-3.5 text-[#f1ca00]" />
             <select
               value={selectedKeyPath}
               onChange={(e) => setSelectedKeyPath(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[140px]"
+              className="bg-transparent text-[#212529] dark:text-white focus:outline-none cursor-pointer max-w-[140px]"
             >
-              <option value="" className="bg-slate-900 text-slate-400">Default Key (~/.ssh/id_*)</option>
+              <option value="" className="bg-white dark:bg-[#2b3035]">Default (~/.ssh/id_*)</option>
               {localKeys.map((k) => (
-                <option key={k.name} value={k.privateKeyPath || ''} className="bg-slate-900 text-white">
-                  {k.name} {k.privateKeyPath ? '🔑' : '(pub only)'}
+                <option key={k.name} value={k.privateKeyPath || ''} className="bg-white dark:bg-[#2b3035]">
+                  {k.name} {k.privateKeyPath ? '🔑' : '(pub)'}
                 </option>
               ))}
             </select>
           </div>
 
-          <input
-            type="text"
-            placeholder="User (root)"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-20 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
-          />
-          <input
-            type="text"
-            placeholder="Host / IP Address"
-            value={hostInput}
-            onChange={(e) => setHostInput(e.target.value)}
-            className="w-40 px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:outline-none focus:border-sky-500"
-          />
           <button
-            onClick={handleConnect}
-            className="flex items-center gap-1 px-3 py-1 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 rounded-lg transition"
+            onClick={handleLaunchNative}
+            disabled={!hostInput}
+            className="flex items-center gap-1.5 px-3 py-1 bg-[#017cb6] hover:bg-[#016594] text-white rounded font-medium transition shadow-sm disabled:opacity-50"
           >
-            <Play className="w-3 h-3 fill-white" />
-            <span>Connect</span>
+            <Play className="w-3 h-3 fill-current" />
+            <span>Launch Native SSH</span>
           </button>
+
           <button
             onClick={handleClear}
-            className="p-1 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition"
-            title="Clear Terminal"
+            className="p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white rounded"
+            title="Clear Terminal Screen"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Terminal View Container */}
-      <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 overflow-hidden shadow-inner">
-        <div ref={terminalRef} className="h-full w-full"></div>
+      {/* Terminal Viewport */}
+      <div className="flex-1 p-3 bg-[#212529] overflow-hidden">
+        <div ref={terminalRef} className="h-full w-full" />
       </div>
     </div>
   )
