@@ -411,19 +411,39 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
           </button>
         </div>
       )}
-      {networks?.recent_ddos && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs rounded flex items-center gap-2"
-        >
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>
-            BinaryLane has flagged a <span className="font-semibold">recent DDoS attack</span> against this server. Check the email sent to
-            your account address for details.
-          </span>
+      {/* Top Status & DDoS Protection Overview */}
+      <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full ${networks?.recent_ddos ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+            <Shield className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-xs text-[#212529] dark:text-white">Edge DDoS Protection</span>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                networks?.recent_ddos
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${networks?.recent_ddos ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
+                {networks?.recent_ddos ? 'Active Attack Mitigation' : 'Active & Protected'}
+              </span>
+            </div>
+            <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
+              {networks?.recent_ddos
+                ? 'BinaryLane hardware edge filters recently intercepted and scrubbed volumetric attack traffic targeting this server.'
+                : 'Continuous hardware edge packet inspection and volumetric traffic scrubbing enabled.'}
+            </p>
+          </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-3 self-end sm:self-auto text-xs text-[#6c757d] dark:text-slate-400">
+          <div className="text-right">
+            <span className="text-[10px] block uppercase tracking-wider text-[#adb5bd] dark:text-slate-500">Primary MAC</span>
+            <span className="font-mono text-xs text-[#212529] dark:text-slate-200">{networks?.mac_address || '—'}</span>
+          </div>
+        </div>
+      </div>
 
       {/* 1. Interfaces */}
       <Card
