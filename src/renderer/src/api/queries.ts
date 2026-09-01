@@ -555,20 +555,49 @@ export function useServerSnapshots(client: BinaryLaneClient | null, serverId: nu
   })
 }
 
+export interface TakeBackupParams {
+  label?: string
+  backupType?: 'daily' | 'weekly' | 'monthly' | 'temporary'
+  replacementStrategy?: 'none' | 'specified' | 'oldest' | 'newest'
+  backupIdToReplace?: number
+}
+
 export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (label?: string) => {
+    mutationFn: async (params: string | TakeBackupParams | undefined) => {
       if (!client || !serverId) throw new Error('No client or serverId')
+
+      const p: TakeBackupParams = typeof params === 'string' ? { label: params } : params || {}
+      const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'none')
+      const backupType = replacementStrategy === 'specified' ? undefined : (p.backupType || 'temporary')
+
+      const body: any = {
+        type: 'take_backup',
+        replacement_strategy: replacementStrategy,
+        label: p.label || undefined
+      }
+
+      if (backupType) {
+        body.backup_type = backupType
+      }
+      if (p.backupIdToReplace) {
+        body.backup_id_to_replace = p.backupIdToReplace
+      }
+
       const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
-        body: {
-          type: 'take_backup',
-          replacement_strategy: 'none',
-          label: label || undefined
-        }
+        body
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error) {
+        const errorObj = error as any
+        const msg =
+          errorObj?.message ||
+          errorObj?.title ||
+          (errorObj?.errors && Object.values(errorObj.errors).flat().join(', ')) ||
+          JSON.stringify(error)
+        throw new Error(msg)
+      }
       return data?.action
     },
     onSuccess: () => {

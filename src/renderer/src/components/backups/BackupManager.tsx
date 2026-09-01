@@ -53,6 +53,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Form & Action states
   const [isTakingSnapshot, setIsTakingSnapshot] = useState(false)
   const [snapshotLabel, setSnapshotLabel] = useState('')
+  const [selectedSlot, setSelectedSlot] = useState('temporary')
   const [actionProcessingId, setActionProcessingId] = useState<number | null>(null)
 
   const backups = backupsQuery.data || []
@@ -66,14 +67,33 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     e.preventDefault()
     if (!activeServerId) return
 
+    let replacementStrategy: 'none' | 'specified' = 'none'
+    let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
+    let backupIdToReplace: number | undefined
+
+    if (selectedSlot.startsWith('replace:')) {
+      replacementStrategy = 'specified'
+      backupType = undefined
+      backupIdToReplace = Number(selectedSlot.split(':')[1])
+    } else {
+      backupType = (selectedSlot as any) || 'temporary'
+      replacementStrategy = 'none'
+    }
+
     try {
-      await takeBackupMutation.mutateAsync(snapshotLabel.trim() || undefined)
+      await takeBackupMutation.mutateAsync({
+        label: snapshotLabel.trim() || undefined,
+        backupType,
+        replacementStrategy,
+        backupIdToReplace
+      })
       window.bldeskApi?.sendNotification?.({
         title: 'Snapshot Initiated',
         body: `Snapshot creation started for server #${activeServerId}.`
       })
       setIsTakingSnapshot(false)
       setSnapshotLabel('')
+      setSelectedSlot('temporary')
     } catch (err: any) {
       alert(`Snapshot failed: ${err.message}`)
     }
@@ -347,7 +367,38 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
               <div>
                 <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Snapshot Name / Description
+                  Backup Slot / Retention
+                </label>
+                <select
+                  value={selectedSlot}
+                  onChange={(e) => setSelectedSlot(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                >
+                  <option value="temporary">Temporary Snapshot (Retained for up to 7 days)</option>
+                  {(activeServer?.selected_size_options?.daily_backups ?? 0) > 0 && (
+                    <option value="daily">Daily Backup Slot</option>
+                  )}
+                  {(activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 && (
+                    <option value="weekly">Weekly Backup Slot</option>
+                  )}
+                  {(activeServer?.selected_size_options?.monthly_backups ?? 0) > 0 && (
+                    <option value="monthly">Monthly Backup Slot</option>
+                  )}
+                  {allImages.length > 0 && (
+                    <optgroup label="Replace Existing Image">
+                      {allImages.map((img) => (
+                        <option key={img.id} value={`replace:${img.id}`}>
+                          Replace: {img.name} (#{img.id})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Snapshot Name / Description (Optional)
                 </label>
                 <input
                   type="text"
