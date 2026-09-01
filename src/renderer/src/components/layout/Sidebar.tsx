@@ -188,6 +188,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>Open mPanel Web</span>
                   <ExternalLink className="w-3 h-3 text-slate-400" />
                 </button>
+
+                <div className="flex items-center justify-between px-2 pt-1 text-[10px] text-slate-400">
+                  <span>BLDesk</span>
+                  <span className="font-mono text-slate-300">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.28'}</span>
+                </div>
               </>
             )}
           </div>
@@ -331,6 +336,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>Open mPanel Web</span>
                 <ExternalLink className="w-3 h-3 text-slate-400" />
               </button>
+              <div className="flex items-center justify-between px-2 pt-1 text-[10px] text-slate-400">
+                <span>BLDesk</span>
+                <span className="font-mono text-slate-300">v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.28'}</span>
+              </div>
             </div>
           </div>
         </div>
