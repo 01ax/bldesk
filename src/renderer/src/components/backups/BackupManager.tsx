@@ -8,7 +8,7 @@ import {
   Server,
   Disc,
   Clock,
-  
+  Download,
   X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -21,7 +21,8 @@ import {
   useRestoreBackupMutation,
   useToggleAutomatedBackupsMutation,
   useAttachBackupMutation,
-  useDetachBackupMutation
+  useDetachBackupMutation,
+  useImageDownloadMutation
 } from '../../api/queries'
 
 interface BackupManagerProps {
@@ -51,6 +52,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const toggleAutomatedBackups = useToggleAutomatedBackupsMutation(client, activeServerId)
   const attachBackupMutation = useAttachBackupMutation(client, activeServerId)
   const detachBackupMutation = useDetachBackupMutation(client, activeServerId)
+  const downloadMutation = useImageDownloadMutation(client)
 
   // Form & Action states
   const [isTakingSnapshot, setIsTakingSnapshot] = useState(false)
@@ -139,6 +141,24 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       alert(`Attach failed: ${err.message}`)
+    } finally {
+      setActionProcessingId(null)
+    }
+  }
+
+  // Download snapshot / backup disk image
+  const handleDownload = async (imageId: number, name: string) => {
+    if (!activeServerId) return
+    setActionProcessingId(imageId)
+    try {
+      const link = await downloadMutation.mutateAsync(imageId)
+      const downloadUrl = link?.disks?.[0]?.compressed_url || link?.disks?.[0]?.raw_url
+      if (!downloadUrl) {
+        throw new Error('No download URL returned for this image.')
+      }
+      window.open(downloadUrl, '_blank')
+    } catch (err: any) {
+      alert(`Download failed for "${name}": ${err.message}`)
     } finally {
       setActionProcessingId(null)
     }
@@ -356,20 +376,30 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          onClick={() => handleDownload(img.id, img.name)}
+                          disabled={isProcessing}
+                          className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition flex items-center gap-1"
+                          title="Download compressed disk image"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download</span>
+                        </button>
+                        <button
                           onClick={() => handleAttach(img.id, img.name)}
                           disabled={isProcessing}
-                          className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition"
+                          className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition flex items-center gap-1"
                           title="Mount as secondary drive to extract files"
                         >
-                          {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Mount'}
+                          {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDrive className="w-3 h-3" />}
+                          <span>Mount</span>
                         </button>
                         <button
                           onClick={() => handleRestore(img.id, img.name)}
                           disabled={isProcessing}
-                          className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded transition border border-rose-200 dark:border-rose-800"
+                          className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded transition border border-rose-200 dark:border-rose-800 flex items-center gap-1"
                           title="Restore server back to this point in time"
                         >
-                          <RotateCcw className="w-3 h-3 inline mr-1" />
+                          <RotateCcw className="w-3 h-3" />
                           <span>Restore</span>
                         </button>
                       </div>

@@ -627,6 +627,23 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
   })
 }
 
+export function useImageDownloadMutation(client: BinaryLaneClient | null) {
+  return useMutation({
+    mutationFn: async (imageId: number) => {
+      if (!client) throw new Error('No client')
+      const { data, error } = await client.GET('/v2/images/{image_id}/download', {
+        params: { path: { image_id: imageId } }
+      })
+      if (error) {
+        const errorObj = error as any
+        const msg = errorObj?.message || errorObj?.title || JSON.stringify(error)
+        throw new Error(msg)
+      }
+      return data?.link
+    }
+  })
+}
+
 export function useRestoreBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation({
