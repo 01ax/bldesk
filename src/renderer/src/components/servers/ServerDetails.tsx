@@ -25,6 +25,7 @@ import { BinaryLaneClient } from '../../api/client'
 import { LocalSshKey } from '@shared/ipc-types'
 import { FirewallManager } from '../firewall/FirewallManager'
 import { BackupManager } from '../backups/BackupManager'
+import { ServerNetwork } from './ServerNetwork'
 import {
   useServerMetrics,
   useServerConsole,
@@ -697,6 +698,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             <BackupManager client={client} initialServerId={server.id} />
           </div>
         )}
+
+        {/* NETWORK TAB */}
+        {activeSubTab === 'network' && <ServerNetwork client={client} server={server} />}
 
         {/* FIREWALL TAB */}
         {activeSubTab === 'firewall' && (
