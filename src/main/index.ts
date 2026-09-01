@@ -71,7 +71,16 @@ function getAppIcon(): NativeImage {
 }
 
 function getTrayIcon(): NativeImage {
-  const trayPath = getIconPath('tray.png')
+  const icoPath = getIconPath('icon.ico')
+  if (process.platform === 'win32' && existsSync(icoPath)) {
+    try {
+      const img = nativeImage.createFromPath(icoPath)
+      if (!img.isEmpty()) return img
+    } catch {
+      // fallback
+    }
+  }
+  const trayPath = getIconPath('tray-16.png')
   if (existsSync(trayPath)) {
     try {
       const img = nativeImage.createFromPath(trayPath)
@@ -119,6 +128,14 @@ function createWindow(): void {
       mainWindow.show()
       mainWindow.focus()
       mainWindow.webContents.invalidate()
+    }
+  })
+
+  // Fallback to ensure window is visible once loaded
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show()
+      mainWindow.focus()
     }
   })
 
