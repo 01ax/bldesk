@@ -21,6 +21,7 @@ import { FirewallManager } from '../firewall/FirewallManager'
 import { BackupManager } from '../backups/BackupManager'
 import { ServerNetwork } from './ServerNetwork'
 import { ServerSettings } from './ServerSettings'
+import { ServerUsage } from './ServerUsage'
 import {
   useServerMetrics,
   useServerConsole,
@@ -406,43 +407,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {/* USAGE & METRICS TAB */}
-        {activeSubTab === 'usage' && (
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
-              <h3 className="text-sm font-bold text-[#212529] dark:text-white mb-4 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-[#017cb6]" />
-                <span>Live CPU Utilization Breakdown</span>
-              </h3>
-              {sample?.cpu_usage_detailed && sample.cpu_usage_detailed.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {sample.cpu_usage_detailed.map((coreUsage: number, i: number) => (
-                    <div
-                      key={i}
-                      className="bg-[#f8f9fa] dark:bg-[#212529] p-3 rounded border border-[#ced4da] dark:border-[#373b3e]"
-                    >
-                      <div className="flex justify-between text-xs text-[#6c757d] mb-1">
-                        <span>vCPU #{i}</span>
-                        <span className="font-semibold text-[#212529] dark:text-white">
-                          {(coreUsage * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-[#ced4da] dark:bg-[#343a40] h-2 rounded-full overflow-hidden">
-                        <div
-                          className="bg-[#017cb6] h-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, coreUsage * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-xs text-[#6c757d] dark:text-slate-400 py-6 text-center">
-                  Live CPU metrics stream initializing...
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {activeSubTab === 'usage' && <ServerUsage client={client} server={server} />}
 
         {/* REMOTE ACCESS TAB */}
         {activeSubTab === 'remote-access' && (
