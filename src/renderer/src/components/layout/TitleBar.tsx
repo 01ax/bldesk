@@ -55,7 +55,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         <div className="flex items-center gap-2 font-bold tracking-wide text-sm">
           <img src={iconLogo} alt="BinaryLane" className="h-5 w-auto object-contain" />
-          <span><span className="text-[#f1ca00]">binary</span><span className="text-white">lane</span> <span className="text-xs font-normal text-slate-300/80 bg-black/25 px-1.5 py-0.5 rounded border border-white/10">BLDesk</span></span>
+          <span>
+            <span className="text-[#f1ca00]">binary</span>
+            <span className="text-white">lane</span>{' '}
+            <span className="text-xs font-normal text-slate-300/90 bg-black/30 px-1.5 py-0.5 rounded border border-white/10 font-mono">
+              BLDesk v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.28'}
+            </span>
+          </span>
         </div>
       </div>
 
@@ -86,7 +92,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       {/* Profile & Window Controls */}
       <div className="titlebar-no-drag flex items-center gap-2">
         {/* Version / Auto-update */}
-        <div className="hidden md:block">
+        <div className="flex items-center">
           <UpdateMenu />
         </div>
 
