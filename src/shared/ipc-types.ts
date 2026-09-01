@@ -61,6 +61,7 @@ export type UpdaterStatus =
   | 'available' // found, download starting
   | 'downloading'
   | 'ready' // downloaded; restart to install
+  | 'check-failed' // feed unreachable / no manifest published; version is unknown, not confirmed current
   | 'error'
 
 export interface UpdaterState {
