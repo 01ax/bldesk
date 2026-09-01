@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react'
 import {
   Loader2,
-  Calendar
+  Calendar,
+  Info
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useSampleSets } from '../../api/queries'
+import { useSampleSets, useServerMetrics } from '../../api/queries'
 
 type Server = components['schemas']['Server']
 type SampleSet = components['schemas']['SampleSet']
@@ -41,7 +42,7 @@ function pushSample(summary: MetricSummary, time: number, val: number) {
 }
 
 // Formatters
-const fmtPercent = (v: number) => `${Math.round(v)}%`
+const fmtPercent = (v: number) => `${(v).toFixed(1)}%`
 const fmtGB = (v: number) => `${(v).toFixed(2)} GB`
 const fmtKBpsOrMBps = (v: number) => {
   if (v >= 1024) {
@@ -83,8 +84,22 @@ const UsageSvgChart: React.FC<{
     return times
   }, [seriesList])
 
-  const minTime = allTimes.length > 0 ? Math.min(...allTimes) : Date.now() - 86400000
-  const maxTime = allTimes.length > 0 ? Math.max(...allTimes) : Date.now()
+  const now = Date.now()
+  const windowDurationMs = useMemo(() => {
+    switch (window) {
+      case 'Day':
+        return 24 * 60 * 60 * 1000
+      case 'Week':
+        return 7 * 24 * 60 * 60 * 1000
+      case 'Month':
+        return 30 * 24 * 60 * 60 * 1000
+      case 'Year':
+        return 365 * 24 * 60 * 60 * 1000
+    }
+  }, [window])
+
+  const minTime = allTimes.length > 1 ? Math.min(...allTimes) : now - windowDurationMs
+  const maxTime = allTimes.length > 1 ? Math.max(...allTimes) : now
   const timeSpan = maxTime - minTime || 1
 
   // Determine scaling
@@ -147,6 +162,8 @@ const UsageSvgChart: React.FC<{
     }
     return ticks
   }, [minTime, timeSpan, window])
+
+  const hasData = allTimes.length > 0
 
   return (
     <div className="bg-[#1e2227] text-slate-200 rounded-lg border border-[#373b3e] p-4 shadow-sm space-y-3">
@@ -250,7 +267,7 @@ const UsageSvgChart: React.FC<{
                   d={path}
                   fill="none"
                   stroke={s.color}
-                  strokeWidth="1.8"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -296,6 +313,13 @@ const UsageSvgChart: React.FC<{
           </tbody>
         </table>
       </div>
+
+      {!hasData && (
+        <div className="p-3 bg-[#262c33] rounded border border-[#373b3e] text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+          <Info className="w-4 h-4 text-[#017cb6]" />
+          <span>Collecting telemetry samples for this interval... Data updates every 30s.</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -303,15 +327,49 @@ const UsageSvgChart: React.FC<{
 export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
   const [activeWindow, setActiveWindow] = useState<TimeWindow>('Day')
 
-  const intervalMap: Record<TimeWindow, 'five-minute' | 'half-hour' | 'four-hour' | 'day'> = {
-    Day: 'five-minute',
-    Week: 'half-hour',
-    Month: 'four-hour',
-    Year: 'day'
-  }
+  const { interval, start, end } = useMemo(() => {
+    const now = new Date()
+    let startIso: string
+    let durationType: 'five-minute' | 'half-hour' | 'four-hour' | 'day'
 
-  const samplesQuery = useSampleSets(client, server.id, intervalMap[activeWindow])
-  const samples = (samplesQuery.data || []) as SampleSet[]
+    switch (activeWindow) {
+      case 'Day':
+        startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+        durationType = 'five-minute'
+        break
+      case 'Week':
+        startIso = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+        durationType = 'half-hour'
+        break
+      case 'Month':
+        startIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+        durationType = 'four-hour'
+        break
+      case 'Year':
+        startIso = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString()
+        durationType = 'day'
+        break
+    }
+    return { interval: durationType, start: startIso, end: now.toISOString() }
+  }, [activeWindow])
+
+  const samplesQuery = useSampleSets(client, server.id, interval, start, end)
+  const latestMetricsQuery = useServerMetrics(client, server.id)
+
+  const samples = useMemo(() => {
+    const historical = (samplesQuery.data || []) as SampleSet[]
+    if (latestMetricsQuery.data) {
+      const latest = latestMetricsQuery.data
+      const latestTime = latest.period?.start ? new Date(latest.period.start).getTime() : Date.now()
+      const alreadyHas = historical.some((h) => new Date(h.period?.start).getTime() === latestTime)
+      if (!alreadyHas) {
+        return [...historical, latest].sort(
+          (a, b) => new Date(a.period.start).getTime() - new Date(b.period.start).getTime()
+        )
+      }
+    }
+    return historical
+  }, [samplesQuery.data, latestMetricsQuery.data])
 
   // Compute metric series
   const metricSummaries = useMemo(() => {
@@ -329,9 +387,9 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
     const networkOut = emptySummary()
 
     samples.forEach((sample) => {
-      const time = new Date(sample.period.start).getTime()
+      const time = new Date(sample.period?.start || Date.now()).getTime()
 
-      // CPU
+      // CPU Percentage (0-100)
       if (sample.average?.cpu_usage_percent !== undefined) {
         pushSample(cpuOverall, time, sample.average.cpu_usage_percent)
       }
@@ -343,13 +401,13 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
       }
 
       // Memory (bytes -> GB)
-      if (sample.average?.memory_usage_bytes) {
+      if (sample.average?.memory_usage_bytes !== undefined) {
         const memGB = sample.average.memory_usage_bytes / (1024 * 1024 * 1024)
         pushSample(memory, time, memGB)
       }
 
       // Disk Storage (MB -> GB)
-      if (sample.average?.storage_usage_megabytes) {
+      if (sample.average?.storage_usage_megabytes !== undefined) {
         const diskGB = sample.average.storage_usage_megabytes / 1024
         pushSample(diskUsage, time, diskGB)
       }
