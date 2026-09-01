@@ -54,6 +54,16 @@ function MainDashboard() {
 
   const refreshProfiles = async () => {
     if (!window.bldeskApi) {
+      // If outside Electron (mobile/web), dynamically load and initialize mobile bridge
+      try {
+        const { initMobileBridge } = await import('./api/mobile-bridge')
+        await initMobileBridge()
+      } catch (e) {
+        console.warn('[App] Mobile bridge init warning:', e)
+      }
+    }
+
+    if (!window.bldeskApi) {
       setIsInitializing(false)
       return
     }
