@@ -422,6 +422,36 @@ export function useHistoricalMetrics(client: BinaryLaneClient | null, serverId: 
   })
 }
 
+export function useSampleSets(
+  client: BinaryLaneClient | null,
+  serverId: number | undefined,
+  interval: 'five-minute' | 'half-hour' | 'four-hour' | 'day' | 'week' | 'month' = 'five-minute',
+  start?: string,
+  end?: string
+) {
+  return useQuery({
+    queryKey: ['sample-sets', serverId, interval, start, end],
+    queryFn: async () => {
+      if (!client || !serverId) return []
+      const { data, error } = await client.GET('/v2/samplesets/{server_id}', {
+        params: {
+          path: { server_id: serverId },
+          query: {
+            data_interval: interval,
+            start,
+            end,
+            per_page: 300
+          }
+        }
+      })
+      if (error) return []
+      return data?.sample_sets || []
+    },
+    enabled: !!client && !!serverId,
+    refetchInterval: interval === 'five-minute' ? 30000 : 120000
+  })
+}
+
 export function useCreateServerMutation(client: BinaryLaneClient | null) {
   const queryClient = useQueryClient()
   return useMutation({

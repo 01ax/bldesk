@@ -1,0 +1,557 @@
+import React, { useState, useMemo } from 'react'
+import {
+  Loader2,
+  Calendar
+} from 'lucide-react'
+import { components } from '@shared/api/schema'
+import { BinaryLaneClient } from '../../api/client'
+import { useSampleSets } from '../../api/queries'
+
+type Server = components['schemas']['Server']
+type SampleSet = components['schemas']['SampleSet']
+
+interface ServerUsageProps {
+  client: BinaryLaneClient | null
+  server: Server
+}
+
+type TimeWindow = 'Day' | 'Week' | 'Month' | 'Year'
+
+interface DataPoint {
+  time: number
+  value: number
+}
+
+interface MetricSummary {
+  data: DataPoint[]
+  avg: number
+  max: number
+  current: number
+}
+
+function emptySummary(): MetricSummary {
+  return { data: [], avg: 0, max: 0, current: 0 }
+}
+
+function pushSample(summary: MetricSummary, time: number, val: number) {
+  summary.avg = summary.data.length === 0 ? val : (summary.avg * summary.data.length + val) / (summary.data.length + 1)
+  summary.max = Math.max(summary.max, val)
+  summary.current = val
+  summary.data.push({ time, value: val })
+}
+
+// Formatters
+const fmtPercent = (v: number) => `${Math.round(v)}%`
+const fmtGB = (v: number) => `${(v).toFixed(2)} GB`
+const fmtKBpsOrMBps = (v: number) => {
+  if (v >= 1024) {
+    return `${(v / 1024).toFixed(2)} MBps`
+  }
+  return `${v.toFixed(2)} KBps`
+}
+const fmtRps = (v: number) => `${Math.round(v)} rps`
+
+interface ChartSeries {
+  name: string
+  color: string
+  summary: MetricSummary
+  formatter: (v: number) => string
+  maxScale?: number
+  isSecondaryAxis?: boolean
+}
+
+// High-fidelity SVG Multi-Series Line Chart
+const UsageSvgChart: React.FC<{
+  title: string
+  subtitle: string
+  seriesList: ChartSeries[]
+  window: TimeWindow
+  primaryMax?: number
+  secondaryMax?: number
+  secondaryLabel?: string
+}> = ({ title, subtitle, seriesList, window, primaryMax, secondaryMax, secondaryLabel }) => {
+  const width = 800
+  const height = 220
+  const padding = { top: 20, right: 55, bottom: 30, left: 55 }
+  const chartW = width - padding.left - padding.right
+  const chartH = height - padding.top - padding.bottom
+
+  // Determine time bounds
+  const allTimes = useMemo(() => {
+    const times: number[] = []
+    seriesList.forEach((s) => s.summary.data.forEach((d) => times.push(d.time)))
+    return times
+  }, [seriesList])
+
+  const minTime = allTimes.length > 0 ? Math.min(...allTimes) : Date.now() - 86400000
+  const maxTime = allTimes.length > 0 ? Math.max(...allTimes) : Date.now()
+  const timeSpan = maxTime - minTime || 1
+
+  // Determine scaling
+  const effectivePrimaryMax = useMemo(() => {
+    if (primaryMax !== undefined) return primaryMax
+    const primaryMaxVal = Math.max(
+      ...seriesList.filter((s) => !s.isSecondaryAxis).map((s) => s.summary.max),
+      1
+    )
+    return primaryMaxVal <= 100 ? 100 : Math.ceil(primaryMaxVal * 1.15)
+  }, [seriesList, primaryMax])
+
+  const effectiveSecondaryMax = useMemo(() => {
+    if (secondaryMax !== undefined) return secondaryMax
+    const secMaxVal = Math.max(
+      ...seriesList.filter((s) => s.isSecondaryAxis).map((s) => s.summary.max),
+      1
+    )
+    return Math.ceil(secMaxVal * 1.15) || 10
+  }, [seriesList, secondaryMax])
+
+  // X Coordinate calculation
+  const getX = (t: number) => padding.left + ((t - minTime) / timeSpan) * chartW
+
+  // Y Coordinate calculation
+  const getY = (val: number, isSec: boolean) => {
+    const maxVal = isSec ? effectiveSecondaryMax : effectivePrimaryMax
+    const clamped = Math.max(0, Math.min(val, maxVal))
+    return padding.top + chartH - (clamped / (maxVal || 1)) * chartH
+  }
+
+  // Generate SVG Path
+  const generatePath = (points: DataPoint[], isSec: boolean) => {
+    if (!points || points.length === 0) return ''
+    return points
+      .map((p, i) => {
+        const x = getX(p.time)
+        const y = getY(p.value, isSec)
+        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+      })
+      .join(' ')
+  }
+
+  // Time grid ticks
+  const timeTicks = useMemo(() => {
+    const count = 6
+    const ticks: { time: number; label: string }[] = []
+    for (let i = 0; i <= count; i++) {
+      const t = minTime + (timeSpan * i) / count
+      const d = new Date(t)
+      let label = ''
+      if (window === 'Day') {
+        label = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      } else if (window === 'Week') {
+        label = d.toLocaleDateString([], { weekday: 'short', hour: 'numeric' })
+      } else {
+        label = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      }
+      ticks.push({ time: t, label })
+    }
+    return ticks
+  }, [minTime, timeSpan, window])
+
+  return (
+    <div className="bg-[#1e2227] text-slate-200 rounded-lg border border-[#373b3e] p-4 shadow-sm space-y-3">
+      {/* Header Info */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-[#373b3e]/80 pb-2.5">
+        <div>
+          <h4 className="font-semibold text-xs text-white flex items-center gap-2">{title}</h4>
+          <span className="text-[11px] text-slate-400 font-mono">{subtitle}</span>
+        </div>
+        <span className="text-[10px] text-slate-400 self-end sm:self-auto font-mono">
+          {window === 'Day'
+            ? '5 minute average'
+            : window === 'Week'
+              ? '30 minute average'
+              : window === 'Month'
+                ? '4 hour average'
+                : '24 hour average'}
+        </span>
+      </div>
+
+      {/* SVG Canvas Area */}
+      <div className="relative w-full overflow-hidden">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto select-none" style={{ maxHeight: 260 }}>
+          {/* Background Grid Lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
+            const y = padding.top + chartH * pct
+            return (
+              <g key={i}>
+                <line
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke="#373b3e"
+                  strokeWidth="1"
+                  strokeDasharray={pct === 1 ? 'none' : '2,2'}
+                />
+                {/* Left Y Axis Labels */}
+                <text
+                  x={padding.left - 8}
+                  y={y + 3}
+                  textAnchor="end"
+                  fill="#94a3b8"
+                  fontSize="9"
+                  fontFamily="monospace"
+                >
+                  {Math.round(effectivePrimaryMax * (1 - pct))}%
+                </text>
+                {/* Right Y Axis Labels (if secondary active) */}
+                {secondaryLabel && (
+                  <text
+                    x={width - padding.right + 8}
+                    y={y + 3}
+                    textAnchor="start"
+                    fill="#38bdf8"
+                    fontSize="9"
+                    fontFamily="monospace"
+                  >
+                    {(effectiveSecondaryMax * (1 - pct)).toFixed(0)} GB
+                  </text>
+                )}
+              </g>
+            )
+          })}
+
+          {/* Time Ticks */}
+          {timeTicks.map((tick, i) => {
+            const x = getX(tick.time)
+            return (
+              <g key={i}>
+                <line
+                  x1={x}
+                  y1={padding.top}
+                  x2={x}
+                  y2={padding.top + chartH}
+                  stroke="#373b3e"
+                  strokeWidth="0.5"
+                  strokeDasharray="2,2"
+                />
+                <text
+                  x={x}
+                  y={height - 8}
+                  textAnchor="middle"
+                  fill="#94a3b8"
+                  fontSize="9"
+                  fontFamily="sans-serif"
+                >
+                  {tick.label}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Plotted Series Lines */}
+          {seriesList.map((s, idx) => {
+            const path = generatePath(s.summary.data, !!s.isSecondaryAxis)
+            if (!path) return null
+            return (
+              <g key={idx}>
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+
+      {/* Interactive Legend */}
+      <div className="flex flex-wrap items-center justify-center gap-4 pt-1">
+        {seriesList.map((s, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-xs">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: s.color }} />
+            <span className="text-slate-300 text-[11px] font-medium">{s.name}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary Statistics Table */}
+      <div className="overflow-x-auto border-t border-[#373b3e]/80 pt-3">
+        <table className="w-full text-left text-xs border-collapse font-sans">
+          <thead>
+            <tr className="text-slate-400 border-b border-[#373b3e]/60 text-[11px]">
+              <th className="py-1 px-3 font-medium">Metric</th>
+              <th className="py-1 px-3 font-medium">Average</th>
+              <th className="py-1 px-3 font-medium">Maximum</th>
+              <th className="py-1 px-3 font-medium">Current</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#373b3e]/40 font-mono text-[11px]">
+            {seriesList.map((s, i) => (
+              <tr key={i} className="hover:bg-[#262c33] transition">
+                <td className="py-1.5 px-3 font-sans text-slate-200 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span>{s.name}</span>
+                </td>
+                <td className="py-1.5 px-3 text-slate-300">{s.formatter(s.summary.avg)}</td>
+                <td className="py-1.5 px-3 text-slate-300">{s.formatter(s.summary.max)}</td>
+                <td className="py-1.5 px-3 text-slate-200 font-semibold">{s.formatter(s.summary.current)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
+  const [activeWindow, setActiveWindow] = useState<TimeWindow>('Day')
+
+  const intervalMap: Record<TimeWindow, 'five-minute' | 'half-hour' | 'four-hour' | 'day'> = {
+    Day: 'five-minute',
+    Week: 'half-hour',
+    Month: 'four-hour',
+    Year: 'day'
+  }
+
+  const samplesQuery = useSampleSets(client, server.id, intervalMap[activeWindow])
+  const samples = (samplesQuery.data || []) as SampleSet[]
+
+  // Compute metric series
+  const metricSummaries = useMemo(() => {
+    const cpuOverall = emptySummary()
+    const cpuCores: MetricSummary[] = []
+    const memory = emptySummary()
+    const diskUsage = emptySummary()
+    const diskActivity = emptySummary()
+    const diskRead = emptySummary()
+    const diskWrite = emptySummary()
+    const diskReadOps = emptySummary()
+    const diskWriteOps = emptySummary()
+    const networkActivity = emptySummary()
+    const networkIn = emptySummary()
+    const networkOut = emptySummary()
+
+    samples.forEach((sample) => {
+      const time = new Date(sample.period.start).getTime()
+
+      // CPU
+      if (sample.average?.cpu_usage_percent !== undefined) {
+        pushSample(cpuOverall, time, sample.average.cpu_usage_percent)
+      }
+      if (sample.average?.cpu_usage_detailed) {
+        sample.average.cpu_usage_detailed.forEach((val, idx) => {
+          if (!cpuCores[idx]) cpuCores[idx] = emptySummary()
+          pushSample(cpuCores[idx], time, val)
+        })
+      }
+
+      // Memory (bytes -> GB)
+      if (sample.average?.memory_usage_bytes) {
+        const memGB = sample.average.memory_usage_bytes / (1024 * 1024 * 1024)
+        pushSample(memory, time, memGB)
+      }
+
+      // Disk Storage (MB -> GB)
+      if (sample.average?.storage_usage_megabytes) {
+        const diskGB = sample.average.storage_usage_megabytes / 1024
+        pushSample(diskUsage, time, diskGB)
+      }
+
+      // Disk Rates
+      const readRate = sample.average?.storage_read_kbps || 0
+      const writeRate = sample.average?.storage_write_kbps || 0
+      pushSample(diskRead, time, readRate)
+      pushSample(diskWrite, time, writeRate)
+      pushSample(diskActivity, time, readRate + writeRate)
+
+      // Disk IOPS
+      pushSample(diskReadOps, time, sample.average?.storage_read_requests_per_second || 0)
+      pushSample(diskWriteOps, time, sample.average?.storage_write_requests_per_second || 0)
+
+      // Network Rates
+      const netIn = sample.average?.network_incoming_kbps || 0
+      const netOut = sample.average?.network_outgoing_kbps || 0
+      pushSample(networkIn, time, netIn)
+      pushSample(networkOut, time, netOut)
+      pushSample(networkActivity, time, netIn + netOut)
+    })
+
+    return {
+      cpuOverall,
+      cpuCores,
+      memory,
+      diskUsage,
+      diskActivity,
+      diskRead,
+      diskWrite,
+      diskReadOps,
+      diskWriteOps,
+      networkActivity,
+      networkIn,
+      networkOut
+    }
+  }, [samples])
+
+  const timeTabs: TimeWindow[] = ['Day', 'Week', 'Month', 'Year']
+
+  // 1. Activity Overview Series List
+  const activitySeriesList: ChartSeries[] = [
+    {
+      name: 'CPU Usage',
+      color: '#48bb78',
+      summary: metricSummaries.cpuOverall,
+      formatter: fmtPercent
+    },
+    {
+      name: 'Memory Usage',
+      color: '#ecc94b',
+      summary: metricSummaries.memory,
+      formatter: fmtGB,
+      isSecondaryAxis: true
+    },
+    {
+      name: 'Disk Usage',
+      color: '#38bdf8',
+      summary: metricSummaries.diskUsage,
+      formatter: fmtGB,
+      isSecondaryAxis: true
+    },
+    {
+      name: 'Network Activity',
+      color: '#ed8936',
+      summary: metricSummaries.networkActivity,
+      formatter: fmtKBpsOrMBps
+    },
+    {
+      name: 'Disk Activity',
+      color: '#f56565',
+      summary: metricSummaries.diskActivity,
+      formatter: fmtKBpsOrMBps
+    }
+  ]
+
+  // 2. CPU Detail Series List
+  const cpuDetailSeriesList: ChartSeries[] = metricSummaries.cpuCores.map((core, i) => ({
+    name: `CPU ${i + 1}`,
+    color: ['#48bb78', '#38bdf8', '#ecc94b', '#ed8936', '#9f7aea', '#f56565'][i % 6],
+    summary: core,
+    formatter: fmtPercent
+  }))
+
+  // 3. Network Detail Series List
+  const networkSeriesList: ChartSeries[] = [
+    {
+      name: 'Network In',
+      color: '#38bdf8',
+      summary: metricSummaries.networkIn,
+      formatter: fmtKBpsOrMBps
+    },
+    {
+      name: 'Network Out',
+      color: '#ed8936',
+      summary: metricSummaries.networkOut,
+      formatter: fmtKBpsOrMBps
+    }
+  ]
+
+  // 4. Disk Detail Series List
+  const diskSeriesList: ChartSeries[] = [
+    {
+      name: 'Disk Read Rate',
+      color: '#38bdf8',
+      summary: metricSummaries.diskRead,
+      formatter: fmtKBpsOrMBps
+    },
+    {
+      name: 'Disk Write Rate',
+      color: '#f56565',
+      summary: metricSummaries.diskWrite,
+      formatter: fmtKBpsOrMBps
+    },
+    {
+      name: 'Read IOPS',
+      color: '#48bb78',
+      summary: metricSummaries.diskReadOps,
+      formatter: fmtRps
+    },
+    {
+      name: 'Write IOPS',
+      color: '#ecc94b',
+      summary: metricSummaries.diskWriteOps,
+      formatter: fmtRps
+    }
+  ]
+
+  return (
+    <div className="space-y-5 select-text">
+      {/* Time Range Selector Tabs */}
+      <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-2">
+        <div className="flex items-center gap-1.5">
+          {timeTabs.map((w) => {
+            const isActive = activeWindow === w
+            return (
+              <button
+                key={w}
+                onClick={() => setActiveWindow(w)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                  isActive
+                    ? 'bg-[#017cb6] text-white shadow-sm'
+                    : 'text-[#6c757d] dark:text-slate-400 hover:text-[#212529] dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {w}
+              </button>
+            )
+          })}
+        </div>
+
+        {samplesQuery.isFetching && (
+          <div className="flex items-center gap-1.5 text-xs text-[#6c757d] dark:text-slate-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#017cb6]" />
+            <span>Updating graphs...</span>
+          </div>
+        )}
+      </div>
+
+      {/* 1. Activity Overview */}
+      <UsageSvgChart
+        title="Activity Overview"
+        subtitle={server.name}
+        seriesList={activitySeriesList}
+        window={activeWindow}
+        primaryMax={100}
+        secondaryLabel="Capacity"
+      />
+
+      {/* 2. CPU Detail */}
+      {cpuDetailSeriesList.length > 0 && (
+        <UsageSvgChart
+          title="CPU Core Breakdown"
+          subtitle={`${server.name} (${server.vcpus} vCPUs)`}
+          seriesList={cpuDetailSeriesList}
+          window={activeWindow}
+          primaryMax={100}
+        />
+      )}
+
+      {/* 3. Network Detail */}
+      <UsageSvgChart
+        title="Network Throughput"
+        subtitle={`${server.name} (${server.networks?.v4?.[0]?.ip_address || 'Interfaces'})`}
+        seriesList={networkSeriesList}
+        window={activeWindow}
+      />
+
+      {/* 4. Disk I/O Detail */}
+      <UsageSvgChart
+        title="Storage I/O & Throughput"
+        subtitle={`${server.name} (${server.disk} GB Storage)`}
+        seriesList={diskSeriesList}
+        window={activeWindow}
+      />
+
+      {/* Footer Timestamp */}
+      <div className="text-[11px] text-[#6c757d] dark:text-slate-500 text-center py-2 flex items-center justify-center gap-1.5">
+        <Calendar className="w-3.5 h-3.5" />
+        <span>As at {new Date().toLocaleString()} (Auto-refreshed from BinaryLane telemetry)</span>
+      </div>
+    </div>
+  )
+}
