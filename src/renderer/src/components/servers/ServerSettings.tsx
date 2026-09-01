@@ -13,7 +13,8 @@ import {
   RotateCw,
   Trash2,
   Plus,
-  ArrowRightLeft
+  ArrowRightLeft,
+  ChevronDown
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -342,8 +343,30 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
         </div>
       )}
 
-      {/* Sub-tab Navigation Header */}
-      <div className="flex items-center gap-1 border-b border-[#ced4da] dark:border-[#373b3e] overflow-x-auto pb-0">
+      {/* Mobile Sub-tab Dropdown Selector (Android & Mobile Viewports) */}
+      <div className="md:hidden">
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#6c757d] dark:text-slate-400 mb-1.5">
+          Settings Section
+        </label>
+        <div className="relative">
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value as SettingsTab)}
+            aria-label="Settings section"
+            className="w-full py-2.5 pl-3 pr-9 text-xs font-semibold bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm text-[#017cb6] dark:text-[#5bc0de] focus:outline-none focus:border-[#017cb6] appearance-none cursor-pointer"
+          >
+            {navTabs.map((tab) => (
+              <option key={tab.id} value={tab.id} className="text-[#212529] dark:text-white bg-white dark:bg-[#212529]">
+                {tab.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="w-4 h-4 text-[#6c757d] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Desktop Sub-tab Navigation Header */}
+      <div className="hidden md:flex items-center gap-1 border-b border-[#ced4da] dark:border-[#373b3e] overflow-x-auto pb-0">
         {navTabs.map((tab) => {
           const isActive = activeTab === tab.id
           return (
