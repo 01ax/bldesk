@@ -15,6 +15,7 @@ import { FirewallManager } from './components/firewall/FirewallManager'
 import { LoadBalancerManager } from './components/loadbalancers/LoadBalancerManager'
 import { BackupManager } from './components/backups/BackupManager'
 import { BillingOverview } from './components/billing/BillingOverview'
+import { AccountOverview } from './components/account/AccountOverview'
 import { useServers } from './api/queries'
 import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
@@ -262,6 +263,10 @@ function MainDashboard() {
 
           {activeTab === 'billing' && (
             <BillingOverview client={client} />
+          )}
+
+          {activeTab === 'account' && (
+            <AccountOverview client={client} />
           )}
         </main>
       </div>
