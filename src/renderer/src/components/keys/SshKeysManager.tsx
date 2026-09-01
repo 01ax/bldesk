@@ -147,7 +147,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       )}
 
       {/* Cloud SSH Keys Table */}
-      <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex-shrink-0">
         <div className="p-3 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] font-semibold text-xs text-[#495057] dark:text-[#ced4da]">
           Account SSH Keys ({keys.length})
         </div>

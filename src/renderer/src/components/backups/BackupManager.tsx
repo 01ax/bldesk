@@ -230,7 +230,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       )}
 
       {/* Snapshots & Backups List */}
-      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col flex-1">
+      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col flex-shrink-0">
         <div className="p-3.5 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
           <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
             <HardDrive className="w-4 h-4 text-[#017cb6]" />
