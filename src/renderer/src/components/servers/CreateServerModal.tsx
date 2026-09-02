@@ -226,12 +226,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const loading = sizesQuery.isLoading || imagesQuery.isLoading || regionsQuery.isLoading
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+    /* The dialog owns a fixed frame and only its body scrolls. A sticky header
+       inside a scrolling wrapper leaves a gap above itself — the wrapper own
+       padding — that content slides through on the way past. */
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-5xl my-6 bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl"
+        className="w-full max-w-5xl max-h-[calc(100vh-2rem)] flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
       >
-        <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] sticky top-0 bg-white dark:bg-[#2b3035] rounded-t-lg z-10">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add a Cloud Server</h3>
           <button type="button" onClick={onClose} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition">
             <X className="w-4 h-4" />
@@ -243,7 +246,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
             <Loader2 className="w-4 h-4 animate-spin" /> Loading plans and images...
           </div>
         ) : (
-          <div className="p-4 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
             {/* ---------- 1. location and operating system ---------- */}
             <Section step={1} title="Select your location and operating system">
               <TileRow>
@@ -254,13 +257,13 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 ))}
               </TileRow>
 
-              <TileRow className="mt-3">
+              <TileRow className="mt-3.5">
                 {distros.map((d) => (
-                  <Tile key={d} selected={distro === d} onClick={() => setDistro(d)} className="flex-col gap-1.5 py-2.5 px-4">
+                  <Tile key={d} selected={distro === d} onClick={() => setDistro(d)} className="flex-col gap-2 py-3 px-5 min-w-[104px]">
                     <img
                       src={logoForDistribution(d)}
                       alt=""
-                      className={`w-7 h-7 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
+                      className={`w-11 h-11 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
                     />
                     <span>{d}</span>
                   </Tile>
@@ -269,7 +272,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
               {versions.length > 0 && (
                 <>
-                  <div className="text-xs font-semibold text-[#212529] dark:text-white mt-3 mb-1.5">Select Version</div>
+                  <div className="text-sm font-semibold text-[#212529] dark:text-white mt-4 mb-2">Select Version</div>
                   <TileRow>
                     {versions.map((v) => (
                       <Tile key={v.slug} selected={image?.slug === v.slug} onClick={() => setImageSlug(v.slug || null)}>
@@ -598,7 +601,7 @@ const Tile: React.FC<{
     type="button"
     disabled={disabled}
     onClick={onClick}
-    className={`flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded border transition ${
+    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded border transition ${
       selected
         ? 'bg-[#6c757d] text-white border-[#6c757d]'
         : 'bg-[#f8f9fa] dark:bg-[#212529] text-[#495057] dark:text-[#adb5bd] border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6]'
@@ -684,7 +687,7 @@ const AddSshKeyDialog: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
         <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add SSH Key</h3>
