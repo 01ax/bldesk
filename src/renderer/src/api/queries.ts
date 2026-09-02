@@ -117,7 +117,9 @@ export function useServerActionMutation(client: BinaryLaneClient | null) {
         params: { path: { server_id: serverId } },
         body: actionPayload
       })
-      if (error) throw new Error(JSON.stringify(error))
+      // describeApiError rather than JSON.stringify: the raw body was being shown
+      // to users verbatim in an alert().
+      if (error) throw new Error(describeApiError(error))
       return data?.action
     },
     onSuccess: (_, variables) => {
@@ -793,6 +795,117 @@ const isTimeoutError = (err: unknown): boolean =>
   err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
 
 /**
+ * How an action finished, from the client's point of view.
+ *
+ * `awaiting-interaction` is a first-class outcome rather than a flavour of
+ * "still running", because BinaryLane has no status for it: a paused action
+ * reports `in-progress` forever and only a non-null `user_interaction_required`
+ * gives it away. Anything that treats it as "keep waiting" burns its whole
+ * timeout and then blames the server for being slow.
+ */
+export type SettledAction =
+  | { state: 'completed'; action: ServerAction }
+  | { state: 'errored'; action: ServerAction }
+  | { state: 'awaiting-interaction'; action: ServerAction }
+  | { state: 'timed-out'; action: ServerAction | null }
+
+export interface PollActionOptions {
+  /** The just-submitted action, if the caller already has it. Saves a first poll. */
+  initial?: ServerAction
+  /**
+   * Overall budget. `null` means no deadline, for background tracking of things
+   * like a rebuild or a region migration that legitimately run for minutes —
+   * any fixed cap short enough to suit a power cycle will misreport those.
+   */
+  timeoutMs?: number | null
+  /** Cadence, or a function of elapsed time so long waits can ease off. */
+  intervalMs?: number | ((elapsedMs: number) => number)
+  /** Lets a tracker drop an action on profile switch or teardown. */
+  signal?: AbortSignal
+  /** Fires on every fresh snapshot, for progress display. */
+  onProgress?: (action: ServerAction) => void
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/** Classify a snapshot, or null if it is genuinely still working. */
+function classifyAction(action: ServerAction): SettledAction | null {
+  // Checked before status on purpose: a paused action still says `in-progress`.
+  if (action.user_interaction_required) return { state: 'awaiting-interaction', action }
+  if (action.status === 'completed') return { state: 'completed', action }
+  if (action.status === 'errored') return { state: 'errored', action }
+  return null
+}
+
+/**
+ * Poll one action until it settles. The single place this repeat-until-done
+ * logic lives — both the blocking network mutation and background tracking use
+ * it, so the per-request cap, the tolerance for one slow poll, and the
+ * paused-for-operator check cannot drift apart between them.
+ *
+ * Lifecycle outcomes are returned. A genuine API failure throws, because that
+ * is a different kind of event from "the action finished badly".
+ */
+export async function pollActionToSettled(
+  client: BinaryLaneClient,
+  actionId: number,
+  options: PollActionOptions = {}
+): Promise<SettledAction> {
+  const { initial, timeoutMs = ACTION_POLL_TIMEOUT_MS, intervalMs = ACTION_POLL_INTERVAL_MS, signal, onProgress } = options
+
+  let action: ServerAction | null = initial ?? null
+  if (action) {
+    const settled = classifyAction(action)
+    if (settled) return settled
+  }
+
+  const startedAt = Date.now()
+  const deadline = timeoutMs == null ? Number.POSITIVE_INFINITY : startedAt + timeoutMs
+
+  for (;;) {
+    if (Date.now() > deadline) return { state: 'timed-out', action }
+
+    const elapsed = Date.now() - startedAt
+    await sleep(typeof intervalMs === 'function' ? intervalMs(elapsed) : intervalMs, signal)
+
+    let poll: { data?: { action?: ServerAction }; error?: unknown }
+    try {
+      poll = await client.GET('/v2/actions/{action_id}', {
+        params: { path: { action_id: actionId } },
+        signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
+      })
+    } catch (err) {
+      // One slow poll is not a lost action — the deadline above bounds the total wait.
+      if (isTimeoutError(err) && !signal?.aborted) continue
+      throw err
+    }
+    if (poll.error) throw new Error(`Lost track of action #${actionId}: ${describeApiError(poll.error)}`)
+    if (poll.data?.action) {
+      action = poll.data.action
+      onProgress?.(action)
+      const settled = classifyAction(action)
+      if (settled) return settled
+    }
+  }
+}
+
+/**
  * Submit a server action and poll it until BinaryLane reports it finished.
  * Network changes (IPv6, port blocking, VPC moves, reverse DNS) are asynchronous
  * on the BL side, so a bare POST returning 200 only means "queued". Resolves only
@@ -830,43 +943,25 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       const queued = submitted.data?.action
       if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
 
-      let action: ServerAction = queued
-      const deadline = Date.now() + ACTION_POLL_TIMEOUT_MS
-      while (action.status === 'in-progress') {
-        if (Date.now() > deadline) {
+      // Blocking on purpose: a second network change over an unsettled first one
+      // is the hazard here, so the UI stays locked until this one resolves.
+      const settled = await pollActionToSettled(client, queued.id, { initial: queued })
+      switch (settled.state) {
+        case 'completed':
+          return settled.action
+        case 'awaiting-interaction':
+          // Not something more waiting can fix — release the lock and let the
+          // account-wide prompt collect the answer.
           throw new Error(
-            `"${actionPayload.type}" is still in progress after ${ACTION_POLL_TIMEOUT_MS / 1000}s (action #${action.id}). It may still complete; this page refreshes automatically.`
+            `"${actionPayload.type}" is waiting for your confirmation (action #${settled.action.id}). Answer the prompt to let it continue.`
           )
-        }
-        await new Promise((r) => setTimeout(r, ACTION_POLL_INTERVAL_MS))
-        let poll: { data?: { action?: ServerAction }; error?: unknown }
-        try {
-          poll = await client.GET('/v2/actions/{action_id}', {
-            params: { path: { action_id: action.id } },
-            signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
-          })
-        } catch (err) {
-          // One slow poll is not a lost action — the deadline check above bounds the total wait.
-          if (isTimeoutError(err)) continue
-          throw err
-        }
-        if (poll.error) throw new Error(`Lost track of action #${action.id}: ${describeApiError(poll.error)}`)
-        if (poll.data?.action) action = poll.data.action
-        if (action.user_interaction_required) {
-          // Waiting on the operator, not on BinaryLane. `status` stays `in-progress`
-          // the whole time it waits, so without this the loop would spin out the full
-          // timeout and then report a misleading "still in progress after 90s".
-          // Release the UI lock and let the account-wide prompt collect the answer —
-          // this is not something more waiting can resolve.
+        case 'timed-out':
           throw new Error(
-            `"${actionPayload.type}" is waiting for your confirmation (action #${action.id}). Answer the prompt to let it continue.`
+            `"${actionPayload.type}" is still in progress after ${ACTION_POLL_TIMEOUT_MS / 1000}s (action #${queued.id}). It may still complete; this page refreshes automatically.`
           )
-        }
+        default:
+          throw new Error(settled.action.reason || `"${actionPayload.type}" ${settled.action.status}`)
       }
-      if (action.status !== 'completed') {
-        throw new Error(action.reason || `"${actionPayload.type}" ${action.status}`)
-      }
-      return action
     },
     onSettled: async () => {
       // Await the refetch so the mutation lock only releases once the UI has fresh data —
@@ -876,6 +971,82 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       // The wait is capped: the refetch GETs have no timeout of their own, and a wedged
       // connection must not hold the UI lock after the action itself has already timed out.
       // The refetch keeps running in the background past the cap.
+      const refetch = Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['server', serverId], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+        queryClient.invalidateQueries({ queryKey: ['server-threshold-alerts', serverId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-advanced-features', serverId] })
+      ])
+      await Promise.race([refetch, new Promise((r) => setTimeout(r, ACTION_REQUEST_TIMEOUT_MS))])
+    }
+  })
+}
+
+/**
+ * How long a submitted action is allowed to hold the UI before it is handed to
+ * background tracking.
+ *
+ * This replaces guessing which operations are "long". Judging by action type
+ * would mean hardcoding durations nobody has measured — and being wrong in the
+ * expensive direction, since the previous 90s cap turned a perfectly healthy
+ * rebuild into a reported failure. A short block instead lets quick actions
+ * (rename, threshold alerts) still resolve inline and report a true
+ * "completed", while anything slower keeps running with the UI released.
+ */
+const ACTION_HANDOFF_MS = 10_000
+
+export type ServerActionOutcome =
+  | { state: 'completed'; action: ServerAction }
+  | { state: 'errored'; action: ServerAction }
+  | { state: 'awaiting-interaction'; action: ServerAction }
+  /** Still running, and no longer holding the UI. The caller should track it. */
+  | { state: 'handed-off'; action: ServerAction }
+
+/**
+ * Submit a server action, wait briefly for it to settle, and otherwise hand it
+ * back still running so the caller can track it in the background.
+ *
+ * Reuses `networkActionMutationKey` so the existing `useIsMutating` busy locks
+ * keep working, and so a Settings action and a Network action on the same
+ * server continue to lock each other out as they do today.
+ */
+export function useServerActionWithHandoff(client: BinaryLaneClient | null, serverId: number | null) {
+  const queryClient = useQueryClient()
+  return useMutation<ServerActionOutcome, Error, Record<string, unknown> & { type: string }>({
+    mutationKey: networkActionMutationKey(serverId),
+    mutationFn: async (actionPayload) => {
+      if (!client || !serverId) throw new Error('No client available')
+
+      let submitted: { data?: { action?: ServerAction }; error?: unknown }
+      try {
+        submitted = await client.POST('/v2/servers/{server_id}/actions', {
+          params: { path: { server_id: serverId } },
+          body: actionPayload as never,
+          signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
+        })
+      } catch (err) {
+        if (isTimeoutError(err)) {
+          throw new Error(
+            `BinaryLane did not answer the "${actionPayload.type}" request within ${ACTION_REQUEST_TIMEOUT_MS / 1000}s. It may or may not have been applied — check the server once it refreshes.`
+          )
+        }
+        throw err
+      }
+      if (submitted.error) throw new Error(describeApiError(submitted.error))
+
+      const queued = submitted.data?.action
+      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+
+      const settled = await pollActionToSettled(client, queued.id, {
+        initial: queued,
+        timeoutMs: ACTION_HANDOFF_MS
+      })
+      if (settled.state === 'timed-out') {
+        return { state: 'handed-off', action: settled.action ?? queued }
+      }
+      return settled
+    },
+    onSettled: async () => {
       const refetch = Promise.all([
         queryClient.invalidateQueries({ queryKey: ['server', serverId], refetchType: 'all' }),
         queryClient.invalidateQueries({ queryKey: ['servers'] }),

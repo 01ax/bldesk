@@ -24,6 +24,7 @@ import {
   useDetachBackupMutation,
   useImageDownloadMutation
 } from '../../api/queries'
+import { useTrackedActions } from '../../context/ActionTrackerContext'
 
 interface BackupManagerProps {
   client: BinaryLaneClient | null
@@ -49,6 +50,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Mutations
   const takeBackupMutation = useTakeBackupMutation(client, activeServerId)
   const restoreBackupMutation = useRestoreBackupMutation(client, activeServerId)
+  const { track } = useTrackedActions()
   const toggleAutomatedBackups = useToggleAutomatedBackupsMutation(client, activeServerId)
   const attachBackupMutation = useAttachBackupMutation(client, activeServerId)
   const detachBackupMutation = useDetachBackupMutation(client, activeServerId)
@@ -117,7 +119,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
     setActionProcessingId(imageId)
     try {
-      await restoreBackupMutation.mutateAsync(imageId)
+      const queued = await restoreBackupMutation.mutateAsync(imageId)
+      // A restore overwrites the disk and runs for a while. "Initiated" was true
+      // but the user was never told whether it actually landed.
+      if (queued) track(queued, `Restore from "${name}"`, activeServer?.name)
       window.bldeskApi?.sendNotification?.({
         title: 'Restore Initiated',
         body: `Server #${activeServerId} is restoring from image #${imageId}.`

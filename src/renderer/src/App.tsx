@@ -17,6 +17,8 @@ import { BackupManager } from './components/backups/BackupManager'
 import { BillingOverview } from './components/billing/BillingOverview'
 import { AccountOverview } from './components/account/AccountOverview'
 import { ActionInteractionPrompt } from './components/actions/ActionInteractionPrompt'
+import { ActionToasts } from './components/actions/ActionToasts'
+import { ActionTrackerProvider } from './context/ActionTrackerContext'
 import { useServers } from './api/queries'
 import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
@@ -163,6 +165,7 @@ function MainDashboard() {
   }
 
   return (
+    <ActionTrackerProvider client={client}>
     <div className="h-screen w-screen flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden font-sans select-none">
       {/* Frameless Custom Titlebar */}
       <TitleBar
@@ -311,7 +314,11 @@ function MainDashboard() {
           the question still reaches the user after they navigate away from the
           view that started it. */}
       <ActionInteractionPrompt client={client} profileId={activeProfile?.id} servers={servers} />
+
+      {/* Outcomes of actions still running in the background, for the same reason. */}
+      <ActionToasts />
     </div>
+    </ActionTrackerProvider>
   )
 }
 

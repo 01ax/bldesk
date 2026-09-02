@@ -28,6 +28,7 @@ import {
   useServerConsole,
   useServerActionMutation
 } from '../../api/queries'
+import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
@@ -82,6 +83,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const metricsQuery = useServerMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
   const serverAction = useServerActionMutation(client)
+  const { track } = useTrackedActions()
 
   const primaryV4 =
     server.networks?.v4?.find((v) => v.type === 'public')?.ip_address ||
@@ -107,11 +109,15 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         serverId: server.id,
         actionPayload: { type: actionType, ...customPayload }
       })
+      const isDiagnostic = actionType === 'ping' || actionType === 'uptime' || actionType === 'is_running'
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${actionType}`,
         body: `Action initiated successfully.`
       })
-      if (actionType === 'ping' || actionType === 'uptime' || actionType === 'is_running') {
+      // Diagnostics answer immediately and are reported inline below; tracking
+      // them would only add a toast for something already on screen.
+      if (res && !isDiagnostic) track(res, actionType, server.name)
+      if (isDiagnostic) {
         setDiagnosticResult(`Result of ${actionType}: ${JSON.stringify((res as any)?.result || res?.status || 'Success')}`)
       }
     } catch (err: any) {
