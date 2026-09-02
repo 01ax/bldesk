@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.33] - 2026-09-02
+
+### Added
+- **Android In-App Update Detection & APK Downloading**:
+  - Automatically checks GitHub Releases API for newer Android APK builds on launch and on demand.
+  - Compares semantic versions against `currentVersion` (`v1.0.33`).
+  - Displays prominent update pill in title bar and popover with one-click **"Download APK"** button that directly grabs `BLDesk-android.apk` from GitHub Releases.
+  - Supports switching between **Stable** and **Beta** update channels on mobile.
+
+---
+
 ## [1.0.32] - 2026-09-02
 
 ### Added
