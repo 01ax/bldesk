@@ -89,7 +89,8 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "nsis/installer.nsh"
     },
     "linux": {
       "icon": "resources/icon.png",
