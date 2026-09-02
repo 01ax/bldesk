@@ -3,7 +3,7 @@ import {
   Loader2,
   Calendar,
   Info,
-  Activity, AlertTriangle} from 'lucide-react'
+  Activity, AlertTriangle, ExternalLink} from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useSampleSets, useServerMetrics } from '../../api/queries'
@@ -15,6 +15,10 @@ interface ServerUsageProps {
   client: BinaryLaneClient | null
   server: Server
 }
+
+/** Setup instructions for the in-guest agent that reports memory usage. */
+const MEMORY_GRAPH_DOC_URL =
+  'https://support.binarylane.com.au/support/solutions/articles/1000022811-mpanel-memory-graph'
 
 type TimeWindow = 'Day' | 'Week' | 'Month' | 'Year'
 
@@ -733,8 +737,15 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
           <div>
             <div className="font-semibold">Memory Usage Unavailable</div>
             <div className="opacity-90 mt-0.5">
-              This server isn't reporting memory usage. Memory graphs need the Memory Graph
-              service installed inside the server.
+              Memory usage can be reported if you install the{' '}
+              <button
+                onClick={() => window.bldeskApi?.openExternal?.(MEMORY_GRAPH_DOC_URL)}
+                className="underline font-medium hover:no-underline inline-flex items-center gap-1"
+              >
+                Memory Graph
+                <ExternalLink className="w-3 h-3" />
+              </button>{' '}
+              service.
             </div>
           </div>
         </div>
