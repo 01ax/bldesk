@@ -165,7 +165,7 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
   const diffSummary = req.diff ? summariseDiff(req.diff) : null
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 select-none" onMouseDown={() => finish(false)}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 overlay-safe select-none" onMouseDown={() => finish(false)}>
       <div
         onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-lg bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
