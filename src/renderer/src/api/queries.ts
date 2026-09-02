@@ -757,7 +757,28 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
   })
 }
 
-// --- SERVER NETWORKING (async actions, polled to completion) ---
+// --- ASYNC SERVER ACTIONS ---
+
+/**
+ * Every server action is asynchronous: the POST returns an `in-progress` action
+ * and a 200 means "queued", not "done". There are three ways to submit one, and
+ * the difference is what should happen to the UI while it runs:
+ *
+ * - `useServerActionMutation` — submit and return immediately. For the list and
+ *   detail views, whose callers hand the queued action to the action tracker and
+ *   let a toast report the outcome. Also the path for diagnostics, which answer
+ *   in the response itself.
+ * - `useServerActionWithHandoff` — submit, wait briefly, then release the UI and
+ *   return the action still running for the caller to track. For the settings
+ *   panel, where a quick change should confirm inline but a rebuild must not
+ *   hold the panel hostage.
+ * - `useNetworkActionMutation` — submit and block until it settles. For network
+ *   changes only, where the hazard is a second write landing on top of an
+ *   unsettled first one, so keeping the UI locked is the point.
+ *
+ * All three share `pollActionToSettled`, so the per-request cap, the tolerance
+ * for one slow poll, and the paused-for-operator check cannot drift apart.
+ */
 
 type ServerAction = components['schemas']['Action']
 
