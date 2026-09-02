@@ -33,6 +33,7 @@ import { useDomains, useServerActionMutation, describeApiError } from '../../api
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { launchSsh } from '../../lib/launchSsh'
+import { recordChange, updateChange } from '../../lib/changelog'
 import {
   POWER_VERBS,
   TARGET_HELP,
@@ -379,11 +380,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           targets: [summary],
           run: async () => {
             if (!client) return [{ target: summary, ok: false, detail: 'No API client' }]
+            const changeId = await recordChange({
+              label: 'Add DNS record',
+              target: { kind: 'domain', name: target.domain },
+              severity: 'normal',
+              changes: [{ label: `${parsed.type} ${target.name}`, to: parsed.value }],
+              summary: `Palette: ${query.trim()}`,
+              source: 'palette'
+            })
             const { error } = await client.POST('/v2/domains/{domain_name}/records', {
               params: { path: { domain_name: target.domain } },
               body: { type: parsed.type, name: target.name, data: parsed.value, priority: parsed.priority ?? null }
             })
-            if (error) return [{ target: summary, ok: false, detail: describeApiError(error) }]
+            if (error) {
+              void updateChange(changeId, { outcome: 'failed', detail: describeApiError(error) })
+              return [{ target: summary, ok: false, detail: describeApiError(error) }]
+            }
+            void updateChange(changeId, { outcome: 'completed' })
             void queryClient.invalidateQueries({ queryKey: ['domainRecords', target.domain] })
             return [{ target: summary, ok: true }]
           }
@@ -483,11 +496,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             // Sequential on purpose: N parallel POSTs to one account is exactly the
             // burst the client's anti-spam layer exists to prevent.
             for (const m of eligible) {
+              const changeId = await recordChange({
+                label,
+                target: { kind: 'server', id: m.server.id, name: m.server.name },
+                severity: parsed.kind === 'power' && (parsed.verb === 'poweroff' || parsed.verb === 'cycle') ? 'destructive' : 'normal',
+                summary: `Palette: ${query.trim()}`,
+                source: 'palette'
+              })
               try {
                 const queued = await serverAction.mutateAsync({ serverId: m.server.id, actionPayload: body })
-                if (queued) track(queued, label, m.server.name)
+                if (queued) track(queued, label, m.server.name, changeId)
                 results.push({ target: m.server.name, ok: true, detail: queued?.id ? `action #${queued.id}` : undefined })
               } catch (err: any) {
+                void updateChange(changeId, { outcome: 'failed', detail: err?.message || String(err) })
                 results.push({ target: m.server.name, ok: false, detail: err?.message || String(err) })
               }
             }

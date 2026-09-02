@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
 
 interface SshKeysManagerProps {
   client: BinaryLaneClient | null
@@ -69,15 +71,25 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
     }
   }
 
+  const confirmAction = useConfirm()
   const handleDeleteKey = async (keyId: number, name: string) => {
-    if (!confirm(`Delete SSH key "${name}" (#${keyId})?`)) return
+    const c = await confirmAction({
+      title: 'Delete SSH key',
+      target: { kind: 'sshkey', id: keyId, name },
+      summary: 'Removes the public key from your BinaryLane account. Servers that already have it installed keep it.',
+      severity: 'destructive',
+      confirmLabel: 'Delete key'
+    })
+    if (!c.ok) return
     try {
       await deleteKeyMutation.mutateAsync(keyId)
+      void updateChange(c.changeId, { outcome: 'completed' })
       window.bldeskApi?.sendNotification?.({
         title: 'SSH Key Deleted',
         body: `Deleted key #${keyId}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Delete failed: ${err.message}`)
     }
   }

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../api/client'
 import { describeActionFailure, pollActionToSettled } from '../api/queries'
+import { updateChange } from '../lib/changelog'
 
 type ServerAction = components['schemas']['Action']
 
@@ -35,8 +36,11 @@ export interface TrackedAction {
 
 interface ActionTrackerValue {
   tracked: TrackedAction[]
-  /** Register a submitted action so its real outcome gets reported. */
-  track: (action: ServerAction, label: string, resourceName?: string) => void
+  /**
+   * Register a submitted action so its real outcome gets reported. Pass the
+   * change-log id from `confirm()` and the log's outcome follows the action.
+   */
+  track: (action: ServerAction, label: string, resourceName?: string, changeId?: string) => void
   dismiss: (actionId: number) => void
 }
 
@@ -96,9 +100,10 @@ export function ActionTrackerProvider({
   }, [])
 
   const track = useCallback(
-    (action: ServerAction, label: string, resourceName?: string) => {
+    (action: ServerAction, label: string, resourceName?: string, changeId?: string) => {
       if (!client || !action?.id) return
       if (controllers.current.has(action.id)) return
+      void updateChange(changeId, { actionId: action.id })
 
       const controller = new AbortController()
       controllers.current.set(action.id, controller)
@@ -188,6 +193,7 @@ export function ActionTrackerProvider({
               ? 'Shutdown signal sent. The server shows as off once its OS halts; if it stays running, the OS ignored the signal — use Power off for a hard stop.'
               : undefined
             update(action.id, { state: 'completed', percentComplete: 100, detail })
+            void updateChange(changeId, { outcome: 'completed', detail })
             void window.bldeskApi?.sendNotification?.({
               title: signalOnly ? `${subject}: signal sent` : `${subject} completed`,
               body: signalOnly ? 'Waiting for the OS to halt — you will be told when it is off.' : 'Finished on BinaryLane.',
@@ -205,6 +211,7 @@ export function ActionTrackerProvider({
                 const wantedOff = type === 'power_off' || type === 'shutdown'
                 const asExpected = wantedOff ? verdict === 'off' : verdict === 'on'
                 const line = verdict === 'off' ? 'Server is off.' : 'Server is running.'
+                void updateChange(changeId, { detail: asExpected ? line : `${line} Not the expected state.` })
                 update(action.id, {
                   detail: asExpected
                     ? line
@@ -224,6 +231,7 @@ export function ActionTrackerProvider({
           } else if (settled.state === 'errored') {
             const detail = describeActionFailure(settled.action) ?? undefined
             update(action.id, { state: 'errored', detail })
+            void updateChange(changeId, { outcome: 'errored', detail })
             void window.bldeskApi?.sendNotification?.({ title: `${subject} failed`, body: detail || 'BinaryLane reported an error.', kind: 'action' })
           } else {
             update(action.id, { state: 'running' })
@@ -246,6 +254,7 @@ export function ActionTrackerProvider({
             state: 'lost',
             detail: err instanceof Error ? err.message : String(err)
           })
+          void updateChange(changeId, { outcome: 'lost', detail: err instanceof Error ? err.message : String(err) })
         } finally {
           // Only retire our own controller. `finally` runs on the aborted early
           // returns above too, so an unconditional delete here would evict a

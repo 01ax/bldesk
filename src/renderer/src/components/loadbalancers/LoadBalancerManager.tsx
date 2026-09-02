@@ -25,6 +25,8 @@ import {
   useCreateLoadBalancerMutation,
   useDeleteLoadBalancerMutation
 } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -134,8 +136,17 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
     }
   }
 
+  const confirmAction = useConfirm()
   const handleRemoveServer = async (lbId: number, lbName: string, serverId: number, serverName: string) => {
-    if (!confirm(`Remove server "${serverName}" (#${serverId}) from load balancer "${lbName}"?`)) return
+    const c = await confirmAction({
+      title: 'Remove from load balancer',
+      target: { kind: 'loadbalancer', id: lbId, name: lbName },
+      summary: `${serverName} (#${serverId}) stops receiving traffic from ${lbName}.`,
+      severity: 'destructive',
+      changes: [{ label: 'Backend', from: serverName, to: undefined }],
+      confirmLabel: 'Remove'
+    })
+    if (!c.ok) return
 
     setActionServerId(serverId)
     try {
@@ -143,12 +154,14 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
         loadBalancerId: lbId,
         serverId
       })
+      void updateChange(c.changeId, { outcome: 'completed' })
 
       window.bldeskApi?.sendNotification?.({
         title: 'Backend Member Removed',
         body: `Removed "${serverName}" from ${lbName}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to remove server: ${err.message}`)
     } finally {
       setActionServerId(null)
@@ -156,15 +169,24 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   }
 
   const handleDeleteLb = async (lbId: number, name: string) => {
-    if (!confirm(`Delete Load Balancer "${name}" (#${lbId})? This will immediately stop traffic distribution.`)) return
+    const c = await confirmAction({
+      title: 'Delete load balancer',
+      target: { kind: 'loadbalancer', id: lbId, name },
+      summary: 'Traffic distribution stops immediately and the load balancer\'s address is released. There is no undo.',
+      severity: 'irreversible',
+      confirmLabel: 'Delete load balancer'
+    })
+    if (!c.ok) return
 
     try {
       await deleteLbMutation.mutateAsync(lbId)
+      void updateChange(c.changeId, { outcome: 'completed' })
       window.bldeskApi?.sendNotification?.({
         title: 'Load Balancer Deleted',
         body: `Deleted Load Balancer #${lbId}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Delete failed: ${err.message}`)
     }
   }

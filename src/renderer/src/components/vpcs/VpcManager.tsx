@@ -14,6 +14,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useVpcs, useServers } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
+import { useTrackedActions } from '../../context/ActionTrackerContext'
+import { describeApiError } from '../../api/queries'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -100,20 +104,31 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
     }
   }
 
+  const confirmAction = useConfirm()
+  const { track } = useTrackedActions()
   // Detach / Remove Server from VPC
   const handleDetachServer = async (serverId: number, serverName: string) => {
     if (!client) return
-    if (!confirm(`Are you sure you want to detach "${serverName}" from its VPC? It will revert to the default public network.`)) return
+    const c = await confirmAction({
+      title: 'Detach from VPC',
+      target: { kind: 'server', id: serverId, name: serverName },
+      summary: 'The server leaves its private network and reverts to the default public network. Anything reaching it over its VPC address will stop working.',
+      severity: 'destructive',
+      confirmLabel: 'Detach'
+    })
+    if (!c.ok) return
 
     setActionServerId(serverId)
     try {
-      await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'change_network',
           vpc_id: null as any
         }
       })
+      if (error) throw new Error(describeApiError(error))
+      if (data?.action) track(data.action, 'Detach from VPC', serverName, c.changeId)
 
       window.bldeskApi?.sendNotification?.({
         title: 'Server Detached from VPC',
@@ -123,6 +138,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
       queryClient.invalidateQueries({ queryKey: ['servers'] })
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to detach server: ${err.message}`)
     } finally {
       setActionServerId(null)
@@ -132,18 +148,28 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
   // Delete VPC
   const handleDeleteVpc = async (vpcId: number, vpcName: string) => {
     if (!client) return
-    if (!confirm(`Delete Virtual Private Cloud "${vpcName}" (#${vpcId})? This action cannot be undone.`)) return
+    const c = await confirmAction({
+      title: 'Delete VPC',
+      target: { kind: 'vpc', id: vpcId, name: vpcName },
+      summary: 'The private network and its address range are removed. There is no undo.',
+      severity: 'irreversible',
+      confirmLabel: 'Delete VPC'
+    })
+    if (!c.ok) return
 
     try {
-      await client.DELETE('/v2/vpcs/{vpc_id}', {
+      const { error } = await client.DELETE('/v2/vpcs/{vpc_id}', {
         params: { path: { vpc_id: vpcId } }
       })
+      if (error) throw new Error(describeApiError(error))
+      void updateChange(c.changeId, { outcome: 'completed' })
       vpcsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
         title: 'VPC Deleted',
         body: `VPC #${vpcId} deleted.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to delete VPC: ${err.message}`)
     }
   }

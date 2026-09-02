@@ -208,6 +208,12 @@ export async function initMobileBridge(): Promise<void> {
         new Notification(opts.title, { body: opts.body })
       }
     },
+    // Change log: the renderer's localStorage fallback handles Android, so
+    // these are intentionally absent — lib/changelog.ts checks for them.
+    changelogAppend: undefined as any,
+    changelogUpdate: undefined as any,
+    changelogList: undefined as any,
+    changelogClear: undefined as any,
     // No tray on Android; the summary has nowhere to go.
     updateTray: async () => {},
     getTraySettings: async () => ({

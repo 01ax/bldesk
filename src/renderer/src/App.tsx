@@ -19,6 +19,9 @@ import { AccountOverview } from './components/account/AccountOverview'
 import { ActionInteractionPrompt } from './components/actions/ActionInteractionPrompt'
 import { ActionToasts } from './components/actions/ActionToasts'
 import { ActionTrackerProvider } from './context/ActionTrackerContext'
+import { ConfirmProvider } from './context/ConfirmContext'
+import { HistoryView } from './components/history/HistoryView'
+import { setChangeLogProfile } from './lib/changelog'
 import { useServers, useBalance, useActionsAwaitingInteraction, useUnpaidInvoices } from './api/queries'
 import { useFleetWatch } from './lib/fleetWatch'
 import { usePowerState, annotateServers } from './lib/powerState'
@@ -135,6 +138,11 @@ function MainDashboard() {
     return () => window.removeEventListener('bldesk:auth_error', handleAuthError)
   }, [])
 
+  // The change log stamps entries with the active account.
+  useEffect(() => {
+    setChangeLogProfile(activeProfile?.id)
+  }, [activeProfile?.id])
+
   // A failed token belongs to the profile that raised it. Without this the banner
   // followed you to accounts whose keys are fine, reporting a failure that wasn't
   // theirs and couldn't be dismissed by switching away.
@@ -222,6 +230,7 @@ function MainDashboard() {
   }
 
   return (
+    <ConfirmProvider>
     <ActionTrackerProvider client={client} confirmPowerState={confirmPowerState}>
       <FleetWatch servers={servers} isFetchedAfterMount={isFetchedAfterMount} client={client} activeProfile={activeProfile} />
       <div className="h-screen w-screen flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden font-sans select-none">
@@ -344,6 +353,10 @@ function MainDashboard() {
             {activeTab === 'account' && (
               <AccountOverview client={client} />
             )}
+
+            {activeTab === 'history' && (
+              <HistoryView profileId={activeProfile?.id} profileName={activeProfile?.name} />
+            )}
           </main>
         </div>
 
@@ -380,6 +393,7 @@ function MainDashboard() {
         <ActionToasts />
       </div>
     </ActionTrackerProvider>
+    </ConfirmProvider>
   )
 }
 

@@ -30,6 +30,8 @@ import {
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
+import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
 
 type Server = components['schemas']['Server']
 type Disk = components['schemas']['Disk']
@@ -61,6 +63,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   const actionMutation = useServerActionWithHandoff(client, server.id)
   const { track } = useTrackedActions()
+  const confirmAction = useConfirm()
   const mutatingCount = useIsMutating({ mutationKey: networkActionMutationKey(server.id) })
   const busy = mutatingCount > 0 || actionMutation.isPending
 
@@ -139,40 +142,49 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   // Danger Zone - OS Rebuild
   const [rebuildImage, setRebuildImage] = useState<string>('')
 
-  const executeAction = async (label: string, payload: any, confirmMsg: string): Promise<boolean> => {
-    if (!window.confirm(confirmMsg)) return false
+  /**
+   * Confirm (with what will change), submit, and report. `req` is everything
+   * the dialog should show beyond the title and the server: a summary, a
+   * before → after table, warnings, and how bad getting it wrong is.
+   */
+  const executeAction = async (label: string, payload: any, req: Omit<ConfirmRequest, 'title' | 'target'>): Promise<boolean> => {
+    const c = await confirmAction({ title: label, target: { kind: 'server', id: server.id, name: server.name }, ...req })
+    if (!c.ok) return false
     setErrorMsg(null)
     setNotice(null)
     try {
       const outcome = await actionMutation.mutateAsync(payload)
       switch (outcome.state) {
         case 'completed':
+          void updateChange(c.changeId, { outcome: 'completed', actionId: outcome.action.id })
           setNotice(`"${label}" completed successfully.`)
           return true
         case 'handed-off':
           // A rebuild or a region migration legitimately outlasts any sensible
           // UI block. Release the panel and let the toast report the real
           // outcome rather than calling a healthy operation failed.
-          track(outcome.action, label, server.name)
+          track(outcome.action, label, server.name, c.changeId)
           setNotice(`"${label}" is still running on BinaryLane. You will be notified when it finishes.`)
           return true
         case 'awaiting-interaction':
-          track(outcome.action, label, server.name)
+          track(outcome.action, label, server.name, c.changeId)
           setNotice(`"${label}" is waiting for your answer — see the prompt.`)
           return true
         case 'blocked-by-invoice':
           // Tracked as well: paying the invoice may release it, and the toast is
           // then what reports the real outcome.
-          track(outcome.action, label, server.name)
+          track(outcome.action, label, server.name, c.changeId)
           setErrorMsg(
             `"${label}" is blocked by invoice #${outcome.action.blocking_invoice_id}, which requires payment.`
           )
           return false
         case 'errored':
+          void updateChange(c.changeId, { outcome: 'errored', actionId: outcome.action.id, detail: actionFailureMessage(label, outcome.action) })
           setErrorMsg(actionFailureMessage(label, outcome.action))
           return false
       }
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       setErrorMsg(err.message || `Failed to execute ${label}`)
       return false
     }
@@ -185,7 +197,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Rename Server',
       { type: 'rename', name: hostnameInput.trim() },
-      `Rename server "${server.name}" to "${hostnameInput.trim()}" in mPanel?`
+      { summary: 'Changes the display name in mPanel and the API. The OS hostname inside the server is not touched.', changes: [{ label: 'Name', from: server.name, to: hostnameInput.trim() }] }
     )
   }
 
@@ -196,7 +208,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Add Disk',
       { type: 'add_disk', size },
-      `Attach a new ${size} GB secondary disk to ${server.name}?`
+      { summary: 'Attaches a new, empty secondary disk. It appears as an unformatted block device inside the OS.', changes: [{ label: 'New disk', to: `${size} GB` }] }
     )
   }
 
@@ -210,7 +222,12 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     const ok = await executeAction(
       'Resize Disk',
       { type: 'resize_disk', disk_id: disk.id, size },
-      `${warning}Resize ${disk.description || 'disk'} from ${disk.size_gigabytes} GB to ${size} GB?`
+      {
+        summary: isShrink ? 'Shrinks the disk at the block level.' : 'Grows the disk. The filesystem inside the OS still has to be extended to use the space.',
+        severity: isShrink ? 'destructive' : 'normal',
+        notes: warning ? [warning.trim()] : undefined,
+        changes: [{ label: disk.description || `Disk #${disk.id}`, from: `${disk.size_gigabytes} GB`, to: `${size} GB` }]
+      }
     )
     if (ok) setResizeDiskId(null)
   }
@@ -219,7 +236,13 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Delete Disk',
       { type: 'delete_disk', disk_id: disk.id },
-      `Permanently delete secondary disk "${disk.description || disk.id}" (${disk.size_gigabytes} GB)? ALL DATA ON THIS DISK WILL BE LOST.`
+      {
+        summary: `Permanently deletes the ${disk.size_gigabytes} GB secondary disk "${disk.description || disk.id}". Everything on it is gone.`,
+        severity: 'irreversible',
+        typeToConfirm: disk.description || String(disk.id),
+        changes: [{ label: 'Disk', from: `${disk.description || disk.id} (${disk.size_gigabytes} GB)`, to: undefined }],
+        confirmLabel: 'Delete disk'
+      }
     )
   }
 
@@ -234,7 +257,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
         processor_model: processorModel === -1 ? undefined : processorModel,
         video_device: videoDevice
       },
-      `Update advanced hypervisor features on ${server.name}? This will apply on next reboot.`
+      { summary: 'Updates the hypervisor-level features. Takes effect on the next reboot.', changes: [{ label: 'Features', from: (server.advanced_features?.enabled_advanced_features ?? []).join(', ') || undefined, to: selectedFeatures.join(', ') || undefined }] }
     )
   }
 
@@ -248,7 +271,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Update Threshold Alerts',
       { type: 'change_threshold_alerts', threshold_alerts: requests },
-      `Save updated monitoring alert thresholds for ${server.name}?`
+      { summary: 'Saves the monitoring thresholds BinaryLane alerts on.', changes: requests.map((r) => ({ label: r.alert_type, to: r.enabled ? `on at ${r.value}` : 'off' })) }
     )
   }
 
@@ -260,7 +283,12 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Migrate Region',
       { type: 'change_region', region: selectedRegion },
-      `Migrate ${server.name} to region "${targetName}"? Server storage and networks will be live-migrated. A brief connectivity pause may occur.`
+      {
+        summary: 'Live-migrates storage and networking to the new region. Expect a brief connectivity pause; the public IP changes if the regions do not share address space.',
+        severity: 'destructive',
+        changes: [{ label: 'Region', from: server.region?.name || server.region?.slug, to: targetName }],
+        confirmLabel: 'Migrate'
+      }
     )
   }
 
@@ -268,11 +296,10 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     e.preventDefault()
     const partnerId = selectedPartnerId ? parseInt(selectedPartnerId, 10) : null
     const partnerServer = serversQuery.data?.find((s) => s.id === partnerId)
-    const desc = partnerServer ? `partner server "${partnerServer.name}" (#${partnerId})` : 'none (unpaired)'
     await executeAction(
       'Change Partner Server',
       { type: 'change_partner', partner_id: partnerId },
-      `Set high-availability partner for ${server.name} to ${desc}? BinaryLane will ensure these servers run on separate physical hypervisors.`
+      { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from: server.partner_id ? `#${server.partner_id}` : undefined, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : undefined }] }
     )
   }
 
@@ -280,7 +307,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Reset Root/Admin Password',
       { type: 'password_reset' },
-      `Reset root/administrator password on ${server.name}? A new secure password will be generated and emailed to your account address.`
+      { summary: 'Generates a new root/administrator password and emails it to the account address. Anything using the old password stops authenticating.', severity: 'destructive', confirmLabel: 'Reset password' }
     )
   }
 
@@ -288,7 +315,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Hard Power Cycle',
       { type: 'power_cycle' },
-      `Force a hard power cycle on ${server.name}? This is equivalent to pulling the power plug.`
+      { summary: 'Cuts power at the hypervisor and starts the server again. Equivalent to pulling the plug: anything unsaved in the guest is lost.', severity: 'destructive', confirmLabel: 'Power cycle' }
     )
   }
 
@@ -298,7 +325,13 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Rebuild Server OS',
       { type: 'rebuild', image: rebuildImage.trim() },
-      `CRITICAL DANGER: This will completely ERASE and REINSTALL the operating system on ${server.name} using image "${rebuildImage.trim()}". ALL EXISTING DATA WILL BE PERMANENTLY DESTROYED.`
+      {
+        summary: `Erases the disk and reinstalls from image "${rebuildImage.trim()}". Every file on the server is destroyed; the IP addresses are kept.`,
+        severity: 'irreversible',
+        notes: ['Take a backup first if anything on this server matters.'],
+        changes: [{ label: 'Image', from: server.image?.slug || server.image?.name || undefined, to: rebuildImage.trim() }],
+        confirmLabel: 'Rebuild'
+      }
     )
   }
 

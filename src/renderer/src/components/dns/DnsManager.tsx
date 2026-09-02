@@ -3,6 +3,10 @@ import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X, ChevronLeft, Chevro
 import { BinaryLaneClient } from '../../api/client'
 import { RemoveDnsHostingDialog } from './RemoveDnsHostingDialog'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { describeApiError } from '../../api/queries'
+import { recordChange, updateChange } from '../../lib/changelog'
+import { describeDnsRecord } from '../../lib/diff'
 
 interface DnsManagerProps {
   client: BinaryLaneClient | null
@@ -142,6 +146,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const domains = domainsQuery.data || []
   const records = recordsQuery.data || []
 
+  const confirmAction = useConfirm()
   const handleSelectDomain = (domainName: string) => {
     setSelectedDomain(domainName)
   }
@@ -174,6 +179,14 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           ttl: Number(recordTtl)
         }
       })
+      void recordChange({
+        label: 'Add DNS record',
+        target: { kind: 'domain', name: selectedDomain },
+        severity: 'normal',
+        changes: [{ label: `${recordType} ${recordName.trim()}`, to: recordData.trim() }],
+        outcome: 'completed',
+        source: 'ui'
+      })
       setIsAddingRecord(false)
       setRecordName('@')
       setRecordData('')
@@ -191,10 +204,19 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
 
   const handleDeleteRecord = async (recordId: number, name: string, type: string) => {
     if (!client || !selectedDomain) return
-    if (!confirm(`Delete ${type} record "${name}" from ${selectedDomain}?`)) return
+    const rec = records.find((r: any) => r.id === recordId)
+    const c = await confirmAction({
+      title: 'Delete DNS record',
+      target: { kind: 'domain', name: selectedDomain },
+      summary: `Removes the ${type} record for "${name}". Resolvers keep the old answer until its TTL expires.`,
+      severity: 'destructive',
+      changes: [{ label: `${type} ${name}`, from: rec ? describeDnsRecord(rec) : `${name} ${type}`, to: undefined }],
+      confirmLabel: 'Delete record'
+    })
+    if (!c.ok) return
 
     try {
-      await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
+      const { error } = await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
         params: {
           path: {
             domain_name: selectedDomain,
@@ -202,12 +224,15 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           }
         }
       })
+      if (error) throw new Error(describeApiError(error))
+      void updateChange(c.changeId, { outcome: 'completed' })
       recordsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
         title: 'DNS Record Deleted',
         body: `Deleted ${type} record #${recordId}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to delete record: ${err.message}`)
     }
   }

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { recordChange } from '../../lib/changelog'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import {
@@ -199,6 +200,18 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
     try {
+      const changeId = await recordChange({
+        label: 'Create server',
+        target: { kind: 'server', name: hostname.trim() },
+        severity: 'normal',
+        changes: [
+          { label: 'Region', to: region },
+          { label: 'Size', to: selectedSize.slug },
+          { label: 'Image', to: image.slug }
+        ],
+        source: 'ui'
+      })
+      void changeId
       await createServer.mutateAsync({
         name: hostname.trim(),
         region,

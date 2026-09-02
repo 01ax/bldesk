@@ -25,6 +25,9 @@ import { logoForDistribution } from '../../lib/distroHelper'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerContextMenu, ContextMenuState } from './ServerContextMenu'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
+import { powerActionSummary } from '../../lib/actionLabels'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -76,10 +79,18 @@ export const ServerList: React.FC<ServerListProps> = ({
     setTimeout(() => setCopiedIp(null), 1500)
   }
 
+  const confirmAction = useConfirm()
   const handleAction = async (serverId: number, actionType: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (actionInProgressServerId !== null) return
-    if (!confirm(`Are you sure you want to perform "${actionType}" on server #${serverId}?`)) return
+    const target = servers.find((s) => s.id === serverId)
+    const c = await confirmAction({
+      title: describeActionType(actionType),
+      target: { kind: 'server', id: serverId, name: target?.name || `#${serverId}` },
+      summary: powerActionSummary(actionType),
+      severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal'
+    })
+    if (!c.ok) return
 
     setActionInProgressServerId(serverId)
     try {
@@ -90,7 +101,7 @@ export const ServerList: React.FC<ServerListProps> = ({
       // "Requested" was honest but final — it never said how the action ended.
       // Tracking turns it into a reported outcome.
       if (queued) {
-        track(queued, describeActionType(actionType), servers.find((s) => s.id === serverId)?.name)
+        track(queued, describeActionType(actionType), target?.name, c.changeId)
       }
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${actionType}`,
@@ -98,6 +109,7 @@ export const ServerList: React.FC<ServerListProps> = ({
         kind: 'action'
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Action failed: ${err.message || 'Unknown error'}`)
     } finally {
       setActionInProgressServerId(null)
