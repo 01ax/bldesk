@@ -79,6 +79,22 @@ interface ChartSeries {
   isSecondaryAxis?: boolean
 }
 
+/**
+ * Marker size for a series' data points.
+ *
+ * A day at five-minute resolution is ~288 points across an 800-unit viewBox, so
+ * they sit roughly 2.8 units apart: anything larger than a pixel merges into a
+ * band, and the dark outline each marker used to carry turned that band into
+ * visible noise. Sparse windows keep readable dots; dense ones fade to specks so
+ * the line itself carries the shape.
+ */
+function markerRadius(count: number): number {
+  if (count <= 12) return 3
+  if (count <= 40) return 2
+  if (count <= 120) return 1.4
+  return 0.9
+}
+
 /** Axis tick text for a unit; rates switch to MBps once they get large. */
 function axisLabel(unit: ChartUnit, value: number): string {
   if (unit === 'rate') {
@@ -341,10 +357,8 @@ const UsageSvgChart: React.FC<{
                       key={pIdx}
                       cx={cx}
                       cy={cy}
-                      r={points.length <= 10 ? 3.5 : 2}
+                      r={markerRadius(points.length)}
                       fill={s.color}
-                      stroke="#1e2227"
-                      strokeWidth="1"
                     >
                       <title>{`${s.name}: ${s.formatter(p.value)} (${new Date(p.time).toLocaleTimeString()})`}</title>
                     </circle>
