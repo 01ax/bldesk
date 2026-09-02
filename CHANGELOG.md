@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.43] - 2026-09-02
+
+### Improved
+- **Firewall Matrix Pinned Audit & Navigation**:
+  - Pinned the **Audit** findings column sticky beside the server name (`left-[220px]`) so findings remain visible while scrolling through wide rule matrices.
+  - Enhanced horizontal scrolling with always-visible scrollbar tracks and quick `◀` / `▶` navigation buttons.
+
+---
+
 ## [1.0.42] - 2026-09-02
 
 ### Added
