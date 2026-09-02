@@ -252,7 +252,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
           />
 
-          <div className="relative w-72 max-w-[85vw] bg-[#343a40] text-[#f8f9fa] border-r border-black/30 flex flex-col justify-between z-10 shadow-2xl animate-in slide-in-from-left duration-200">
+          <div className="relative w-72 max-w-[85vw] bg-[#343a40] text-[#f8f9fa] border-r border-black/30 flex flex-col justify-between z-10 shadow-2xl animate-in slide-in-from-left duration-200 panel-safe overflow-y-auto">
             <div>
               <div className="p-3.5 border-b border-white/10 flex items-center justify-between">
                 <img src={logoFull} alt="BinaryLane" className="h-6 w-auto object-contain" />

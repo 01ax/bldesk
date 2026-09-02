@@ -31,35 +31,92 @@ async function safeNormalizeResponse(response: Response): Promise<Response> {
   return response
 }
 
-async function executeFetch(input: RequestInfo | URL, init?: RequestInit, token?: string): Promise<Response> {
+/**
+ * A request reduced to the parts the native bridge needs.
+ *
+ * openapi-fetch calls `fetch(request, requestInitExt)`: a Request object, with
+ * `requestInitExt` undefined. Method, headers and body therefore live on the
+ * Request, not on `init` - so reading `init?.method || 'GET'` yields GET with no
+ * body for every call, mutations included.
+ *
+ * On desktop that was invisible: the Request is handed to window.fetch untouched
+ * and carries its own method. On Android the native path rebuilds the request
+ * from these values, so every mutation went out as a GET - POST
+ * /v2/servers/{id}/actions became a GET of the same path, which returns the
+ * action list with HTTP 200 and creates nothing. It also meant `isMutation` was
+ * never true, so the duplicate-submission guard below never engaged anywhere.
+ */
+interface CanonicalRequest {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body?: string
+}
+
+async function canonicalizeRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<CanonicalRequest> {
+  const asRequest = typeof Request !== 'undefined' && input instanceof Request ? input : null
+  const url = asRequest
+    ? asRequest.url
+    : input instanceof URL
+      ? input.toString()
+      : String(input)
+  // `init` wins where present, but the Request is the source of truth here.
+  const method = (init?.method || asRequest?.method || 'GET').toUpperCase()
+
+  const headers: Record<string, string> = {}
+  asRequest?.headers?.forEach((v, k) => {
+    headers[k] = v
+  })
+  new Headers((init?.headers as HeadersInit) || {}).forEach((v, k) => {
+    headers[k] = v
+  })
+
+  let body: string | undefined
+  if (typeof init?.body === 'string') {
+    body = init.body
+  } else if (init?.body != null) {
+    body = String(init.body)
+  } else if (asRequest && method !== 'GET' && method !== 'HEAD') {
+    // Clone: the original body must stay unread for the fallback path.
+    body = (await asRequest.clone().text()) || undefined
+  }
+
+  return { url, method, headers, body }
+}
+
+async function executeFetch(
+  req: CanonicalRequest,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  token?: string
+): Promise<Response> {
   const cap = typeof window !== 'undefined' ? (window as any).Capacitor : undefined
   if (cap?.isNativePlatform?.() && cap?.Plugins?.CapacitorHttp) {
     try {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
-      const method = (init?.method || 'GET').toUpperCase()
       const headers: Record<string, string> = {
-        Authorization: token ? `Bearer ${token}` : '',
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(init?.headers as Record<string, string>)
+        ...req.headers
+      }
+      if (token && !headers.Authorization && !headers.authorization) {
+        headers.Authorization = `Bearer ${token}`
       }
 
       let parsedData: any = undefined
-      if (init?.body) {
-        if (typeof init.body === 'string') {
-          try {
-            parsedData = JSON.parse(init.body)
-          } catch {
-            parsedData = init.body
-          }
-        } else {
-          parsedData = init.body
+      if (req.body !== undefined) {
+        try {
+          parsedData = JSON.parse(req.body)
+        } catch {
+          parsedData = req.body
         }
       }
 
       const res = await cap.Plugins.CapacitorHttp.request({
-        url,
-        method,
+        url: req.url,
+        method: req.method,
         headers,
         data: parsedData
       })
@@ -75,6 +132,8 @@ async function executeFetch(input: RequestInfo | URL, init?: RequestInit, token?
     }
   }
 
+  // Desktop / web: hand the original arguments through untouched, so the Request
+  // keeps its own method and body.
   return window.fetch(input, init)
 }
 
@@ -91,13 +150,13 @@ export function createBinaryLaneClient(token: string) {
       })
     }
 
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-    const method = (init?.method || 'GET').toUpperCase()
+    const req = await canonicalizeRequest(input, init)
+    const { url, method } = req
     const isMutation = method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH'
 
     // Spam & Concurrency Protection for Mutations (Create/Update/Delete/Actions)
     if (isMutation) {
-      const mutationKey = `${method}:${url}:${init?.body ? String(init.body) : ''}`
+      const mutationKey = `${method}:${url}:${req.body ?? ''}`
       const now = Date.now()
       const lastSent = recentMutationTimestamps.get(mutationKey) || 0
 
@@ -117,7 +176,7 @@ export function createBinaryLaneClient(token: string) {
 
       const executionPromise = (async () => {
         try {
-          const rawResponse = await executeFetch(input, init, cleanToken)
+          const rawResponse = await executeFetch(req, input, init, cleanToken)
           const response = await safeNormalizeResponse(rawResponse)
 
           if (response.status === 401 || response.status === 403) {
@@ -135,7 +194,7 @@ export function createBinaryLaneClient(token: string) {
     }
 
     // Standard GET / read query path
-    const rawResponse = await executeFetch(input, init, cleanToken)
+    const rawResponse = await executeFetch(req, input, init, cleanToken)
     const response = await safeNormalizeResponse(rawResponse)
     if (response.status === 401 || response.status === 403) {
       window.dispatchEvent(new CustomEvent('bldesk:auth_error', { detail: { status: response.status } }))

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useServerActionMutation } from '../../api/queries'
+import { useServerActionMutation, useRegions } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { CreateServerModal } from './CreateServerModal'
 import { logoForDistribution } from '../../lib/distroHelper'
@@ -133,8 +133,24 @@ export const ServerList: React.FC<ServerListProps> = ({
     return matchesSearch && matchesRegion && matchesStatus
   })
 
-  // Unique regions
-  const availableRegions = Array.from(new Set(servers.map((s) => s.region?.slug).filter(Boolean)))
+  /*
+   * Regions offered by the account, not merely the ones already in use.
+   *
+   * This was derived from `servers`, so a region with no servers yet - Perth and
+   * Singapore here - had no filter option at all, and the order was whatever the
+   * server list happened to be in. Seeded from the API and sorted, with the
+   * regions actually in use merged in so the filter still works before the
+   * regions query resolves.
+   */
+  const regionsQuery = useRegions(client)
+  const availableRegions = React.useMemo(() => {
+    const offered = (regionsQuery.data ?? [])
+      .filter((r) => r.available !== false)
+      .map((r) => r.slug)
+      .filter(Boolean)
+    const inUse = servers.map((s) => s.region?.slug).filter(Boolean)
+    return Array.from(new Set([...offered, ...inUse])).sort() as string[]
+  }, [regionsQuery.data, servers])
 
   return (
     <div className="h-full flex flex-col p-6 space-y-4 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
@@ -292,11 +308,11 @@ export const ServerList: React.FC<ServerListProps> = ({
                     {/* Server Name & Distro */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span className={`w-2 h-2 shrink-0 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                         <span>{server.name}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
-                        <img src={distroIcon} alt="" className="w-4 h-4 object-contain" />
+                        <img src={distroIcon} alt="" className="w-4 h-4 shrink-0 object-contain" />
                         <span>{server.image?.full_name || server.image?.name || 'Linux'}</span>
                       </div>
                       {server.cancelled_at && (

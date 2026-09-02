@@ -16,6 +16,7 @@ import { logoForDistribution } from '../../lib/distroHelper'
 import {
   planMonthlyPrice,
   planUnavailableReason,
+  isCapacityBlock,
   memoryChoices,
   diskChoices,
   billingTotal,
@@ -132,10 +133,24 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   const selectedSize = useMemo(() => plans.find((p) => p.slug === sizeSlug), [plans, sizeSlug])
 
-  // Every plan in this tab is unusable here — the web panel says so rather than
-  // leaving an all-grey table unexplained.
-  const allPlansBlocked =
-    plans.length > 0 && plans.every((p) => planUnavailableReason(p, region, image) !== null)
+  /*
+   * Distinct reasons why plans in this tab are unusable.
+   *
+   * The web panel shows this whenever ANY row is greyed out, not only when every
+   * row is - and the per-row reason used to live in a `title` tooltip, which does
+   * not exist on touch, so on Android a greyed row had no explanation at all.
+   */
+  const planBlocks = useMemo(() => {
+    const seen = new Map<string, { kind: string; message: string }>()
+    for (const p of plans) {
+      const b = planUnavailableReason(p, region, image)
+      if (b) seen.set(b.message, b)
+    }
+    return [...seen.values()]
+  }, [plans, region, image?.slug])
+
+  // Capacity gets the web panel's wording; an image minimum has to say so itself.
+  const capacityOnly = planBlocks.length > 0 && planBlocks.every((b) => isCapacityBlock(b as any))
 
   // Keep the version choice valid when the distribution or region changes.
   useEffect(() => {
@@ -192,7 +207,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (!image?.slug) return setErrorMsg('Choose an operating system.')
     if (!selectedSize) return setErrorMsg('Choose a plan.')
     const blocked = planUnavailableReason(selectedSize, region, image)
-    if (blocked) return setErrorMsg(blocked)
+    if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
 
     // The simple view collapses the three retention dropdowns into one choice.
@@ -257,10 +272,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
    * through.
    */
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 overlay-safe">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-5xl max-h-[calc(100vh-2rem)] flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
+        className="w-full max-w-5xl max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
       >
         <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add a Cloud Server</h3>
@@ -274,7 +289,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
             <Loader2 className="w-4 h-4 animate-spin" /> Loading plans and images...
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-5">
             {/* ---------- 1. location and operating system ---------- */}
             <Section step={1} title="Select your location and operating system">
               <TileRow>
@@ -291,7 +306,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                     <img
                       src={logoForDistribution(d)}
                       alt=""
-                      className={`w-11 h-11 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
+                      className={`w-8 h-8 sm:w-11 sm:h-11 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
                     />
                     <span>{d}</span>
                   </Tile>
@@ -322,15 +337,22 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 ))}
               </TileRow>
 
-              <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
-                <table className="w-full text-xs">
+              {/*
+                 * The plan table is wider than a phone. It scrolls inside its own
+                 * box: with `overflow-hidden` the Transfer and Price columns were
+                 * simply clipped and unreachable, and the row width still dragged
+                 * the whole form sideways, which clipped the left edge of every
+                 * label and dropdown below it.
+                 */}
+              <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-x-auto">
+                <table className="w-full text-[10px] sm:text-xs whitespace-nowrap">
                   <thead>
                     <tr className="bg-[#f8f9fa] dark:bg-[#212529] text-[#6c757d] text-left">
-                      <th className="py-2 px-3 font-semibold">Processor</th>
-                      <th className="py-2 px-3 font-semibold">Memory</th>
-                      <th className="py-2 px-3 font-semibold">Storage</th>
-                      <th className="py-2 px-3 font-semibold">Transfer</th>
-                      <th className="py-2 px-3 font-semibold text-right">Price</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Processor</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Memory</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Storage</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Transfer</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Price</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
@@ -341,15 +363,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                         <tr
                           key={p.slug}
                           onClick={() => !blocked && setSizeSlug(p.slug)}
-                          title={blocked || undefined}
+                          title={blocked?.message || undefined}
                           className={`${
                             blocked
                               ? 'opacity-45 cursor-not-allowed'
                               : 'cursor-pointer hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]'
                           } ${isSel ? 'bg-[#017cb6]/10' : ''}`}
                         >
-                          <td className="py-2 px-3">
-                            <span className="flex items-center gap-2">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
+                            <span className="flex items-center gap-1 sm:gap-2">
                               <Radio selected={isSel} blocked={!!blocked} />
                               <span className="text-[#212529] dark:text-white">
                                 {p.vcpus} {p.vcpu_units || 'VCPU'}
@@ -357,14 +379,14 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               </span>
                             </span>
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
                             {isSel && memoryChoices(p).length > 1 ? (
                               <Select value={memory} onChange={(v) => setMemoryMb(v)} options={memoryChoices(p).map((m) => ({ value: m, label: `${m / 1024} GB` }))} />
                             ) : (
                               <span className="text-[#212529] dark:text-white">{p.memory / 1024} GB</span>
                             )}
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
                             {isSel && diskChoices(p).length > 1 ? (
                               <Select value={disk} onChange={(v) => setDiskGb(v)} options={diskChoices(p).map((d) => ({ value: d, label: `${d} GB` }))} />
                             ) : (
@@ -374,7 +396,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                             )}
                           </td>
                           <td className="py-2 px-3 text-[#212529] dark:text-white">{p.transfer * 1000} GB</td>
-                          <td className="py-2 px-3 text-right font-medium text-[#212529] dark:text-white">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-right font-medium text-[#212529] dark:text-white">
                             ${planMonthlyPrice(p, image, isSel ? memory : p.memory, isSel ? disk : p.disk).toFixed(2)}
                           </td>
                         </tr>
@@ -383,10 +405,21 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                   </tbody>
                 </table>
 
-                {allPlansBlocked && (
-                  <div className="flex items-center gap-2 px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
-                    We currently do not have resources available to provision a server on these plans.
+                {planBlocks.length > 0 && (
+                  <div className="px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd] space-y-1">
+                    {capacityOnly ? (
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500 mt-px" />
+                        <span>We currently do not have resources available to provision a server on these plans.</span>
+                      </div>
+                    ) : (
+                      planBlocks.map((b) => (
+                        <div key={b.message} className="flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500 mt-px" />
+                          <span>{b.message}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
@@ -604,7 +637,7 @@ const Section: React.FC<{ step: number; title: string; action?: React.ReactNode;
   <section>
     <div className="flex items-center justify-between gap-3 mb-2">
       <h4 className="flex items-center gap-2 text-sm font-bold text-[#017cb6]">
-        <span className="w-5 h-5 rounded-full bg-[#f1ca00] text-[#212529] text-[11px] font-bold flex items-center justify-center">
+        <span className="w-5 h-5 shrink-0 rounded-full bg-[#f1ca00] text-[#212529] text-[11px] font-bold flex items-center justify-center">
           {step}
         </span>
         {title}
@@ -615,9 +648,16 @@ const Section: React.FC<{ step: number; title: string; action?: React.ReactNode;
   </section>
 )
 
-const TileRow: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`flex flex-wrap gap-2 ${className}`}>{children}</div>
-)
+/*
+ * Tiles wrap as an even grid on a phone and only fall back to free-flowing wrap
+ * once there is room. `flex flex-wrap` alone left ragged, left-bunched rows on a
+ * narrow screen because the items keep their intrinsic width.
+ */
+const TileRow: React.FC<{ children: React.ReactNode; className?: string; cols?: string }> = ({
+  children,
+  className = '',
+  cols = 'grid-cols-3'
+}) => <div className={`grid ${cols} gap-2 sm:flex sm:flex-wrap ${className}`}>{children}</div>
 
 const Tile: React.FC<{
   selected: boolean
@@ -630,7 +670,7 @@ const Tile: React.FC<{
     type="button"
     disabled={disabled}
     onClick={onClick}
-    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded border transition ${
+    className={`flex items-center justify-center gap-2 px-2.5 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm font-medium rounded border transition ${
       selected
         ? 'bg-[#6c757d] text-white border-[#6c757d]'
         : 'bg-[#f8f9fa] dark:bg-[#212529] text-[#495057] dark:text-[#adb5bd] border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6]'
@@ -642,7 +682,7 @@ const Tile: React.FC<{
 
 const Radio: React.FC<{ selected: boolean; blocked: boolean }> = ({ selected, blocked }) => (
   <span
-    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
+    className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
       blocked ? 'border-[#adb5bd]' : selected ? 'border-[#017cb6]' : 'border-[#ced4da] dark:border-[#6c757d]'
     }`}
   >
@@ -661,7 +701,7 @@ const Select: React.FC<{
       value={value}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="appearance-none pl-2 pr-6 py-1 text-xs bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+      className="appearance-none pl-1.5 pr-5 py-0.5 text-[11px] sm:pl-2 sm:pr-6 sm:py-1 sm:text-xs bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -669,7 +709,7 @@ const Select: React.FC<{
         </option>
       ))}
     </select>
-    <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
+    <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 absolute right-1 sm:right-1.5 pointer-events-none opacity-60" />
   </span>
 )
 
@@ -716,7 +756,7 @@ const AddSshKeyDialog: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 overlay-safe">
       <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
         <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add SSH Key</h3>

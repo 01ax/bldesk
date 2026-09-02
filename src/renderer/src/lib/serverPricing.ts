@@ -88,22 +88,49 @@ export function planMonthlyPrice(
  * per-region capacity that the web panel greys rows out for. An image's minimums
  * exclude plans too, which is why Windows shows five rows where Ubuntu shows six.
  */
+/**
+ * Why a plan can't be used right now, or null when it can.
+ *
+ * Typed rather than a bare string because the cause changes the wording the web
+ * panel uses: capacity is "we currently do not have resources available", while
+ * an image minimum is a property of the chosen OS and must say so instead.
+ */
+export type PlanBlockKind = 'retired' | 'region' | 'stock' | 'memory' | 'disk'
+export interface PlanBlock {
+  kind: PlanBlockKind
+  message: string
+}
+
 export function planUnavailableReason(
   size: SizeLike,
   region: string,
   image: ImageLike | undefined
-): string | null {
-  if (size.available === false) return 'This plan is no longer offered.'
-  if (size.regions && !size.regions.includes(region)) return 'Not offered in this region.'
-  if (size.regions_out_of_stock?.includes(region)) return 'Out of stock in this region.'
+): PlanBlock | null {
+  if (size.available === false) return { kind: 'retired', message: 'This plan is no longer offered.' }
+  if (size.regions && !size.regions.includes(region)) {
+    return { kind: 'region', message: 'Not offered in this region.' }
+  }
+  if (size.regions_out_of_stock?.includes(region)) {
+    return { kind: 'stock', message: 'Out of stock in this region.' }
+  }
   if (image?.min_memory_megabytes && size.memory < image.min_memory_megabytes) {
-    return `${image.distribution || 'This image'} needs at least ${image.min_memory_megabytes / 1024} GB memory.`
+    return {
+      kind: 'memory',
+      message: `${image.distribution || 'This image'} needs at least ${image.min_memory_megabytes / 1024} GB memory.`
+    }
   }
   if (image?.min_disk_size && (size.options?.disk_max ?? size.disk) < image.min_disk_size) {
-    return `${image.distribution || 'This image'} needs at least ${image.min_disk_size} GB storage.`
+    return {
+      kind: 'disk',
+      message: `${image.distribution || 'This image'} needs at least ${image.min_disk_size} GB storage.`
+    }
   }
   return null
 }
+
+/** True when a block is about capacity rather than the chosen image. */
+export const isCapacityBlock = (b: PlanBlock): boolean =>
+  b.kind === 'stock' || b.kind === 'region' || b.kind === 'retired'
 
 /** Selectable memory steps for a plan: doubling from the included amount to the cap. */
 export function memoryChoices(size: SizeLike): number[] {
@@ -114,21 +141,32 @@ export function memoryChoices(size: SizeLike): number[] {
   return out
 }
 
-/** Selectable storage steps, honouring restricted_disk_values where the plan sets them. */
+/**
+ * The web panel's storage ladder: 5 GB steps to 60, then 10 GB to 200, then
+ * 100 GB to 2000. Taken from mPanel's own <option> list rather than derived, so
+ * the two agree exactly - a generated step produced values mPanel never offers.
+ */
+function diskLadder(): number[] {
+  const out: number[] = []
+  for (let d = 20; d < 60; d += 5) out.push(d)
+  for (let d = 60; d < 200; d += 10) out.push(d)
+  for (let d = 200; d <= 2000; d += 100) out.push(d)
+  return out
+}
+
+/** Selectable storage steps, honouring restricted_disk_values where a plan sets them. */
 export function diskChoices(size: SizeLike): number[] {
   const o = size.options || {}
   if (Array.isArray(o.restricted_disk_values) && o.restricted_disk_values.length) {
     return o.restricted_disk_values as number[]
   }
-  const min = o.disk_min ?? size.disk
+  const min = size.disk
   const max = o.disk_max ?? size.disk
-  if (min === max) return [min]
-  // Round steps so the list reads like the web panel rather than arbitrary numbers.
-  const step = min >= 500 ? 500 : min >= 100 ? 100 : 20
-  const out: number[] = []
-  for (let d = size.disk; d <= max; d += step) out.push(d)
-  if (!out.includes(max)) out.push(max)
-  return out.slice(0, 24)
+  if (min >= max) return [min]
+  const steps = diskLadder().filter((d) => d >= min && d <= max)
+  if (!steps.includes(min)) steps.unshift(min)
+  if (!steps.includes(max)) steps.push(max)
+  return steps
 }
 
 export const GST_RATE = 0.1

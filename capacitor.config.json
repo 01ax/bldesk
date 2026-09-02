@@ -13,5 +13,6 @@
     "CapacitorCookies": {
       "enabled": true
     }
-  }
+  },
+  "loggingBehavior": "none"
 }

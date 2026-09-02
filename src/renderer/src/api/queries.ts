@@ -1156,6 +1156,26 @@ export async function pollActionToSettled(
  */
 export const networkActionMutationKey = (serverId: number | null) => ['network-action', serverId] as const
 
+/**
+ * openapi-fetch resolves with BOTH `data` and `error` unset in more cases than an
+ * empty success: a 204, a HEAD, or any response reporting `Content-Length: 0`
+ * (dist/index.js:230). On Android that state was reported as "BinaryLane accepted
+ * the action", which is worse than useless when nothing reached the API at all -
+ * it sends you looking at the wrong end. Report what actually came back.
+ */
+function describeMissingAction(type: string, submitted: unknown): string {
+  // Narrowed locally: on the branch where openapi-fetch leaves both `data` and
+  // `error` unset, `response` is not part of the inferred union.
+  const res = (submitted as { response?: Response } | null | undefined)?.response
+  if (!res) {
+    return `"${type}" produced no response at all - the request did not reach BinaryLane. Check connectivity.`
+  }
+  const cl = res.headers?.get?.('Content-Length')
+  const bits = [`HTTP ${res.status}`]
+  if (cl !== null && cl !== undefined) bits.push(`Content-Length: ${cl}`)
+  return `"${type}" returned ${bits.join(', ')} with no action body, so there is nothing to track.`
+}
+
 export function useNetworkActionMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation<ServerAction, Error, NetworkActionPayload>({
@@ -1182,7 +1202,7 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       if (submitted.error) throw new Error(describeApiError(submitted.error))
 
       const queued = submitted.data?.action
-      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+      if (!queued?.id) throw new Error(describeMissingAction(actionPayload.type, submitted))
 
       // Blocking on purpose: a second network change over an unsettled first one
       // is the hazard here, so the UI stays locked until this one resolves.
@@ -1281,7 +1301,7 @@ export function useServerActionWithHandoff(client: BinaryLaneClient | null, serv
       if (submitted.error) throw new Error(describeApiError(submitted.error))
 
       const queued = submitted.data?.action
-      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+      if (!queued?.id) throw new Error(describeMissingAction(actionPayload.type, submitted))
 
       const settled = await pollActionToSettled(client, queued.id, {
         initial: queued,
@@ -1336,7 +1356,7 @@ export function useServerDiagnosticMutation(client: BinaryLaneClient | null, ser
       if (submitted.error) throw new Error(describeApiError(submitted.error))
 
       const queued = submitted.data?.action
-      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+      if (!queued?.id) throw new Error(describeMissingAction(actionPayload.type, submitted))
 
       const settled = await pollActionToSettled(client, queued.id, {
         initial: queued,
