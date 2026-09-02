@@ -373,28 +373,28 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i')
 }
 
-/** Servers a power verb can act on, and the ones it must skip, with the reason. */
+/**
+ * Servers a power verb can act on, and the ones it must skip, with the reason.
+ *
+ * Only `new` and `archive` are skipped. `active` vs `off` is deliberately NOT
+ * used as a gate: measured 2026-09-02, the API left a server at `active` after
+ * a completed `power_off` (mPanel showed it down, `is_running` errored), so a
+ * gate on `off` would refuse to `start` a server that is in fact off. Until
+ * the platform writes that field reliably, BinaryLane itself is the judge of
+ * whether an action makes sense — it errors on a no-op, and that error is
+ * reported per target.
+ */
 export function partitionByStatus(
   matches: TargetMatch[],
-  requires: 'active' | 'off'
+  _requires: 'active' | 'off'
 ): { eligible: TargetMatch[]; skipped: Array<TargetMatch & { reason: string }> } {
   const eligible: TargetMatch[] = []
   const skipped: Array<TargetMatch & { reason: string }> = []
   for (const m of matches) {
     const status = m.server.status
-    if (status === requires) {
-      eligible.push(m)
-    } else {
-      const reason =
-        requires === 'active'
-          ? status === 'off'
-            ? 'already off'
-            : `status is "${status}"`
-          : status === 'active'
-            ? 'already running'
-            : `status is "${status}"`
-      skipped.push({ ...m, reason })
-    }
+    if (status === 'new') skipped.push({ ...m, reason: 'still being built' })
+    else if (status === 'archive') skipped.push({ ...m, reason: 'archived (cancelled or unpaid)' })
+    else eligible.push(m)
   }
   return { eligible, skipped }
 }

@@ -25,7 +25,7 @@ function statusLine(action: TrackedAction): string {
         ? `In progress — ${action.percentComplete}%`
         : 'In progress on BinaryLane…'
     case 'completed':
-      return 'Completed'
+      return action.detail || 'Completed'
     case 'errored':
       return action.detail || 'BinaryLane reported an error'
     case 'awaiting-interaction':
