@@ -19,9 +19,11 @@ import {
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useServerActionMutation } from '../../api/queries'
+import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { CreateServerModal } from './CreateServerModal'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { copyDeepLink } from '../../lib/deeplinks'
+import { describeActionType } from '../../lib/actionLabels'
 import { ServerContextMenu, ContextMenuState } from './ServerContextMenu'
 
 type ServerResponse = components['schemas']['Server']
@@ -65,6 +67,7 @@ export const ServerList: React.FC<ServerListProps> = ({
   }
 
   const serverAction = useServerActionMutation(client)
+  const { track } = useTrackedActions()
 
   const handleCopyIp = (ip: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -80,10 +83,15 @@ export const ServerList: React.FC<ServerListProps> = ({
 
     setActionInProgressServerId(serverId)
     try {
-      await serverAction.mutateAsync({
+      const queued = await serverAction.mutateAsync({
         serverId,
         actionPayload: { type: actionType }
       })
+      // "Requested" was honest but final — it never said how the action ended.
+      // Tracking turns it into a reported outcome.
+      if (queued) {
+        track(queued, describeActionType(actionType), servers.find((s) => s.id === serverId)?.name)
+      }
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${actionType}`,
         body: `Action requested successfully for server #${serverId}.`
