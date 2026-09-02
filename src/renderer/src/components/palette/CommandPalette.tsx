@@ -24,6 +24,7 @@ import {
   X,
   Loader2,
   CornerDownLeft,
+  Tag,
   LucideIcon
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
@@ -34,6 +35,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { launchSsh } from '../../lib/launchSsh'
 import { recordChange, updateChange } from '../../lib/changelog'
+import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags } from '../../lib/serverGroups'
 import {
   POWER_VERBS,
   TARGET_HELP,
@@ -60,6 +62,8 @@ interface CommandPaletteProps {
   onClose: () => void
   servers: ServerResponse[]
   client: BinaryLaneClient | null
+  /** Active account — groups and tags are stored per profile. */
+  profileId?: string
   onSelectServer: (server: ServerResponse) => void
   onSelectServerSubTab: (tab: ServerSubTab) => void
   onNavigateTab: (tab: ActiveTab) => void
@@ -125,6 +129,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   servers,
   client,
+  profileId,
   onSelectServer,
   onSelectServerSubTab,
   onNavigateTab
@@ -224,6 +229,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }
 
   /**
+   * matchServers, with `@group` / `@tag` references expanded first. Groups and
+   * tags are read fresh each time so a tag added a moment ago works at once.
+   */
+  const resolveTargets = (expression: string) => {
+    const groups = loadGroups(profileId)
+    const tags = loadTags(profileId)
+    const { expression: expanded, unknownGroups } = expandGroupRefs(expression, groups, servers, tags)
+    const r = expanded ? matchServers(servers, expanded) : { matches: [], unmatched: [] as string[] }
+    return { matches: r.matches, unmatched: [...r.unmatched, ...unknownGroups] }
+  }
+
+  /**
    * Rows and the Enter behaviour for the current query. Kept as one derivation
    * so the preview the user confirms is the same object the executor runs on.
    */
@@ -295,9 +312,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
       }
       if (!q) {
+        const tagList = allTags(loadTags(profileId))
+        if (tagList.length) {
+          rows.push({
+            id: 'tags',
+            title: `Groups: ${tagList.map((t) => `@${t.tag} (${t.count})`).join('  ')}`,
+            subtitle: 'Use as a target, e.g. restart @web',
+            category: 'Tags',
+            icon: Tag,
+            tone: 'muted'
+          })
+        }
         rows.push({
           id: 'help',
-          title: 'Type a verb: restart, shutdown, start, snapshot, ssh, open, console, link, dns, go — or ? for help',
+          title: 'Type a verb: restart, shutdown, start, snapshot, ssh, open, console, link, dns, tag, go — or ? for help',
           category: 'Tip',
           icon: HelpCircle,
           tone: 'muted',
@@ -406,9 +434,42 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       return { rows, header, primary, plan }
     }
 
+    // --- Tags (local): tag add web wp-* / tag remove web #101
+    if (parsed.kind === 'tag') {
+      const { matches, unmatched } = resolveTargets(parsed.targets)
+      const verbLabel = parsed.op === 'add' ? `Tag @${parsed.tag}` : `Untag @${parsed.tag}`
+      if (matches.length === 0) {
+        header = { icon: AlertTriangle, text: `No server matches "${parsed.targets}". ${TARGET_HELP}`, tone: 'bad' }
+        return { rows, header, primary, plan }
+      }
+      const parts = [`${verbLabel} — ${matches.length} server${matches.length === 1 ? '' : 's'}`]
+      if (unmatched.length) parts.push(`no match: ${unmatched.join(', ')}`)
+      header = { icon: Tag, text: parts.join(' · '), tone: unmatched.length ? 'skip' : 'default' }
+      for (const m of matches) {
+        const current = loadTags(profileId)[m.server.id] ?? []
+        rows.push({
+          id: `t-${m.server.id}`,
+          title: `${statusDot(m.server)} ${m.server.name}`,
+          subtitle: current.length ? `tags: ${current.map((t) => `@${t}`).join(' ')}` : 'no tags',
+          category: verbLabel,
+          icon: Tag,
+          tone: 'ok'
+        })
+      }
+      // Local only, no API call — apply immediately, no review step.
+      primary = () => {
+        if (!profileId) return
+        saveTags(profileId, withTag(loadTags(profileId), matches.map((m) => m.server.id), parsed.tag, parsed.op === 'add'))
+        rememberCommand(query)
+        setNotice(`${verbLabel}: ${matches.length} server${matches.length === 1 ? '' : 's'}. Use @${parsed.tag} as a target anywhere.`)
+        setTimeout(close, 900)
+      }
+      return { rows, header, primary, plan }
+    }
+
     // --- Single-server verbs: ssh / console / open / link
     if (parsed.kind === 'ssh' || parsed.kind === 'console' || parsed.kind === 'open' || parsed.kind === 'link') {
-      const { matches, unmatched } = matchServers(servers, parsed.target)
+      const { matches, unmatched } = resolveTargets(parsed.target)
       const act = (s: ServerResponse) => {
         switch (parsed.kind) {
           case 'ssh':
@@ -459,7 +520,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
     // --- Multi-server mutations: power verbs and snapshot
     if (parsed.kind === 'power' || parsed.kind === 'snapshot') {
-      const { matches, unmatched } = matchServers(servers, parsed.targets)
+      const { matches, unmatched } = resolveTargets(parsed.targets)
       const spec = parsed.kind === 'power' ? POWER_VERBS[parsed.verb] : null
       const label = parsed.kind === 'power' ? spec!.label : `Snapshot${parsed.label ? ` "${parsed.label}"` : ''}`
       const icon = parsed.kind === 'power' ? POWER_ICON[parsed.verb] : Camera
@@ -522,7 +583,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
     return { rows, header, primary, plan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsed, query, servers, client, domainsQuery.data, domainsQuery.isLoading])
+  }, [parsed, query, servers, client, profileId, domainsQuery.data, domainsQuery.isLoading])
 
   const { rows, header, primary, plan } = resolved
 
@@ -663,7 +724,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <span className="truncate">{header.text}</span>
             {primary && (
               <span className="ml-auto flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider opacity-80 flex-shrink-0">
-                <CornerDownLeft className="w-3 h-3" /> review
+                <CornerDownLeft className="w-3 h-3" /> {plan ? 'review' : 'apply'}
               </span>
             )}
           </div>
@@ -794,7 +855,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ) : (
               <>
                 <span>↑↓ Navigate</span>
-                <span>↵ {primary ? 'Review' : 'Select'}</span>
+                <span>↵ {plan ? 'Review' : primary ? 'Apply' : 'Select'}</span>
                 {rows[selectedIndex]?.fill && <span>⇥ Fill</span>}
                 <span>Esc Close</span>
               </>

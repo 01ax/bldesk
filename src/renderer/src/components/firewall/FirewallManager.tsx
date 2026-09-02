@@ -13,25 +13,34 @@ import {
   Upload,
   Share2,
   FileJson,
+  Grid3x3,
   X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { useServers, useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
+import { useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { describeApiError } from '../../api/queries'
+import { FirewallMatrix } from './FirewallMatrix'
 
 interface FirewallManagerProps {
   client: BinaryLaneClient | null
   initialServerId?: number | null
+  profileId?: string
+  /**
+   * The app's server list (cached, power-annotated). The tab must not run its
+   * own `useServers`: a second observer on the same cache key replaces the
+   * query's function with its own closure, and one with a null client returns
+   * [] — which emptied every view for the whole poll interval.
+   */
+  servers: any[]
 }
 
-export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initialServerId }) => {
+export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initialServerId, profileId, servers }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const serversQuery = useServers(client)
-  const servers = serversQuery.data || []
+  const [view, setView] = useState<'server' | 'matrix'>('server')
 
   const [selectedServerId, setSelectedServerId] = useState<number | null>(
     initialServerId || (servers.length > 0 ? servers[0].id : null)
@@ -330,12 +339,20 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     if (!client || !targetServerId) return
 
     const targetName = servers.find((s) => s.id === targetServerId)?.name || String(targetServerId)
+    // Read the target's current list first so the diff is a true before → after.
+    let targetRules: any[] = []
+    try {
+      const { data } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', { params: { path: { server_id: targetServerId } } })
+      targetRules = data?.firewall_rules || []
+    } catch {
+      // shown as "unknown" below rather than blocking the clone
+    }
     const c = await confirmAction({
       title: 'Clone firewall rules',
       target: { kind: 'server', id: targetServerId, name: String(targetName) },
-      summary: `Replaces whatever rules ${targetName} has now with the ${currentRules.length} rule${currentRules.length === 1 ? '' : 's'} from ${activeServer?.name}. The target's existing rules are not shown here because they have not been fetched.`,
+      summary: `Replaces the ${targetRules.length} rule${targetRules.length === 1 ? '' : 's'} on ${targetName} with the ${currentRules.length} from ${activeServer?.name}.`,
       severity: 'destructive',
-      diff: diffLines([], currentRules.map(describeFirewallRule)),
+      diff: diffLines(targetRules.map(describeFirewallRule), currentRules.map(describeFirewallRule)),
       confirmLabel: 'Clone rules'
     })
     if (!c.ok) return
@@ -380,6 +397,23 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
         {/* Server Picker Dropdown & Actions */}
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded shadow-sm overflow-hidden text-xs">
+            <button
+              onClick={() => setView('server')}
+              className={`px-3 py-1.5 flex items-center gap-1.5 ${view === 'server' ? 'bg-[#017cb6] text-white' : 'text-[#212529] dark:text-slate-200 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40]'}`}
+            >
+              <Server className="w-3.5 h-3.5" /> Server
+            </button>
+            <button
+              onClick={() => setView('matrix')}
+              className={`px-3 py-1.5 flex items-center gap-1.5 ${view === 'matrix' ? 'bg-[#017cb6] text-white' : 'text-[#212529] dark:text-slate-200 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40]'}`}
+              title="Every server × every rule, with an audit"
+            >
+              <Grid3x3 className="w-3.5 h-3.5" /> Fleet matrix
+            </button>
+          </div>
+          {view === 'matrix' ? null : (
+          <>
           <div className="flex items-center gap-2 bg-white dark:bg-[#2b3035] px-3 py-1.5 border border-[#ced4da] dark:border-[#373b3e] rounded shadow-sm">
             <Server className="w-3.5 h-3.5 text-[#017cb6]" />
             <select
@@ -431,9 +465,23 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             <Plus className="w-4 h-4" />
             <span>{isAdding ? 'Close Form' : 'Add Rule'}</span>
           </button>
+          </>
+          )}
         </div>
       </div>
 
+      {view === 'matrix' ? (
+        <FirewallMatrix
+          client={client}
+          servers={servers}
+          profileId={profileId}
+          onSelectServer={(id) => {
+            setSelectedServerId(id)
+            setView('server')
+          }}
+        />
+      ) : (
+      <>
       {/* Add Rule Drawer Form */}
       {isAdding && (
         <form
@@ -850,6 +898,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

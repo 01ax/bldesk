@@ -21,6 +21,11 @@ export function useServers(client: BinaryLaneClient | null, profileId?: string) 
         })
         if (error) {
           console.warn('[useServers] Query error:', error)
+          // A failed first page must not become "no servers": returning [] here
+          // replaced the cached list with nothing on any transient API failure
+          // (blank sidebar, empty matrix, tray at 0) until the next poll. Throw
+          // instead so React Query keeps the last good data and retries.
+          if (page === 1) throw new Error(describeApiError(error))
           break
         }
         const pageServers = data?.servers || []
@@ -239,6 +244,53 @@ export function useFirewallRules(client: BinaryLaneClient | null, serverId: numb
       return data?.firewall_rules || []
     },
     enabled: !!client && !!serverId
+  })
+}
+
+/** Run `fn` over `items` with at most `limit` in flight; per-item failures become `null`. */
+async function mapLimitNullable<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<Array<R | null>> {
+  const out: Array<R | null> = new Array(items.length).fill(null)
+  let next = 0
+  const worker = async () => {
+    for (;;) {
+      const i = next++
+      if (i >= items.length) return
+      try {
+        out[i] = await fn(items[i])
+      } catch {
+        out[i] = null
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
+/**
+ * Every server's firewall rules in one query, for the fleet matrix. One GET
+ * per server, four at a time; a server whose rules could not be read maps to
+ * `null` so the matrix can say so rather than show it as rule-less.
+ */
+export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: number[]) {
+  const key = serverIds.join(',')
+  return useQuery({
+    queryKey: ['fleet-firewalls', key],
+    queryFn: async () => {
+      const map = new Map<number, any[] | null>()
+      if (!client) return map
+      const results = await mapLimitNullable(serverIds, 4, async (id) => {
+        const { data, error } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+          params: { path: { server_id: id } },
+          signal: AbortSignal.timeout(20_000)
+        })
+        if (error) throw new Error(describeApiError(error))
+        return data?.firewall_rules || []
+      })
+      serverIds.forEach((id, i) => map.set(id, results[i]))
+      return map
+    },
+    enabled: !!client && serverIds.length > 0,
+    staleTime: 60_000
   })
 }
 

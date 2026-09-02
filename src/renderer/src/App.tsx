@@ -287,6 +287,7 @@ function MainDashboard() {
               selectedServer ? (
                 <ServerDetails
                   server={liveSelectedServer}
+                  servers={servers}
                   client={client}
                   activeSubTab={activeServerSubTab}
                   onBack={() => setSelectedServer(null)}
@@ -321,7 +322,7 @@ function MainDashboard() {
             )}
 
             {activeTab === 'firewall' && (
-              <FirewallManager client={client} />
+              <FirewallManager client={client} profileId={activeProfile?.id} servers={servers} />
             )}
 
             {activeTab === 'loadbalancers' && (
@@ -379,6 +380,7 @@ function MainDashboard() {
           onClose={() => setIsPaletteOpen(false)}
           servers={servers}
           client={client}
+          profileId={activeProfile?.id}
           onSelectServer={handleSelectServer}
           onSelectServerSubTab={setActiveServerSubTab}
           onNavigateTab={setActiveTab}

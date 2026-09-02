@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.42] - 2026-09-02
+
+### Added
+- **Fleet-wide firewall matrix** (FEATURES.md #2): a "Fleet matrix" view on the Firewall tab — servers down the side, rule signatures (protocol, ports, source) across the top, accept / drop / absent per cell, read from every server four at a time. An audit column flags SSH, RDP, VNC or Docker open to the world (red), database ports open to the world, servers with no rules at all, rules shadowed by a catch-all drop (amber), and sources that are not one of your servers (info). Flagged servers sort first; "Only flagged" narrows to them.
+- **Copy ruleset to N servers** from the matrix, with one combined before → after diff per target in the confirm, servers that already match skipped, and one History entry per server written.
+- **Server groups and tags**, kept locally per account since the API has none. Tag a server from its matrix row or from the palette (`tag add web wp-*`, `tag remove web #101`); a tag is a group, so `@web` works as a target anywhere the palette takes one (`restart @web`, `snapshot @db "nightly"`) and as a scope in the matrix. Saved groups can also be a pattern (`wp-web-*,wp-ha-lb`) that keeps matching new servers.
+- **Clone firewall rules now shows a true before → after**: it reads the target's current rules first.
+
+### Fixed
+- **A failed server-list poll no longer blanks the app.** One transient API error on the 15-second refresh used to replace the server list with an empty one (empty sidebar, tray at 0, empty matrix) until the next poll succeeded. The last good list is kept and the poll retries.
+- The Firewall tab now uses the app's server list rather than its own query with a different cache key, so it sees the cold-start cache and the inferred power state.
+
+---
+
 ## [1.0.41] - 2026-09-02
 
 ### Added
