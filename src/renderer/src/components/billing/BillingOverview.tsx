@@ -441,7 +441,7 @@ const PaymentDetails: React.FC<{ account: any; isLoading: boolean }> = ({ accoun
         </div>
 
         <button
-          onClick={() => window.bldeskApi?.openExternal?.(`${MPANEL}/billing`)}
+          onClick={() => window.bldeskApi?.openExternal?.(`${MPANEL}/billing/payment-details`)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white rounded font-medium transition flex-shrink-0"
         >
           Change Billing Details
