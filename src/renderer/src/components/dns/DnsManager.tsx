@@ -1,15 +1,123 @@
-import React, { useState } from 'react'
-import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight, ExternalLink} from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useDomainRecords } from '../../api/queries'
+import { RemoveDnsHostingDialog } from './RemoveDnsHostingDialog'
+import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 
 interface DnsManagerProps {
   client: BinaryLaneClient | null
 }
 
+/**
+ * Whether a zone's authority actually points at BinaryLane.
+ *
+ * The API has no "registered here" flag — there are no registrar endpoints at
+ * all — so the only distinction available is whether `current_nameservers`
+ * resolve to BinaryLane's own. A zone can exist here with authority still
+ * delegated elsewhere, in which case edits have no effect on live resolution,
+ * which is worth showing.
+ */
+function delegationState(
+  domain: { current_nameservers?: string[] | null },
+  localNameservers: string[]
+): 'delegated' | 'external' | 'unknown' {
+  const current = (domain.current_nameservers || []).map((n) => n.toLowerCase().replace(/\.$/, ''))
+  if (current.length === 0) return 'unknown'
+  if (localNameservers.length === 0) return 'unknown'
+  const local = localNameservers.map((n) => n.toLowerCase().replace(/\.$/, ''))
+  return current.some((n) => local.includes(n)) ? 'delegated' : 'external'
+}
+
+const DelegationBadge: React.FC<{
+  domain: { current_nameservers?: string[] | null }
+  localNameservers: string[]
+}> = ({ domain, localNameservers }) => {
+  const state = delegationState(domain, localNameservers)
+  if (state === 'unknown') return null
+  const isLocal = state === 'delegated'
+  return (
+    <span
+      title={
+        isLocal
+          ? 'Authority is delegated to BinaryLane, so the records in this zone are the ones resolving.'
+          : `Authority is elsewhere (${(domain.current_nameservers || []).join(', ')}). The records here exist but nothing is using them.`
+      }
+      className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide ${
+        isLocal
+          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+          : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+      }`}
+    >
+      {isLocal ? 'Live' : 'Not in use'}
+    </span>
+  )
+}
+
+/**
+ * The domain's page in the web panel.
+ *
+ * Note the singular `/domain/`. No section suffix: the page opens on DNS records
+ * by default and works whether the domain is registered with BinaryLane or only
+ * hosted here for DNS — which matters because the API cannot tell those apart.
+ *
+ * mPanel is a SPA and answers 200 for any path under this prefix, so a wrong URL
+ * opens the wrong page rather than failing visibly. Hence one helper.
+ */
+const domainWebUrl = (domain: string) => `https://home.binarylane.com.au/domain/${encodeURIComponent(domain)}`
+
+const WEB_ONLY_FEATURES = [
+  'Registrant details',
+  'Domain lock',
+  'Renew domain',
+  'Cancel registration',
+  'Domain password (AuthCode)'
+]
+
+const WebOnlyRegistration: React.FC<{ domain: string }> = ({ domain }) => (
+  <div className="px-4 py-2.5 border-b border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
+    <span>Managed on the web: </span>
+    {WEB_ONLY_FEATURES.map((label, i) => (
+      <React.Fragment key={label}>
+        {i > 0 && <span className="opacity-50"> · </span>}
+        <button
+          onClick={() => window.bldeskApi?.openExternal?.(domainWebUrl(domain))}
+          className="text-[#017cb6] dark:text-[#4db2e0] hover:underline"
+        >
+          {label}
+        </button>
+      </React.Fragment>
+    ))}
+    <ExternalLink className="w-3 h-3 inline-block ml-1 -mt-0.5 opacity-60" />
+  </div>
+)
+
+const DOMAINS_PER_PAGE = 25
+
+const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; children: React.ReactNode }> = ({
+  onClick,
+  disabled,
+  children
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className="w-full text-left px-3 py-1.5 hover:bg-[#017cb6]/10 text-[#212529] dark:text-slate-200 transition disabled:opacity-40 disabled:hover:bg-transparent"
+  >
+    {children}
+  </button>
+)
+
 export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [domainPage, setDomainPage] = useState(1)
+  const [removing, setRemoving] = useState<any | null>(null)
+  const [removeBusy, setRemoveBusy] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDomainPage(1)
+  }, [searchTerm])
   const [isAddingRecord, setIsAddingRecord] = useState(false)
   const [recordType, setRecordType] = useState('A')
   const [recordName, setRecordName] = useState('@')
@@ -18,6 +126,17 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const domainsQuery = useDomains(client)
+  const nameserversQuery = useLocalNameservers(client)
+  const [menu, setMenu] = useState<{ x: number; y: number; domain: any } | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+  const localNameservers = nameserversQuery.data || []
+
+  const copy = (label: string, text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(label)
+    setMenu(null)
+    setTimeout(() => setCopied(null), 1600)
+  }
   const recordsQuery = useDomainRecords(client, selectedDomain)
 
   const domains = domainsQuery.data || []
@@ -93,8 +212,50 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     }
   }
 
+  const handleRemoveDnsHosting = async () => {
+    if (!client || !removing) return
+    setRemoveBusy(true)
+    setRemoveError(null)
+    try {
+      const { error } = await client.DELETE('/v2/domains/{domain_name}', {
+        params: { path: { domain_name: removing.name } }
+      })
+      if (error) throw new Error(typeof error === 'string' ? error : JSON.stringify(error))
+
+      // Clear anything pointing at the zone that no longer exists, then wait for
+      // the refetch before closing: the dialog stays up until the list has
+      // actually reloaded, so the row visibly disappears rather than the user
+      // being left wondering whether it worked.
+      if (selectedDomain === removing.name) setSelectedDomain(null)
+      const { data: refreshed } = await domainsQuery.refetch()
+
+      // Deleting the last entry on the final page would otherwise strand the
+      // pager past the end, showing an empty list.
+      const remaining = (refreshed || []).filter((d: any) =>
+        d.name.toLowerCase().includes(searchTerm.toLowerCase())
+      ).length
+      const lastPage = Math.max(1, Math.ceil(remaining / DOMAINS_PER_PAGE))
+      setDomainPage((p) => Math.min(p, lastPage))
+
+      setRemoving(null)
+    } catch (err: any) {
+      setRemoveError(err.message || 'Failed to remove DNS hosting.')
+    } finally {
+      setRemoveBusy(false)
+    }
+  }
+
   const filteredDomains = domains.filter((d) =>
     d.name.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  // All domains are fetched, then paged here rather than server-side, so the
+  // filter above searches the whole account instead of just the visible page.
+  const pageCount = Math.max(1, Math.ceil(filteredDomains.length / DOMAINS_PER_PAGE))
+  const currentPage = Math.min(domainPage, pageCount)
+  const visibleDomains = filteredDomains.slice(
+    (currentPage - 1) * DOMAINS_PER_PAGE,
+    currentPage * DOMAINS_PER_PAGE
   )
 
   return (
@@ -146,23 +307,60 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
               <div className="p-6 text-center text-xs text-[#6c757d]">No DNS zones found</div>
             )}
 
-            {filteredDomains.map((domain) => {
+            {visibleDomains.map((domain) => {
               const isSelected = selectedDomain === domain.name
               return (
                 <button
                   key={domain.name}
                   onClick={() => handleSelectDomain(domain.name)}
-                  className={`w-full text-left p-3 text-xs transition flex items-center justify-between ${
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setMenu({ x: e.clientX, y: e.clientY, domain })
+                  }}
+                  className={`w-full text-left p-3 text-xs transition flex items-center justify-between gap-2 ${
                     isSelected
                       ? 'bg-[#017cb6]/10 text-[#017cb6] font-semibold border-l-4 border-[#017cb6]'
                       : 'hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] text-[#212529] dark:text-slate-200'
                   }`}
                 >
-                  <span className="font-mono">{domain.name}</span>
-                  <span className="text-[10px] text-[#6c757d]">TTL {domain.ttl}s</span>
+                  <span className="font-mono truncate">{domain.name}</span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    <DelegationBadge domain={domain} localNameservers={localNameservers} />
+                    <span className="text-[10px] text-[#6c757d]">TTL {domain.ttl}s</span>
+                  </span>
                 </button>
               )
             })}
+
+            {filteredDomains.length > DOMAINS_PER_PAGE && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[10px] text-[#6c757d] dark:text-[#adb5bd]">
+                <span>
+                  {(currentPage - 1) * DOMAINS_PER_PAGE + 1}&ndash;
+                  {Math.min(currentPage * DOMAINS_PER_PAGE, filteredDomains.length)} of {filteredDomains.length}
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    onClick={() => setDomainPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    aria-label="Previous page"
+                    className="p-1 rounded border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] transition disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-3 h-3" />
+                  </button>
+                  <span className="font-mono px-1">
+                    {currentPage} / {pageCount}
+                  </span>
+                  <button
+                    onClick={() => setDomainPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={currentPage >= pageCount}
+                    aria-label="Next page"
+                    className="p-1 rounded border border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6] transition disabled:opacity-40"
+                  >
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -189,6 +387,14 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                   <span>Add Record</span>
                 </button>
               </div>
+
+              {/* What lives on the web only.
+                  The API has no registrar surface at all — no registrant, lock,
+                  renewal, transfer or AuthCode endpoints exist — so these can't be
+                  built here. Naming them is still worth it: otherwise the absence
+                  reads as a missing feature and people go looking. Rendered as
+                  links, deliberately not tabs, so nothing looks interactive. */}
+              <WebOnlyRegistration domain={selectedDomain} />
 
               {/* Records Table */}
               <div className="flex-1 overflow-y-auto">
@@ -334,6 +540,71 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Right-click menu: the list is the only place a full domain name is on
+          screen, and it is the thing most often needed elsewhere. */}
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }} />
+          <div
+            className="fixed z-50 min-w-[190px] bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-xl py-1 text-xs"
+            style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 150) }}
+          >
+            <div className="px-3 py-1.5 font-mono text-[10px] text-[#6c757d] border-b border-[#ced4da] dark:border-[#373b3e] truncate">
+              {menu.domain.name}
+            </div>
+            <MenuItem onClick={() => copy('name', menu.domain.name)}>Copy domain name</MenuItem>
+            <MenuItem
+              onClick={() => {
+                // Registration (registrant details, domain lock, renewal, AuthCode)
+                // has no API surface at all — the domains endpoints only cover DNS
+                // zones and records — so these can only be managed on the web.
+                window.bldeskApi?.openExternal?.(domainWebUrl(menu.domain.name))
+                setMenu(null)
+              }}
+            >
+              Manage registration on the web
+            </MenuItem>
+            <MenuItem
+              onClick={() => copy('nameservers', (menu.domain.current_nameservers || []).join('\n'))}
+              disabled={!(menu.domain.current_nameservers || []).length}
+            >
+              Copy nameservers
+            </MenuItem>
+            <MenuItem onClick={() => copy('zone', menu.domain.zone_file || '')} disabled={!menu.domain.zone_file}>
+              Copy zone file
+            </MenuItem>
+            <div className="my-1 border-t border-[#ced4da] dark:border-[#373b3e]" />
+            <button
+              onClick={() => {
+                setRemoving(menu.domain)
+                setRemoveError(null)
+                setMenu(null)
+              }}
+              className="w-full text-left px-3 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition"
+            >
+              Remove DNS hosting...
+            </button>
+          </div>
+        </>
+      )}
+
+      {removing && (
+        <RemoveDnsHostingDialog
+          domain={removing.name}
+          recordCount={selectedDomain === removing.name ? records.length : undefined}
+          isDeleting={removeBusy}
+          error={removeError}
+          onCancel={() => setRemoving(null)}
+          onConfirm={handleRemoveDnsHosting}
+          onCopyZone={removing.zone_file ? () => copy('zone', removing.zone_file) : undefined}
+        />
+      )}
+
+      {copied && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-md bg-[#212529] text-white text-xs shadow-lg">
+          Copied {copied === 'name' ? 'domain name' : copied === 'nameservers' ? 'nameservers' : 'zone file'}
         </div>
       )}
     </div>
