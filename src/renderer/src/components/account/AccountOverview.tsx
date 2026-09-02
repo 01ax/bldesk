@@ -174,7 +174,7 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ client }) => {
 
           <MpanelNote>
             Payment methods are managed on the web.
-            <MpanelLink onClick={() => openMpanel('/billing')}>Change billing details</MpanelLink>
+            <MpanelLink onClick={() => openMpanel('/billing/payment-details')}>Change billing details</MpanelLink>
           </MpanelNote>
         </Card>
 
