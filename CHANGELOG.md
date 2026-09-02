@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.31] - 2026-09-02
+
+### Added
+- **Account Details Tab** (*thanks @01ax!*):
+  - Dedicated **Account Details** tab in the sidebar displaying account metadata (`GET /v2/account`):
+    - Email address with verified/unverified status badge.
+    - Account status, tax code, 2FA enabled status, and additional IPv4 limits.
+    - Configured payment method indicators.
+    - Direct web links for password changes, API token management, 2FA setup, and contact details.
+- **Tabbed Billing & Invoices Suite** (*thanks @01ax!*):
+  - Reorganized the Billing interface into 3 mPanel-style tabs:
+    - **Invoices**: Full server-side pagination (`page` and `per_page`) with previous/next controls, fixing previous truncation where only 20 invoices were visible.
+    - **Pending Charges**: Itemized breakdown of unbilled charges (`balance.charges[]`) with descriptions, dates, status, and running totals.
+    - **Payment Details**: Configured payment method status, PayPal manual payment guidance, and update links.
+  - **Unpaid Invoice Alert Banner**: Prominent banner displayed when payment failed invoices require attention.
+
+### Fixed
+- **Windows Portable / NSIS Artifact Collision** (*thanks @01ax!*):
+  - Assigned explicit `artifactName` for the Windows `portable` target (`BLDesk-${version}-${os}-${arch}-portable.exe`) so it no longer overwrites the NSIS installer executable during multi-target packaging.
+- **Honest Auto-Updater Reporting** (*thanks @01ax!*):
+  - Introduced `check-failed` status (grey *"Couldn't check"* pill with error details in dropdown) for unreachable feeds or missing manifests, preventing false green *"Up to date"* indications when update checks fail.
+
+---
+
 ## [1.0.30] - 2026-09-02
 
 ### Added
