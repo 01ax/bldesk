@@ -32,6 +32,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
+import { describeActionType } from '../../lib/actionLabels'
 import { ServerSubTab } from '../layout/Sidebar'
 
 type ServerResponse = components['schemas']['Server']
@@ -116,7 +117,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       })
       // Diagnostics answer immediately and are reported inline below; tracking
       // them would only add a toast for something already on screen.
-      if (res && !isDiagnostic) track(res, actionType, server.name)
+      if (res && !isDiagnostic) track(res, describeActionType(actionType), server.name)
       if (isDiagnostic) {
         setDiagnosticResult(`Result of ${actionType}: ${JSON.stringify((res as any)?.result || res?.status || 'Success')}`)
       }
