@@ -96,6 +96,13 @@ function MainDashboard() {
     return () => window.removeEventListener('bldesk:auth_error', handleAuthError)
   }, [])
 
+  // A failed token belongs to the profile that raised it. Without this the banner
+  // followed you to accounts whose keys are fine, reporting a failure that wasn't
+  // theirs and couldn't be dismissed by switching away.
+  useEffect(() => {
+    setAuthErrorBanner(null)
+  }, [activeProfile?.id])
+
   // Create API Client with Active Profile Token
   const client = React.useMemo(() => {
     return activeProfile?.token ? createBinaryLaneClient(activeProfile.token) : null
