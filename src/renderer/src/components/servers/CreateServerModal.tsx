@@ -345,14 +345,14 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                  * label and dropdown below it.
                  */}
               <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-x-auto">
-                <table className="w-full text-[10px] sm:text-xs">
+                <table className="w-full text-[10px] sm:text-xs whitespace-nowrap">
                   <thead>
                     <tr className="bg-[#f8f9fa] dark:bg-[#212529] text-[#6c757d] text-left">
-                      <th className="py-2 px-1 sm:px-3 font-semibold">Processor</th>
-                      <th className="py-2 px-1 sm:px-3 font-semibold">Memory</th>
-                      <th className="py-2 px-1 sm:px-3 font-semibold">Storage</th>
-                      <th className="py-2 px-1 sm:px-3 font-semibold">Transfer</th>
-                      <th className="py-2 px-1 sm:px-3 font-semibold text-right">Price</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Processor</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Memory</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Storage</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Transfer</th>
+                      <th className="py-1.5 px-1 sm:py-2 sm:px-3 font-semibold text-center">Price</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
@@ -370,8 +370,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               : 'cursor-pointer hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]'
                           } ${isSel ? 'bg-[#017cb6]/10' : ''}`}
                         >
-                          <td className="py-2 px-1 sm:px-3">
-                            <span className="flex items-center gap-2">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
+                            <span className="flex items-center gap-1 sm:gap-2">
                               <Radio selected={isSel} blocked={!!blocked} />
                               <span className="text-[#212529] dark:text-white">
                                 {p.vcpus} {p.vcpu_units || 'VCPU'}
@@ -379,14 +379,14 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               </span>
                             </span>
                           </td>
-                          <td className="py-2 px-1 sm:px-3">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
                             {isSel && memoryChoices(p).length > 1 ? (
                               <Select value={memory} onChange={(v) => setMemoryMb(v)} options={memoryChoices(p).map((m) => ({ value: m, label: `${m / 1024} GB` }))} />
                             ) : (
                               <span className="text-[#212529] dark:text-white">{p.memory / 1024} GB</span>
                             )}
                           </td>
-                          <td className="py-2 px-1 sm:px-3">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
                             {isSel && diskChoices(p).length > 1 ? (
                               <Select value={disk} onChange={(v) => setDiskGb(v)} options={diskChoices(p).map((d) => ({ value: d, label: `${d} GB` }))} />
                             ) : (
@@ -396,7 +396,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                             )}
                           </td>
                           <td className="py-2 px-3 text-[#212529] dark:text-white">{p.transfer * 1000} GB</td>
-                          <td className="py-2 px-1 sm:px-3 text-right font-medium text-[#212529] dark:text-white">
+                          <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-right font-medium text-[#212529] dark:text-white">
                             ${planMonthlyPrice(p, image, isSel ? memory : p.memory, isSel ? disk : p.disk).toFixed(2)}
                           </td>
                         </tr>
@@ -682,7 +682,7 @@ const Tile: React.FC<{
 
 const Radio: React.FC<{ selected: boolean; blocked: boolean }> = ({ selected, blocked }) => (
   <span
-    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
+    className={`w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
       blocked ? 'border-[#adb5bd]' : selected ? 'border-[#017cb6]' : 'border-[#ced4da] dark:border-[#6c757d]'
     }`}
   >
@@ -701,7 +701,7 @@ const Select: React.FC<{
       value={value}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="appearance-none pl-2 pr-6 py-1 text-xs bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+      className="appearance-none pl-1.5 pr-5 py-0.5 text-[11px] sm:pl-2 sm:pr-6 sm:py-1 sm:text-xs bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -709,7 +709,7 @@ const Select: React.FC<{
         </option>
       ))}
     </select>
-    <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
+    <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 absolute right-1 sm:right-1.5 pointer-events-none opacity-60" />
   </span>
 )
 
