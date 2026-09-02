@@ -1,8 +1,47 @@
-import React, { useState } from 'react'
-import { X, Server, Globe, Cpu, Key, Loader2, AlertCircle } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { useSizes, useRegions, useImages, useSshKeys, useVpcs, useCreateServerMutation } from '../../api/queries'
+import {
+  useSizes,
+  useRegions,
+  useDistributionImages,
+  useSshKeys,
+  useVpcs,
+  useCreateServerMutation,
+  useAddSshKeyMutation
+} from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
+import {
+  planMonthlyPrice,
+  planUnavailableReason,
+  memoryChoices,
+  diskChoices,
+  billingTotal,
+  compareVersionNames,
+  type SizeLike,
+  type ImageLike
+} from '../../lib/serverPricing'
+
+/**
+ * Create a server, laid out the way the web panel does it: pick a location and
+ * operating system, then a plan, then settings.
+ *
+ * Two things this has to get right that a plain form does not:
+ *
+ * - **Availability.** A plan can be offered but out of stock in the chosen
+ *   region, and an image's memory/storage minimums exclude plans outright. Both
+ *   are shown rather than allowed to fail at submit.
+ * - **Price.** `price_monthly` is the base; licensed images add a surcharge. See
+ *   lib/serverPricing.ts — omitting it understates Windows by about half.
+ */
+
+const TOS_URL = 'https://www.binarylane.com.au/terms-of-service'
+const REFUND_URL = 'https://www.binarylane.com.au/refund-policy'
+
+/** Web-panel ordering, so the tiles don't reshuffle as the API's order changes. */
+const DISTRO_ORDER = ['Ubuntu', 'Debian', 'cPanel+WHM', 'Windows', 'BYO', 'AlmaLinux', 'KDE', 'Rocky']
+
+const PLAN_TYPE_ORDER = ['vps', 'hdd', 'cpu', 'ded']
 
 interface CreateServerModalProps {
   isOpen: boolean
@@ -11,289 +50,694 @@ interface CreateServerModalProps {
   onCreated?: () => void
 }
 
-export const CreateServerModal: React.FC<CreateServerModalProps> = ({
-  isOpen,
-  onClose,
-  client,
-  onCreated
-}) => {
-  const [name, setName] = useState('')
-  const [selectedRegion, setSelectedRegion] = useState('syd')
-  const [selectedSize, setSelectedSize] = useState('std-1vcpu')
-  const [selectedImage, setSelectedImage] = useState('ubuntu-24-04')
-  const [selectedKeys, setSelectedKeys] = useState<number[]>([])
-  const [selectedVpc, setSelectedVpc] = useState<number | undefined>(undefined)
-  const [enableBackups, setEnableBackups] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
+export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, onClose, client, onCreated }) => {
   const sizesQuery = useSizes(client)
   const regionsQuery = useRegions(client)
-  const imagesQuery = useImages(client)
+  const imagesQuery = useDistributionImages(client)
   const sshKeysQuery = useSshKeys(client)
   const vpcsQuery = useVpcs(client)
   const createServer = useCreateServerMutation(client)
+  const addSshKey = useAddSshKeyMutation(client)
+
+  const sizes = (sizesQuery.data || []) as SizeLike[]
+  const regions = (regionsQuery.data || []) as any[]
+  const images = (imagesQuery.data || []) as ImageLike[]
+  const sshKeys = (sshKeysQuery.data || []) as any[]
+  const vpcs = (vpcsQuery.data || []) as any[]
+
+  // --- selection ---
+  const [region, setRegion] = useState('syd')
+  const [distro, setDistro] = useState('Ubuntu')
+  const [imageSlug, setImageSlug] = useState<string | null>(null)
+  const [planType, setPlanType] = useState('vps')
+  const [sizeSlug, setSizeSlug] = useState<string | null>(null)
+  const [memoryMb, setMemoryMb] = useState<number | null>(null)
+  const [diskGb, setDiskGb] = useState<number | null>(null)
+
+  // --- settings ---
+  const [showAll, setShowAll] = useState(false)
+  const [hostname, setHostname] = useState('')
+  const [vpcId, setVpcId] = useState<number | undefined>(undefined)
+  const [selectedKeys, setSelectedKeys] = useState<number[]>([])
+  const [ipCount, setIpCount] = useState(1)
+  const [dailyBackups, setDailyBackups] = useState(0)
+  const [weeklyBackups, setWeeklyBackups] = useState(0)
+  const [monthlyBackups, setMonthlyBackups] = useState(0)
+  const [offsiteBackups, setOffsiteBackups] = useState(false)
+  const [simpleBackups, setSimpleBackups] = useState<'onsite' | 'both' | 'none'>('none')
+  const [cloudInitOn, setCloudInitOn] = useState(false)
+  const [cloudInit, setCloudInit] = useState('')
+  const [agreed, setAgreed] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [addKeyOpen, setAddKeyOpen] = useState(false)
+
+  // Distributions present, in web-panel order, with anything unexpected appended
+  // rather than dropped.
+  const distros = useMemo(() => {
+    const present = [...new Set(images.map((i) => i.distribution).filter(Boolean))] as string[]
+    const ordered = DISTRO_ORDER.filter((d) => present.includes(d))
+    return [...ordered, ...present.filter((d) => !DISTRO_ORDER.includes(d)).sort()]
+  }, [images])
+
+  const versions = useMemo(
+    () =>
+      images
+        .filter((i) => i.distribution === distro && (!i.regions || i.regions.includes(region)))
+        .sort((a, b) => compareVersionNames((a as any).name || a.slug || '', (b as any).name || b.slug || '')),
+    [images, distro, region]
+  )
+
+  const image = useMemo(
+    () => versions.find((v) => v.slug === imageSlug) || versions[0],
+    [versions, imageSlug]
+  )
+
+  const planTypes = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const s of sizes) {
+      const slug = s.size_type?.slug
+      if (slug && !seen.has(slug)) seen.set(slug, s.size_type?.name || slug)
+    }
+    return [...PLAN_TYPE_ORDER.filter((t) => seen.has(t)), ...[...seen.keys()].filter((t) => !PLAN_TYPE_ORDER.includes(t))].map(
+      (slug) => ({ slug, name: seen.get(slug) || slug })
+    )
+  }, [sizes])
+
+  const plans = useMemo(
+    () => sizes.filter((s) => (s.size_type?.slug || 'vps') === planType),
+    [sizes, planType]
+  )
+
+  const selectedSize = useMemo(() => plans.find((p) => p.slug === sizeSlug), [plans, sizeSlug])
+
+  // Every plan in this tab is unusable here — the web panel says so rather than
+  // leaving an all-grey table unexplained.
+  const allPlansBlocked =
+    plans.length > 0 && plans.every((p) => planUnavailableReason(p, region, image) !== null)
+
+  // Keep the version choice valid when the distribution or region changes.
+  useEffect(() => {
+    if (!versions.length) return
+    if (!versions.some((v) => v.slug === imageSlug)) setImageSlug(versions[0].slug || null)
+  }, [versions, imageSlug])
+
+  // Land on a plan that can actually be provisioned, rather than an empty table
+  // or a pre-selected row the region has no stock for.
+  useEffect(() => {
+    if (!plans.length) return
+    const current = plans.find((p) => p.slug === sizeSlug)
+    if (current && !planUnavailableReason(current, region, image)) return
+    const firstUsable = plans.find((p) => !planUnavailableReason(p, region, image))
+    setSizeSlug(firstUsable?.slug ?? null)
+  }, [plans, region, image?.slug, sizeSlug])
+
+  // Reset plan-derived state whenever the plan changes.
+  useEffect(() => {
+    if (!selectedSize) return
+    setMemoryMb(selectedSize.memory)
+    setDiskGb(selectedSize.disk)
+  }, [selectedSize?.slug])
+
+  // Pre-select the account's default SSH key, as the web panel does.
+  useEffect(() => {
+    if (!sshKeys.length || selectedKeys.length) return
+    const def = sshKeys.find((k: any) => k.default)
+    if (def) setSelectedKeys([def.id])
+  }, [sshKeys])
+
+  const memory = memoryMb ?? selectedSize?.memory ?? 0
+  const disk = diskGb ?? selectedSize?.disk ?? 0
+
+  const monthly = useMemo(() => {
+    if (!selectedSize) return 0
+    let total = planMonthlyPrice(selectedSize, image, memory, disk)
+    const o = selectedSize.options || {}
+    total += Math.max(0, ipCount - 1) * (o.ipv4_addresses_cost_per_address || 0)
+    const backupCount = dailyBackups + weeklyBackups + monthlyBackups
+    total += backupCount * disk * (o.backups_cost_per_backup_per_gigabyte || 0)
+    if (offsiteBackups) total += backupCount * disk * (o.offsite_backups_cost_per_gigabyte || 0)
+    return total
+  }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
+
+  const { total: monthlyIncGst, gst } = billingTotal(monthly)
 
   if (!isOpen) return null
-
-  const sizes = sizesQuery.data || []
-  const regions = regionsQuery.data || []
-  const images = imagesQuery.data || []
-  const sshKeys = sshKeysQuery.data || []
-  const vpcs = vpcsQuery.data || []
-
-  // Filter distribution base images
-  const baseImages = images.filter((img: any) => img.type === 'distribution' || img.type === 'base' || !img.type)
-  const currentSizeObj = sizes.find((s) => s.slug === selectedSize) || sizes[0]
-
-  const handleToggleKey = (keyId: number) => {
-    setSelectedKeys((prev) => (prev.includes(keyId) ? prev.filter((k) => k !== keyId) : [...prev, keyId]))
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
+    if (!hostname.trim()) return setErrorMsg('Enter a hostname for the server.')
+    if (!image?.slug) return setErrorMsg('Choose an operating system.')
+    if (!selectedSize) return setErrorMsg('Choose a plan.')
+    const blocked = planUnavailableReason(selectedSize, region, image)
+    if (blocked) return setErrorMsg(blocked)
+    if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
 
-    if (!name.trim()) {
-      setErrorMsg('Please enter a server hostname.')
-      return
-    }
+    // The simple view collapses the three retention dropdowns into one choice.
+    const daily = showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2
+    const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
     try {
       await createServer.mutateAsync({
-        name: name.trim(),
-        region: selectedRegion,
-        size: selectedSize,
-        image: selectedImage,
-        ssh_keys: selectedKeys.length > 0 ? selectedKeys : undefined,
-        vpc_id: selectedVpc,
-        backups: enableBackups
-      })
-
-      window.bldeskApi?.sendNotification?.({
-        title: 'Server Provisioning Started',
-        body: `Server "${name}" is being provisioned in ${selectedRegion.toUpperCase()}.`
-      })
-
-      if (onCreated) onCreated()
+        name: hostname.trim(),
+        region,
+        size: selectedSize.slug,
+        image: image.slug,
+        ssh_keys: selectedKeys.length ? selectedKeys : undefined,
+        vpc_id: vpcId,
+        options: {
+          memory,
+          disk,
+          ipv4_addresses: ipCount,
+          daily_backups: daily,
+          weekly_backups: showAll ? weeklyBackups : 0,
+          monthly_backups: showAll ? monthlyBackups : 0,
+          offsite_backups: offsite
+        },
+        user_data: cloudInitOn && cloudInit.trim() ? cloudInit : undefined
+      } as any)
+      onCreated?.()
       onClose()
     } catch (err: any) {
-      setErrorMsg(err.message || 'Server deployment failed.')
+      setErrorMsg(err.message || 'Failed to create the server.')
     }
   }
 
+  const loading = sizesQuery.isLoading || imagesQuery.isLoading || regionsQuery.isLoading
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-100">
-      <div className="w-full max-w-2xl bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-[#f1f1f1] dark:bg-[#262a2e]">
-          <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-[#017cb6]" />
-            <h3 className="font-bold text-sm text-[#212529] dark:text-white">Deploy Virtual Server</h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white rounded"
-          >
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-5xl my-6 bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl"
+      >
+        <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] sticky top-0 bg-white dark:bg-[#2b3035] rounded-t-lg z-10">
+          <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add a Cloud Server</h3>
+          <button type="button" onClick={onClose} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto text-xs">
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {/* 1. Hostname */}
-          <div>
-            <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-              Server Hostname / Label
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. web-node-01.production"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-            />
+        {loading ? (
+          <div className="p-12 flex items-center justify-center gap-2 text-xs text-[#6c757d]">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading plans and images...
           </div>
-
-          {/* 2. Region Selector */}
-          <div>
-            <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-2 flex items-center gap-1.5">
-              <Globe className="w-3.5 h-3.5 text-[#017cb6]" />
-              <span>Target Data Centre Region</span>
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {regions.map((r) => {
-                const isSelected = selectedRegion === r.slug
-                return (
-                  <button
-                    key={r.slug}
-                    type="button"
-                    onClick={() => setSelectedRegion(r.slug)}
-                    className={`p-2.5 rounded border text-left transition ${
-                      isSelected
-                        ? 'border-[#017cb6] bg-[#017cb6]/10 text-[#017cb6] font-semibold'
-                        : 'border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-slate-200 hover:border-[#017cb6]'
-                    }`}
-                  >
-                    <div className="font-semibold">{r.name}</div>
-                    <div className="text-[10px] text-[#6c757d] font-mono">{r.slug.toUpperCase()}</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 3. Operating System */}
-          <div>
-            <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-2">
-              Operating System Distribution
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-1">
-              {baseImages.map((img: any) => {
-                const isSelected = selectedImage === img.slug
-                const icon = logoForDistribution(img.distribution)
-                return (
-                  <button
-                    key={img.slug || img.id}
-                    type="button"
-                    onClick={() => setSelectedImage(img.slug || String(img.id))}
-                    className={`p-2 rounded border text-left flex items-center gap-2 transition ${
-                      isSelected
-                        ? 'border-[#017cb6] bg-[#017cb6]/10 text-[#017cb6] font-semibold'
-                        : 'border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-slate-200 hover:border-[#017cb6]'
-                    }`}
-                  >
-                    <img src={icon} alt="" className="w-4 h-4 object-contain flex-shrink-0" />
-                    <span className="truncate text-xs">{img.name || img.full_name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 4. Plan Size */}
-          <div>
-            <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-2 flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-[#017cb6]" />
-              <span>Compute Plan & Hardware Size</span>
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto p-1">
-              {sizes.map((s) => {
-                const isSelected = selectedSize === s.slug
-                const ramGB = (s.memory / 1024).toFixed(0)
-                return (
-                  <button
-                    key={s.slug}
-                    type="button"
-                    onClick={() => setSelectedSize(s.slug)}
-                    className={`p-2.5 rounded border text-left transition ${
-                      isSelected
-                        ? 'border-[#017cb6] bg-[#017cb6]/10 text-[#017cb6] font-semibold'
-                        : 'border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-slate-200 hover:border-[#017cb6]'
-                    }`}
-                  >
-                    <div className="font-semibold">{s.vcpus} vCPU • {ramGB} GB RAM</div>
-                    <div className="text-[10px] text-[#6c757d]">{s.disk} GB NVMe • ${s.price_monthly}/mo</div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 5. SSH Keys */}
-          {sshKeys.length > 0 && (
-            <div>
-              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-[#f1ca00]" />
-                <span>Inject SSH Public Keys</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {sshKeys.map((k) => {
-                  const isChecked = selectedKeys.includes(k.id)
-                  return (
-                    <button
-                      key={k.id}
-                      type="button"
-                      onClick={() => handleToggleKey(k.id)}
-                      className={`px-3 py-1 rounded text-xs border transition ${
-                        isChecked
-                          ? 'border-[#017cb6] bg-[#017cb6] text-white font-medium'
-                          : 'border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-slate-200 hover:border-[#017cb6]'
-                      }`}
-                    >
-                      {k.name}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* 6. VPC Network Option */}
-          {vpcs.length > 0 && (
-            <div>
-              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                Attach to Virtual Private Cloud (optional)
-              </label>
-              <select
-                value={selectedVpc || ''}
-                onChange={(e) => setSelectedVpc(e.target.value ? Number(e.target.value) : undefined)}
-                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-              >
-                <option value="">Default Public Network (No VPC)</option>
-                {vpcs.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.ip_range})
-                  </option>
+        ) : (
+          <div className="p-4 space-y-5">
+            {/* ---------- 1. location and operating system ---------- */}
+            <Section step={1} title="Select your location and operating system">
+              <TileRow>
+                {regions.map((r: any) => (
+                  <Tile key={r.slug} selected={region === r.slug} onClick={() => setRegion(r.slug)} disabled={!r.available}>
+                    {r.name}
+                  </Tile>
                 ))}
-              </select>
-            </div>
-          )}
+              </TileRow>
 
-          {/* Backups checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer pt-2">
-            <input
-              type="checkbox"
-              checked={enableBackups}
-              onChange={(e) => setEnableBackups(e.target.checked)}
-              className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
-            />
-            <span className="text-[#495057] dark:text-[#ced4da]">
-              Enable automated nightly snapshots during maintenance window
-            </span>
-          </label>
+              <TileRow className="mt-3">
+                {distros.map((d) => (
+                  <Tile key={d} selected={distro === d} onClick={() => setDistro(d)} className="flex-col gap-1.5 py-2.5 px-4">
+                    <img
+                      src={logoForDistribution(d)}
+                      alt=""
+                      className={`w-7 h-7 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
+                    />
+                    <span>{d}</span>
+                  </Tile>
+                ))}
+              </TileRow>
 
-          {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-[#ced4da] dark:border-[#373b3e]">
-            <div className="text-xs text-[#6c757d]">
-              Estimated Rate: <span className="font-bold text-[#212529] dark:text-white">${currentSizeObj?.price_monthly || 0}/mo</span>
-            </div>
+              {versions.length > 0 && (
+                <>
+                  <div className="text-xs font-semibold text-[#212529] dark:text-white mt-3 mb-1.5">Select Version</div>
+                  <TileRow>
+                    {versions.map((v) => (
+                      <Tile key={v.slug} selected={image?.slug === v.slug} onClick={() => setImageSlug(v.slug || null)}>
+                        {(v as any).name?.trim() || v.slug}
+                      </Tile>
+                    ))}
+                  </TileRow>
+                </>
+              )}
+            </Section>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-              >
-                Cancel
-              </button>
+            {/* ---------- 2. plan ---------- */}
+            <Section step={2} title="Choose your Cloud Server resources">
+              <TileRow>
+                {planTypes.map((t) => (
+                  <Tile key={t.slug} selected={planType === t.slug} onClick={() => setPlanType(t.slug)}>
+                    {t.name}
+                  </Tile>
+                ))}
+              </TileRow>
+
+              <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-[#f8f9fa] dark:bg-[#212529] text-[#6c757d] text-left">
+                      <th className="py-2 px-3 font-semibold">Processor</th>
+                      <th className="py-2 px-3 font-semibold">Memory</th>
+                      <th className="py-2 px-3 font-semibold">Storage</th>
+                      <th className="py-2 px-3 font-semibold">Transfer</th>
+                      <th className="py-2 px-3 font-semibold text-right">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+                    {plans.map((p) => {
+                      const blocked = planUnavailableReason(p, region, image)
+                      const isSel = sizeSlug === p.slug
+                      return (
+                        <tr
+                          key={p.slug}
+                          onClick={() => !blocked && setSizeSlug(p.slug)}
+                          title={blocked || undefined}
+                          className={`${
+                            blocked
+                              ? 'opacity-45 cursor-not-allowed'
+                              : 'cursor-pointer hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]'
+                          } ${isSel ? 'bg-[#017cb6]/10' : ''}`}
+                        >
+                          <td className="py-2 px-3">
+                            <span className="flex items-center gap-2">
+                              <Radio selected={isSel} blocked={!!blocked} />
+                              <span className="text-[#212529] dark:text-white">
+                                {p.vcpus} {p.vcpu_units || 'VCPU'}
+                                {p.vcpus === 1 ? '' : 's'}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            {isSel && memoryChoices(p).length > 1 ? (
+                              <Select value={memory} onChange={(v) => setMemoryMb(v)} options={memoryChoices(p).map((m) => ({ value: m, label: `${m / 1024} GB` }))} />
+                            ) : (
+                              <span className="text-[#212529] dark:text-white">{p.memory / 1024} GB</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">
+                            {isSel && diskChoices(p).length > 1 ? (
+                              <Select value={disk} onChange={(v) => setDiskGb(v)} options={diskChoices(p).map((d) => ({ value: d, label: `${d} GB` }))} />
+                            ) : (
+                              <span className="text-[#212529] dark:text-white">
+                                {p.disk} GB{p.storage_description ? ` ${p.storage_description.trim()}` : ''}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-[#212529] dark:text-white">{p.transfer * 1000} GB</td>
+                          <td className="py-2 px-3 text-right font-medium text-[#212529] dark:text-white">
+                            ${planMonthlyPrice(p, image, isSel ? memory : p.memory, isSel ? disk : p.disk).toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+
+                {allPlansBlocked && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                    We currently do not have resources available to provision a server on these plans.
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            {/* ---------- 3. settings ---------- */}
+            <Section
+              step={3}
+              title="Configure your server's settings"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="px-3 py-1.5 text-xs font-medium rounded bg-[#6c757d] hover:bg-[#5c636a] text-white transition"
+                >
+                  {showAll ? 'Show Less' : 'View All'}
+                </button>
+              }
+            >
+              <Field label="Hostname" hint="Such as vps01.yourcompany.com. It does not matter if you do not yet own this domain name.">
+                <input
+                  value={hostname}
+                  onChange={(e) => setHostname(e.target.value)}
+                  placeholder="server.example.com"
+                  className="w-full max-w-sm px-2.5 py-1.5 text-xs bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+                />
+              </Field>
+
+              {!showAll ? (
+                <Field label="Backups">
+                  {(
+                    [
+                      ['onsite', `Onsite daily backups, stored for 2 days (+$${(2 * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)})`],
+                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${(2 * disk * ((selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0) + (selectedSize?.options?.offsite_backups_cost_per_gigabyte || 0))).toFixed(2)})`],
+                      ['none', 'Backups are not required']
+                    ] as const
+                  ).map(([val, label]) => (
+                    <label key={val} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="radio" checked={simpleBackups === val} onChange={() => setSimpleBackups(val)} />
+                      <span className="text-[#212529] dark:text-white">{label}</span>
+                    </label>
+                  ))}
+                </Field>
+              ) : (
+                <>
+                  <Field label="Network">
+                    <TileRow>
+                      <Tile selected={vpcId === undefined} onClick={() => setVpcId(undefined)}>
+                        Public
+                      </Tile>
+                      {vpcs.map((v: any) => (
+                        <Tile key={v.id} selected={vpcId === v.id} onClick={() => setVpcId(v.id)}>
+                          {v.name}
+                        </Tile>
+                      ))}
+                    </TileRow>
+                  </Field>
+
+                  <Field label="SSH Keys" hint="Select your SSH key/s to deploy during installation, or add a new keypair.">
+                    <TileRow>
+                      {sshKeys.map((k: any) => {
+                        const on = selectedKeys.includes(k.id)
+                        return (
+                          <Tile
+                            key={k.id}
+                            selected={on}
+                            onClick={() =>
+                              setSelectedKeys((prev) => (on ? prev.filter((x) => x !== k.id) : [...prev, k.id]))
+                            }
+                          >
+                            {on && <Check className="w-3 h-3" />}
+                            {k.name}
+                          </Tile>
+                        )
+                      })}
+                      <Tile selected={false} onClick={() => setAddKeyOpen(true)}>
+                        <Plus className="w-3 h-3" /> Add SSH Key
+                      </Tile>
+                    </TileRow>
+                  </Field>
+
+                  <Field label="IP Addresses" hint="Additional IP addresses may be purchased for approved uses including multiple SSL certificates.">
+                    <Select
+                      value={ipCount}
+                      onChange={setIpCount}
+                      options={Array.from({ length: selectedSize?.options?.ipv4_addresses_max || 1 }, (_, i) => ({
+                        value: i + 1,
+                        label: i === 0 ? '1 IP address (included)' : `${i + 1} IP addresses (+$${(i * (selectedSize?.options?.ipv4_addresses_cost_per_address || 0)).toFixed(2)})`
+                      }))}
+                    />
+                  </Field>
+
+                  <Field label="Backups" hint="Automatic on-site backups are available daily, weekly, monthly, or any combination thereof.">
+                    <div className="space-y-2">
+                      {(
+                        [
+                          ['Daily backups', dailyBackups, setDailyBackups, 'daily'],
+                          ['Weekly backups', weeklyBackups, setWeeklyBackups, 'weekly'],
+                          ['Monthly backups', monthlyBackups, setMonthlyBackups, 'monthly']
+                        ] as const
+                      ).map(([label, value, setter, word]) => (
+                        <div key={word}>
+                          <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd] mb-1">{label}</div>
+                          <Select
+                            value={value}
+                            onChange={setter as (v: number) => void}
+                            options={Array.from({ length: 11 }, (_, n) => ({
+                              value: n,
+                              label:
+                                n === 0
+                                  ? `Do not take a ${word} backup`
+                                  : `Take ${word} backups, stored for ${n} ${word === 'daily' ? (n === 1 ? 'day' : 'days') : n === 1 ? 'period' : 'periods'} (+$${(n * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)} per month)`
+                            }))}
+                          />
+                        </div>
+                      ))}
+                      <label className="flex items-center gap-2 text-xs cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={offsiteBackups}
+                          disabled={dailyBackups + weeklyBackups + monthlyBackups === 0}
+                          onChange={(e) => setOffsiteBackups(e.target.checked)}
+                        />
+                        <span className="text-[#212529] dark:text-white disabled:opacity-50">
+                          Offsite Backups (requires on-site backups)
+                        </span>
+                      </label>
+                    </div>
+                  </Field>
+
+                  <Field label="Cloud-init User Data" hint="Cloud-init user data can work with cloud-init on the operating system to provide automated setup of new software, configuration of preferred defaults, and general customization of the Cloud Server after install.">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="checkbox" checked={cloudInitOn} onChange={(e) => setCloudInitOn(e.target.checked)} />
+                      <span className="text-[#212529] dark:text-white">Enable Cloud-init User Data</span>
+                    </label>
+                    {cloudInitOn && (
+                      <textarea
+                        value={cloudInit}
+                        onChange={(e) => setCloudInit(e.target.value)}
+                        rows={8}
+                        spellCheck={false}
+                        placeholder={'#cloud-config\npackages:\n  - nginx'}
+                        className="mt-2 w-full px-2.5 py-2 text-[11px] font-mono bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+                      />
+                    )}
+                  </Field>
+                </>
+              )}
+
+              {/* billing */}
+              <div className="mt-4 p-3 rounded border border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-xs space-y-2">
+                <div className="font-bold text-sm text-[#212529] dark:text-white">Billing</div>
+                <div className="flex gap-8">
+                  <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Total</span>
+                  <span className="text-[#212529] dark:text-white">
+                    ${monthlyIncGst.toFixed(2)} (incl. ${gst.toFixed(2)} GST)
+                  </span>
+                </div>
+                <p className="text-[#6c757d] dark:text-[#adb5bd] leading-relaxed">
+                  BinaryLane has no minimum contract length and you may cancel your Server any time.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs mt-3 cursor-pointer">
+                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                <span className="text-[#212529] dark:text-white">
+                  I agree to the{' '}
+                  <LinkOut href={TOS_URL}>Terms of Service</LinkOut> and <LinkOut href={REFUND_URL}>refund policy</LinkOut>.
+                </span>
+              </label>
+
+              {errorMsg && (
+                <div className="mt-3 flex items-start gap-2 p-2.5 rounded border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span className="break-words">{errorMsg}</span>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={createServer.isPending}
-                className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-2 shadow-sm"
+                className="mt-3 flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded bg-[#017cb6] hover:bg-[#016594] text-white transition disabled:opacity-50"
               >
                 {createServer.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Deploy Server Now</span>
+                {createServer.isPending ? 'Creating...' : 'Add Server'}
               </button>
-            </div>
+            </Section>
           </div>
-        </form>
+        )}
+      </form>
+
+      {addKeyOpen && (
+        <AddSshKeyDialog
+          onCancel={() => setAddKeyOpen(false)}
+          onCreate={async (name, publicKey, makeDefault) => {
+            await addSshKey.mutateAsync({ name, public_key: publicKey, default: makeDefault } as any)
+            await sshKeysQuery.refetch()
+            setAddKeyOpen(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------- presentational helpers ----------
+
+const Section: React.FC<{ step: number; title: string; action?: React.ReactNode; children: React.ReactNode }> = ({
+  step,
+  title,
+  action,
+  children
+}) => (
+  <section>
+    <div className="flex items-center justify-between gap-3 mb-2">
+      <h4 className="flex items-center gap-2 text-sm font-bold text-[#017cb6]">
+        <span className="w-5 h-5 rounded-full bg-[#f1ca00] text-[#212529] text-[11px] font-bold flex items-center justify-center">
+          {step}
+        </span>
+        {title}
+      </h4>
+      {action}
+    </div>
+    <div className="p-3 rounded border border-[#ced4da] dark:border-[#373b3e]">{children}</div>
+  </section>
+)
+
+const TileRow: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
+  <div className={`flex flex-wrap gap-2 ${className}`}>{children}</div>
+)
+
+const Tile: React.FC<{
+  selected: boolean
+  disabled?: boolean
+  onClick: () => void
+  className?: string
+  children: React.ReactNode
+}> = ({ selected, disabled, onClick, className = '', children }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={`flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded border transition ${
+      selected
+        ? 'bg-[#6c757d] text-white border-[#6c757d]'
+        : 'bg-[#f8f9fa] dark:bg-[#212529] text-[#495057] dark:text-[#adb5bd] border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6]'
+    } disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+  >
+    {children}
+  </button>
+)
+
+const Radio: React.FC<{ selected: boolean; blocked: boolean }> = ({ selected, blocked }) => (
+  <span
+    className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
+      blocked ? 'border-[#adb5bd]' : selected ? 'border-[#017cb6]' : 'border-[#ced4da] dark:border-[#6c757d]'
+    }`}
+  >
+    {selected && <span className="w-2 h-2 rounded-full bg-[#017cb6]" />}
+    {blocked && <X className="w-2.5 h-2.5 text-[#adb5bd]" />}
+  </span>
+)
+
+const Select: React.FC<{
+  value: number
+  onChange: (v: number) => void
+  options: { value: number; label: string }[]
+}> = ({ value, onChange, options }) => (
+  <span className="relative inline-flex items-center">
+    <select
+      value={value}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="appearance-none pl-2 pr-6 py-1 text-xs bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+    <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
+  </span>
+)
+
+const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+  <div className="py-2.5 border-b border-[#ced4da]/60 dark:border-[#373b3e] last:border-0 space-y-1.5">
+    {hint && <p className="text-[11px] text-[#6c757d] dark:text-[#adb5bd] leading-relaxed">{hint}</p>}
+    <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd]">{label}</div>
+    {children}
+  </div>
+)
+
+const LinkOut: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
+  <button
+    type="button"
+    onClick={() => window.bldeskApi?.openExternal?.(href)}
+    className="text-[#017cb6] dark:text-[#4db2e0] hover:underline inline-flex items-center gap-0.5"
+  >
+    {children}
+    <ExternalLink className="w-2.5 h-2.5" />
+  </button>
+)
+
+const AddSshKeyDialog: React.FC<{
+  onCancel: () => void
+  onCreate: (name: string, publicKey: string, makeDefault: boolean) => Promise<void>
+}> = ({ onCancel, onCreate }) => {
+  const [name, setName] = useState('')
+  const [publicKey, setPublicKey] = useState('')
+  const [makeDefault, setMakeDefault] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!name.trim() || !publicKey.trim()) return setErr('Both a name and a public key are required.')
+    setBusy(true)
+    setErr(null)
+    try {
+      await onCreate(name.trim(), publicKey.trim(), makeDefault)
+    } catch (e: any) {
+      setErr(e.message || 'Failed to add the key.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
+          <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add SSH Key</h3>
+          <button onClick={onCancel} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3 text-xs">
+          <label className="block space-y-1">
+            <span className="text-[#6c757d] dark:text-[#adb5bd]">Name</span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-[#6c757d] dark:text-[#adb5bd]">Public Key</span>
+            <textarea
+              value={publicKey}
+              onChange={(e) => setPublicKey(e.target.value)}
+              rows={5}
+              spellCheck={false}
+              className="w-full px-2.5 py-1.5 font-mono text-[11px] bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+            />
+            <span className="block text-[10px] text-[#6c757d]">
+              Paste your public key in OpenSSH "authorized_keys" format.
+            </span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
+            <span className="text-[#212529] dark:text-white">Select this SSH Key for all new Cloud Server Installations</span>
+          </label>
+          {err && <div className="text-rose-600 dark:text-rose-400 break-words">{err}</div>}
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-[#ced4da] dark:border-[#373b3e]">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-[#6c757d] hover:bg-[#5c636a] text-white transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] hover:bg-[#016594] text-white transition disabled:opacity-50"
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Create
+          </button>
+        </div>
       </div>
     </div>
   )
