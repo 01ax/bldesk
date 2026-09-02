@@ -67,6 +67,15 @@ export const UpdateMenu: React.FC = () => {
           <RotateCw className="w-3 h-3 animate-spin" />
           <span>Restart to update</span>
         </button>
+      ) : state.apkUrl && state.status === 'available' ? (
+        <button
+          onClick={install}
+          title={`Download and install BLDesk v${state.availableVersion}`}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-slate-900 bg-[#f1ca00] hover:bg-[#ffd633] rounded-md transition shadow"
+        >
+          <ArrowDownToLine className="w-3.5 h-3.5" />
+          <span>Update v{state.availableVersion}</span>
+        </button>
       ) : (
         <button
           onClick={() => setOpen((o) => !o)}
@@ -78,6 +87,7 @@ export const UpdateMenu: React.FC = () => {
           {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#343a40]" />}
           {state.status === 'up-to-date' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
           {state.status === 'check-failed' && <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />}
+          {state.status === 'available' && <span className="w-1.5 h-1.5 rounded-full bg-[#f1ca00]" />}
         </button>
       )}
 
@@ -91,6 +101,16 @@ export const UpdateMenu: React.FC = () => {
             </div>
             <StatusPill state={state} />
           </div>
+
+          {state.apkUrl && state.status === 'available' && (
+            <button
+              onClick={install}
+              className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-[#f1ca00] hover:bg-[#ffd633] text-slate-950 font-semibold rounded transition text-xs shadow"
+            >
+              <ArrowDownToLine className="w-3.5 h-3.5" />
+              <span>Download APK (v{state.availableVersion})</span>
+            </button>
+          )}
 
           {state.status === 'check-failed' && (
             <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd] space-y-1">

@@ -1,15 +1,98 @@
 import { Preferences } from '@capacitor/preferences'
-import { AccountProfile, IpcApi, UpdaterState } from '@shared/ipc-types'
+import { AccountProfile, IpcApi, UpdateChannel, UpdaterState } from '@shared/ipc-types'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
 const PROFILES_KEY = 'bldesk_profiles_v1'
 const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
 
-const mobileUpdaterState: UpdaterState = {
+const mobileUpdaterListeners = new Set<(state: UpdaterState) => void>()
+
+let currentMobileUpdaterState: UpdaterState = {
   status: 'idle',
-  currentVersion: __APP_VERSION__,
+  currentVersion: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.32',
   channel: 'stable',
-  supported: false
+  supported: true
+}
+
+function broadcastMobileUpdater(patch: Partial<UpdaterState>) {
+  currentMobileUpdaterState = { ...currentMobileUpdaterState, ...patch }
+  mobileUpdaterListeners.forEach((l) => {
+    try {
+      l(currentMobileUpdaterState)
+    } catch {}
+  })
+}
+
+function semverCompare(a: string, b: string): number {
+  const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
+  const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] ?? 0
+    const nb = pb[i] ?? 0
+    if (na > nb) return 1
+    if (na < nb) return -1
+  }
+  return 0
+}
+
+async function checkMobileGithubUpdates(): Promise<UpdaterState> {
+  broadcastMobileUpdater({ status: 'checking', error: undefined })
+  try {
+    const isBeta = currentMobileUpdaterState.channel === 'beta'
+    const url = isBeta
+      ? 'https://api.github.com/repos/termau/bldesk/releases'
+      : 'https://api.github.com/repos/termau/bldesk/releases/latest'
+
+    const res = await fetch(url, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+      signal: AbortSignal.timeout(10_000)
+    })
+
+    if (!res.ok) {
+      throw new Error(`GitHub Releases returned HTTP ${res.status}`)
+    }
+
+    const data = await res.json()
+    const release = Array.isArray(data) ? data[0] : data
+    if (!release || !release.tag_name) {
+      throw new Error('No release information found')
+    }
+
+    const latestTag = release.tag_name as string
+    const latestVersion = latestTag.replace(/^v/, '')
+    const currentVersion = currentMobileUpdaterState.currentVersion
+
+    const apkAsset = release.assets?.find((a: any) => a.name?.toLowerCase().endsWith('.apk'))
+    const apkUrl =
+      apkAsset?.browser_download_url ||
+      `https://github.com/termau/bldesk/releases/download/${latestTag}/BLDesk-android.apk`
+
+    if (semverCompare(latestVersion, currentVersion) > 0) {
+      broadcastMobileUpdater({
+        status: 'available',
+        availableVersion: latestVersion,
+        releaseNotes: release.body || undefined,
+        apkUrl,
+        lastCheckedAt: new Date().toISOString()
+      })
+    } else {
+      broadcastMobileUpdater({
+        status: 'up-to-date',
+        availableVersion: undefined,
+        releaseNotes: undefined,
+        apkUrl: undefined,
+        lastCheckedAt: new Date().toISOString()
+      })
+    }
+  } catch (err: any) {
+    console.warn('[MobileBridge] Update check failed:', err)
+    broadcastMobileUpdater({
+      status: 'check-failed',
+      error: err.message,
+      lastCheckedAt: new Date().toISOString()
+    })
+  }
+  return currentMobileUpdaterState
 }
 
 export async function initMobileBridge(): Promise<void> {
@@ -133,12 +216,26 @@ export async function initMobileBridge(): Promise<void> {
       window.open(url, '_blank')
     },
 
-    // Auto-update: not applicable on mobile/web (APK updates come from the store / sideload)
-    getUpdaterState: async () => mobileUpdaterState,
-    checkForUpdates: async () => mobileUpdaterState,
-    installUpdate: async () => {},
-    setUpdateChannel: async () => mobileUpdaterState,
-    onUpdaterState: () => () => {},
+    // Auto-update on Android: Check GitHub Releases and download newer APKs
+    getUpdaterState: async () => currentMobileUpdaterState,
+    checkForUpdates: async () => checkMobileGithubUpdates(),
+    installUpdate: async () => {
+      const url =
+        currentMobileUpdaterState.apkUrl ||
+        'https://github.com/termau/bldesk/releases/latest/download/BLDesk-android.apk'
+      window.open(url, '_system')
+    },
+    setUpdateChannel: async (channel: UpdateChannel) => {
+      broadcastMobileUpdater({ channel })
+      return checkMobileGithubUpdates()
+    },
+    onUpdaterState: (cb) => {
+      mobileUpdaterListeners.add(cb)
+      cb(currentMobileUpdaterState)
+      return () => {
+        mobileUpdaterListeners.delete(cb)
+      }
+    },
 
     // Deep links: Android intent-filter + @capacitor/app `appUrlOpen` would feed
     // these; for now the web/mobile build accepts a link via the page URL hash.
@@ -151,4 +248,9 @@ export async function initMobileBridge(): Promise<void> {
   }
 
   ;(window as any).bldeskApi = mobileApi
+
+  // Perform background update check on app launch
+  setTimeout(() => {
+    checkMobileGithubUpdates().catch(() => {})
+  }, 4000)
 }
