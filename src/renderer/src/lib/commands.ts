@@ -68,6 +68,9 @@ const VERB_ALIASES: Record<string, Verb> = {
   link: 'link',
   copy: 'link',
   dns: 'dns',
+  tag: 'tag',
+  tags: 'tag',
+  group: 'tag',
   go: 'go',
   goto: 'go',
   tab: 'go',
@@ -75,7 +78,7 @@ const VERB_ALIASES: Record<string, Verb> = {
   '?': 'help'
 }
 
-export type Verb = PowerVerb | 'snapshot' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'go' | 'help'
+export type Verb = PowerVerb | 'snapshot' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'go' | 'help'
 
 export interface VerbSpec {
   verb: Verb
@@ -93,6 +96,7 @@ export const VERB_SPECS: VerbSpec[] = [
   { verb: 'cycle', usage: 'cycle <servers>', summary: 'Hard power cycle', mutates: true },
   { verb: 'snapshot', usage: 'snapshot <servers> ["label"]', summary: 'Take a temporary snapshot', mutates: true },
   { verb: 'dns', usage: 'dns add <TYPE> <fqdn> <value> [priority]', summary: 'Add a DNS record to a hosted zone', mutates: true },
+  { verb: 'tag', usage: 'tag add|remove <name> <servers>', summary: 'Tag servers locally; @name then targets them anywhere', mutates: false },
   { verb: 'ssh', usage: 'ssh <server|ip>', summary: 'Open native SSH as root', mutates: false },
   { verb: 'console', usage: 'console <server>', summary: 'Open the rescue console', mutates: false },
   { verb: 'open', usage: 'open <server> [subtab]', summary: 'Open a server (overview, network, firewall…)', mutates: false },
@@ -105,7 +109,7 @@ const SPEC_BY_VERB = new Map(VERB_SPECS.map((s) => [s.verb, s]))
 
 /** `<servers>` may be one pattern or a comma-separated list: `wp-*`, `#123`, `43.224`, `a,b,c`. */
 export const TARGET_HELP =
-  'Targets: a name (or prefix), a glob like wp-*, #id, an IPv4 or its prefix, or several separated by commas.'
+  'Targets: a name (or prefix), a glob like wp-*, #id, an IPv4 or its prefix, @group or @tag, or several separated by commas.'
 
 // ---------------------------------------------------------------------------
 // Tokeniser
@@ -149,6 +153,7 @@ export type ParsedCommand =
   | { kind: 'link'; target: string; subTab?: DeepLinkServerSubTab }
   | { kind: 'go'; tab: DeepLinkTab }
   | { kind: 'dns-add'; type: DomainRecordType; fqdn: string; value: string; priority?: number }
+  | { kind: 'tag'; op: 'add' | 'remove'; tag: string; targets: string }
   | { kind: 'help' }
   /** Verb recognised but arguments missing or wrong; `usage` says what it wanted. */
   | { kind: 'incomplete'; verb: Verb; usage: string; problem?: string }
@@ -250,6 +255,14 @@ export function parseCommand(input: string): ParsedCommand | null {
         return incomplete(`${type} records need a priority: dns add ${type} ${fqdn} ${value} 10`)
       }
       return { kind: 'dns-add', type, fqdn: fqdn.toLowerCase().replace(/\.$/, ''), value, priority }
+    }
+
+    case 'tag': {
+      const op = args[0]?.toLowerCase()
+      if (op !== 'add' && op !== 'remove' && op !== 'rm') return incomplete()
+      const [, tag, ...rest] = args
+      if (!tag || rest.length === 0) return incomplete()
+      return { kind: 'tag', op: op === 'rm' ? 'remove' : op, tag: tag.replace(/^@/, ''), targets: rest.join(',') }
     }
 
     case 'help':

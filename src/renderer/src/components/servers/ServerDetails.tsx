@@ -48,6 +48,8 @@ interface ServerDetailsProps {
   activeSubTab?: ServerSubTab
   onBack: () => void
   onOpenTerminal?: (ip: string) => void
+  /** The app's server list, forwarded to the Firewall sub-tab (see FirewallManagerProps.servers). */
+  servers?: any[]
 }
 
 /**
@@ -121,7 +123,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   server,
   client,
   activeSubTab = 'overview',
-  onBack
+  onBack,
+  servers: allServers
 }) => {
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
@@ -591,7 +594,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         {/* FIREWALL TAB */}
         {activeSubTab === 'firewall' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
-            <FirewallManager client={client} initialServerId={server.id} />
+            <FirewallManager client={client} initialServerId={server.id} servers={allServers ?? [server]} />
           </div>
         )}
 

@@ -153,7 +153,7 @@ export const HistoryView: React.FC<{ profileId?: string; profileName?: string }>
                     <div key={e.id} className="text-xs">
                       <button
                         onClick={() => expandable && toggle(e.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left ${expandable ? 'hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]' : 'cursor-default'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#017cb6] ${expandable ? 'hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]' : 'cursor-default'}`}
                       >
                         <span className="w-4 flex-shrink-0 text-[#6c757d]">
                           {expandable ? isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" /> : null}

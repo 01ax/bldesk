@@ -21,7 +21,9 @@ Ideas for taking BLDesk from "mPanel in a window" to a fleet tool. Ordered rough
 
 ## 2. Fleet-wide firewall matrix
 
-**Today:** `FirewallManager.tsx` edits advanced firewall rules for one server at a time via `change_advanced_firewall_rules`.
+**Status: built** (unreleased at time of writing). `lib/firewallMatrix.ts` (pure: signatures, matrix, audit), `components/firewall/FirewallMatrix.tsx` (view, copy-ruleset, groups/tags), `lib/serverGroups.ts` (local groups + tags; `@name` targets). Not yet: named rule *sets* stored independently of a server (today you copy from a live server), and per-server quick edits from the grid.
+
+**Before:** `FirewallManager.tsx` edited advanced firewall rules for one server at a time via `change_advanced_firewall_rules`.
 
 **Proposed:**
 - A matrix view: servers down the side, common rules across the top, cell = allow/deny/absent.
