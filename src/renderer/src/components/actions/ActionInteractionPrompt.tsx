@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, HelpCircle, Loader2, Server as ServerIcon } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import {
@@ -75,11 +75,30 @@ interface ActionInteractionPromptProps {
 export function ActionInteractionPrompt({ client, profileId, servers = [] }: ActionInteractionPromptProps) {
   const { data: waiting = [] } = useActionsAwaitingInteraction(client, profileId)
   const proceedMutation = useActionProceedMutation(client)
-  const [error, setError] = useState<string | null>(null)
-  /** Answered ids stay hidden until the poll catches up, so the modal cannot flash back. */
-  const [answered, setAnswered] = useState<number[]>([])
+  /**
+   * Scoped to the action it came from: a failed answer must not leave its error
+   * sitting under the next action's question once the poll moves on.
+   */
+  const [error, setError] = useState<{ actionId: number; message: string } | null>(null)
+  /**
+   * Actions not to show right now — either just answered (hidden until the poll
+   * catches up, so the modal cannot flash back) or deferred by the user.
+   */
+  const [suppressed, setSuppressed] = useState<number[]>([])
 
-  const outstanding = waiting.filter((action) => !answered.includes(action.id))
+  /**
+   * Forget suppressions once BinaryLane stops reporting the action as waiting.
+   * Keeps the list from growing for the life of the session, and means a fresh
+   * question raised later on the same action is not silently swallowed.
+   */
+  useEffect(() => {
+    setSuppressed((prev) => {
+      const next = prev.filter((id) => waiting.some((action) => action.id === id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [waiting])
+
+  const outstanding = waiting.filter((action) => !suppressed.includes(action.id))
   const current: ActionAwaitingInteraction | undefined = outstanding[0]
 
   if (!current) return null
@@ -96,9 +115,9 @@ export function ActionInteractionPrompt({ client, profileId, servers = [] }: Act
     setError(null)
     try {
       await proceedMutation.mutateAsync({ actionId: current.id, proceed })
-      setAnswered((prev) => [...prev, current.id])
+      setSuppressed((prev) => [...prev, current.id])
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError({ actionId: current.id, message: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -165,17 +184,31 @@ export function ActionInteractionPrompt({ client, profileId, servers = [] }: Act
             </p>
           )}
 
-          {error && (
+          {error?.actionId === current.id && (
             <div className="bg-red-500/10 border border-red-500/40 text-red-500 rounded p-2.5 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <span>{error.message}</span>
             </div>
           )}
         </div>
 
-        {/* Both answers are submissions, so neither is a safe "dismiss" — there is
-            deliberately no close button and no backdrop click-to-dismiss here. */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#262a2e]">
+        {/* Both answers are submissions, so neither is a safe close — there is
+            deliberately no close button and no backdrop click-to-dismiss. The
+            watch is account-wide, though, so an action left paused in an earlier
+            session shows up here on launch; without a way to defer, the app
+            would be unusable until someone made a data-loss decision about a
+            server they may not have been thinking about. "Decide later" answers
+            nothing and lasts only for this session. */}
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#262a2e]">
+          <button
+            type="button"
+            disabled={proceedMutation.isPending}
+            onClick={() => setSuppressed((prev) => [...prev, current.id])}
+            className="px-2 py-1.5 text-xs text-[#495057] dark:text-[#adb5bd] hover:text-[#212529] dark:hover:text-white underline underline-offset-2 disabled:opacity-50 transition"
+          >
+            Decide later
+          </button>
+          <div className="flex-1" />
           <button
             type="button"
             disabled={proceedMutation.isPending}
