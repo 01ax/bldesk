@@ -65,6 +65,11 @@ export function ActionToasts() {
                 )}
               </div>
               <div className="text-[11px] text-[#495057] dark:text-[#adb5bd] break-words">{statusLine(action)}</div>
+              {action.state === 'running' && action.stepDetail && (
+                <div className="text-[11px] text-[#6c757d] dark:text-[#8b9299] break-words mt-0.5">
+                  {action.stepDetail}
+                </div>
+              )}
             </div>
             <button
               onClick={() => dismiss(action.actionId)}
