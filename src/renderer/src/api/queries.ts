@@ -374,6 +374,39 @@ const MAX_DOMAIN_PAGES = 10
  * dropped `meta.total` — an account with a few hundred zones simply lost most of
  * them, with nothing in the UI to say so.
  */
+/**
+ * Fetch every page of a paginated list endpoint.
+ *
+ * `per_page` defaults to 20 across this API and `meta.total` is returned but easy
+ * to ignore, which silently truncates. It matters for the create form: there are
+ * 27 distribution images and 21 sizes, so a single default-page request drops 7
+ * operating systems and a plan without any indication.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (page: number, perPage: number) => Promise<{ data?: { meta?: { total?: number } } & Record<string, any>; error?: unknown }>,
+  key: string,
+  label: string
+): Promise<T[]> {
+  const PER_PAGE = 200
+  const MAX_PAGES = 10
+  const first = await fetchPage(1, PER_PAGE)
+  if (first.error) throw new Error(describeApiError(first.error))
+  const items: T[] = [...((first.data?.[key] as T[]) || [])]
+  const total = first.data?.meta?.total ?? items.length
+  const pages = Math.min(Math.ceil(total / PER_PAGE), MAX_PAGES)
+  if (pages > 1) {
+    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(i + 2, PER_PAGE)))
+    for (const r of rest) {
+      if (r.error) {
+        console.warn(`[${label}] Error loading a page:`, r.error)
+        continue
+      }
+      items.push(...((r.data?.[key] as T[]) || []))
+    }
+  }
+  return items
+}
+
 export function useDomains(client: BinaryLaneClient | null) {
   return useQuery({
     queryKey: ['domains'],
@@ -442,14 +475,17 @@ export function useDomainRecords(client: BinaryLaneClient | null, domainName: st
 
 // --- SIZES, REGIONS & IMAGES ---
 
+/** Every plan, including the one past the default 20-item page. */
 export function useSizes(client: BinaryLaneClient | null) {
   return useQuery({
     queryKey: ['sizes'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/sizes')
-      if (error) return []
-      return data?.sizes || []
+      return fetchAllPages<any>(
+        (page, per_page) => client.GET('/v2/sizes', { params: { query: { page, per_page } as any } }),
+        'sizes',
+        'useSizes'
+      )
     },
     enabled: !!client,
     staleTime: 300000
@@ -470,14 +506,38 @@ export function useRegions(client: BinaryLaneClient | null) {
   })
 }
 
+/**
+ * Every image. There are 27 distribution images against a default page of 20, so
+ * the unpaged call was hiding seven operating systems from the create form.
+ */
 export function useImages(client: BinaryLaneClient | null) {
   return useQuery({
     queryKey: ['images'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/images')
-      if (error) return []
-      return data?.images || []
+      return fetchAllPages<any>(
+        (page, per_page) => client.GET('/v2/images', { params: { query: { page, per_page } as any } }),
+        'images',
+        'useImages'
+      )
+    },
+    enabled: !!client,
+    staleTime: 300000
+  })
+}
+
+/** Distribution images only, which is what the create form offers. */
+export function useDistributionImages(client: BinaryLaneClient | null) {
+  return useQuery({
+    queryKey: ['images', 'distribution'],
+    queryFn: async () => {
+      if (!client) return []
+      return fetchAllPages<any>(
+        (page, per_page) =>
+          client.GET('/v2/images', { params: { query: { page, per_page, type: 'distribution' } as any } }),
+        'images',
+        'useDistributionImages'
+      )
     },
     enabled: !!client,
     staleTime: 300000
