@@ -112,15 +112,66 @@ export class VaultManager {
     return this.decryptToken(record.encryptedToken)
   }
 
-  public static saveProfile(profile: { name: string; token: string; email?: string; isDefault?: boolean }): {
+  /**
+   * Create a profile, or update an existing one.
+   *
+   * Previously this always pushed a new record, so re-entering a token for an
+   * account you already had silently produced a second profile with the same
+   * name rather than replacing its key — leaving a stale, failing profile behind
+   * and no way to repair one from the UI.
+   *
+   * An explicit `profileId` updates that profile. Failing that, a case-insensitive
+   * name match updates in place, because two profiles with one name are
+   * indistinguishable in the switcher and never intentional.
+   */
+  public static saveProfile(profile: {
+    name: string
+    token: string
+    email?: string
+    isDefault?: boolean
+    profileId?: string
+  }): {
     success: boolean
     profileId: string
+    updated?: boolean
     error?: string
   } {
     try {
       const vault = this.readRawVault()
-      const newId = `profile_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
       const encrypted = this.encryptToken(profile.token)
+
+      const wanted = profile.name.trim().toLowerCase()
+      const byId = profile.profileId ? vault.profiles.find((p) => p.id === profile.profileId) : undefined
+      const byName = vault.profiles.find((p) => (p.name || '').trim().toLowerCase() === wanted)
+
+      // Adding under a name that already exists is refused rather than quietly
+      // becoming an update. Two profiles with one name are indistinguishable in
+      // the switcher, and silently rewriting an existing account's token because
+      // the names happened to match is its own surprise. Replacing a key is an
+      // explicit action that carries the profile id.
+      if (!byId && byName) {
+        return {
+          success: false,
+          profileId: '',
+          error: `A profile named "${byName.name}" already exists. Use the update action on that profile to replace its API key.`
+        }
+      }
+
+      const existing = byId
+
+      if (existing) {
+        existing.encryptedToken = encrypted
+        if (profile.email) existing.email = profile.email
+        if (profile.name.trim()) existing.name = profile.name.trim()
+        if (profile.isDefault) {
+          vault.profiles.forEach((p) => (p.isDefault = p.id === existing.id))
+          vault.activeProfileId = existing.id
+        }
+        this.writeRawVault(vault)
+        return { success: true, profileId: existing.id, updated: true }
+      }
+
+      const newId = `profile_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
 
       const newRecord: EncryptedProfileRecord = {
         id: newId,
@@ -138,7 +189,7 @@ export class VaultManager {
 
       vault.profiles.push(newRecord)
       this.writeRawVault(vault)
-      return { success: true, profileId: newId }
+      return { success: true, profileId: newId, updated: false }
     } catch (err: any) {
       return { success: false, profileId: '', error: err.message }
     }
