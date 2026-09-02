@@ -94,7 +94,8 @@ export const ServerList: React.FC<ServerListProps> = ({
       }
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${actionType}`,
-        body: `Action requested successfully for server #${serverId}.`
+        body: `Action requested successfully for server #${serverId}.`,
+        kind: 'action'
       })
     } catch (err: any) {
       alert(`Action failed: ${err.message || 'Unknown error'}`)
@@ -442,6 +443,9 @@ export const ServerList: React.FC<ServerListProps> = ({
                       </div>
                     </div>
                     <span
+                      title={(server as any)._power
+                        ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`
+                        : 'From the API status field, which may not reflect power state'}
                       className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
                         isRunning
                           ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'

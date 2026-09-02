@@ -37,10 +37,54 @@ export interface ConsoleWindowOptions {
   height?: number
 }
 
+/**
+ * What a notification is about, so the user can mute a category from the tray
+ * menu. Omitted → 'general', which is never filtered.
+ */
+export type NotificationKind = 'general' | 'server-state' | 'action' | 'balance'
+
 export interface SystemNotificationOptions {
   title: string
   body: string
   icon?: string
+  kind?: NotificationKind
+}
+
+// --- Tray / menu bar ---
+
+export interface TrayServer {
+  id: number
+  name: string
+  status: string
+  /** Primary public IPv4, when the server has one. */
+  ip?: string
+}
+
+/** What the renderer knows about the fleet, pushed to main for the tray. */
+export interface TrayFleetSummary {
+  accountName?: string
+  running: number
+  off: number
+  /** Provisioning, archived, or otherwise not simply on/off. */
+  other: number
+  /** Actions being tracked to completion right now. */
+  inProgress: number
+  /** Actions BinaryLane has paused on a question nobody has answered yet. */
+  awaitingAnswer: number
+  /** Invoices whose payment attempt failed and remain unpaid. */
+  failedInvoices: number
+  servers: TrayServer[]
+  /** Available prepaid credit in AUD, when the balance has loaded. */
+  availableCredit?: number
+}
+
+export interface TraySettings {
+  launchAtLogin: boolean
+  /** Closing the window hides to the tray instead of quitting. */
+  closeToTray: boolean
+  notifyServerState: boolean
+  notifyActions: boolean
+  notifyBalance: boolean
 }
 
 export interface LocalSshKey {
@@ -96,6 +140,11 @@ export interface IpcApi {
 
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>
+
+  // Tray / menu bar — see main/tray.ts
+  /** Push the current fleet picture; main rebuilds the tray tooltip and menu from it. */
+  updateTray: (summary: TrayFleetSummary) => Promise<void>
+  getTraySettings: () => Promise<TraySettings>
   
   // Window Controls
   minimizeWindow: () => Promise<void>

@@ -19,6 +19,10 @@ const api: IpcApi = {
   // System Notifications
   sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),
 
+  // Tray / menu bar
+  updateTray: (summary) => ipcRenderer.invoke('tray:update', summary),
+  getTraySettings: () => ipcRenderer.invoke('tray:getSettings'),
+
   // Window Controls
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),

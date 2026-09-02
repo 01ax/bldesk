@@ -35,7 +35,9 @@ Ideas for taking BLDesk from "mPanel in a window" to a fleet tool. Ordered rough
 
 ## 3. A tray / menu bar that earns its spot
 
-**Today:** `createTray()` in `main/index.ts` offers "Open Dashboard" and "Quit". `Notification` is wired but only used on request. Servers are already polled every 15 s.
+**Status: built** (unreleased at time of writing). `src/main/tray.ts` owns the tray, its settings (`<userData>/tray.json`, edited from the menu itself) and the notification gate; `src/renderer/src/lib/fleetWatch.ts` pushes the fleet summary and diffs server state. Not yet: a tray badge for stopped servers (deliberately — a box you keep off would badge forever), and per-server quick actions beyond SSH.
+
+**Before:** `createTray()` in `main/index.ts` offered "Open Dashboard" and "Quit". `Notification` was wired but only used on request. Servers were already polled every 15 s.
 
 **Proposed:**
 - Tray tooltip / badge with running / stopped / action-in-progress counts.
@@ -196,3 +198,4 @@ Because BLDesk is a first-party client to an API BinaryLane owns, a few small se
 - A websocket / SSE stream for server status and action changes, so the client stops polling.
 - A lighter server list (`?fields=` or a summary endpoint) so the 15 s refresh isn't the full object × 200.
 - Server-side retention of samplesets beyond "latest", so #9 doesn't have to reinvent it locally.
+- **Make `Server.status` track power state** (vps/vps #161). Today it never turns `off`; the client infers power from sample staleness plus an `is_running` after each power action (`lib/powerState.ts`). The real fix is xm → HostDaemon → WebAPI event plumbing, after which the client can drop the inference.

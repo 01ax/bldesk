@@ -56,11 +56,20 @@ function backgroundInterval(elapsedMs: number): number {
 /** Completed toasts clear themselves; failures stay until acknowledged. */
 const COMPLETED_TOAST_TTL_MS = 8000
 
+/** Server actions whose whole point is a power-state change. */
+const POWER_ACTION_TYPES = new Set(['power_on', 'power_off', 'shutdown', 'reboot', 'power_cycle'])
+
 export function ActionTrackerProvider({
   client,
+  confirmPowerState,
   children
 }: {
   client: BinaryLaneClient | null
+  /**
+   * Ask the hypervisor whether a server is up, once, after a power action
+   * settles. The API's `status` field will not tell us (vps/vps #161).
+   */
+  confirmPowerState?: (serverId: number) => Promise<'on' | 'off' | 'unknown'>
   children: React.ReactNode
 }) {
   const [tracked, setTracked] = useState<TrackedAction[]>([])
@@ -143,6 +152,11 @@ export function ActionTrackerProvider({
               update(action.id, { state: 'awaiting-interaction' })
               if (!promptRequested) {
                 promptRequested = true
+                void window.bldeskApi?.sendNotification?.({
+                  title: `${resourceName ? `${label} · ${resourceName}` : label} needs an answer`,
+                  body: 'BinaryLane paused this action with a question. Open BLDesk to respond.',
+                  kind: 'action'
+                })
                 // The toast tells the user to see the prompt, but the account-wide
                 // watch that renders it polls on its own 20s cycle. Pull it forward
                 // so the two never disagree about whether there is a question.
@@ -161,10 +175,56 @@ export function ActionTrackerProvider({
 
           if (controller.signal.aborted) return
 
+          // The toast is only useful while the window is visible; the native
+          // notification is what reaches someone who closed it to the tray.
+          const subject = resourceName ? `${label} · ${resourceName}` : label
           if (settled.state === 'completed') {
-            update(action.id, { state: 'completed', percentComplete: 100 })
+            // A completed `shutdown` means the ACPI signal was delivered, not
+            // that the guest obeyed it — BinaryLane reports the action done
+            // within seconds either way, and the server stays `active` until
+            // the OS actually halts. Say so, or "Completed" reads as "it's off".
+            const signalOnly = settled.action.type === 'shutdown'
+            const detail = signalOnly
+              ? 'Shutdown signal sent. The server shows as off once its OS halts; if it stays running, the OS ignored the signal — use Power off for a hard stop.'
+              : undefined
+            update(action.id, { state: 'completed', percentComplete: 100, detail })
+            void window.bldeskApi?.sendNotification?.({
+              title: signalOnly ? `${subject}: signal sent` : `${subject} completed`,
+              body: signalOnly ? 'Waiting for the OS to halt — you will be told when it is off.' : 'Finished on BinaryLane.',
+              kind: 'action'
+            })
+
+            // The action is done; whether the server is now in the state the
+            // user wanted is a separate question the API cannot answer. Ask
+            // the hypervisor once and put the verdict on the toast.
+            const type = settled.action.type
+            const resourceId = settled.action.resource_id
+            if (confirmPowerState && resourceId && POWER_ACTION_TYPES.has(type)) {
+              void confirmPowerState(resourceId).then((verdict) => {
+                if (controller.signal.aborted || verdict === 'unknown') return
+                const wantedOff = type === 'power_off' || type === 'shutdown'
+                const asExpected = wantedOff ? verdict === 'off' : verdict === 'on'
+                const line = verdict === 'off' ? 'Server is off.' : 'Server is running.'
+                update(action.id, {
+                  detail: asExpected
+                    ? line
+                    : type === 'shutdown'
+                      ? 'Server is still running — the OS ignored the shutdown signal. Use Power off for a hard stop.'
+                      : `${line} That is not what "${label}" should have left it in — check the server.`
+                })
+                if (!asExpected) {
+                  void window.bldeskApi?.sendNotification?.({
+                    title: `${subject}: ${verdict === 'off' ? 'server is off' : 'server is still running'}`,
+                    body: type === 'shutdown' ? 'The OS ignored the shutdown signal. Use Power off for a hard stop.' : 'Not the state this action should have left it in.',
+                    kind: 'action'
+                  })
+                }
+              })
+            }
           } else if (settled.state === 'errored') {
-            update(action.id, { state: 'errored', detail: describeActionFailure(settled.action) ?? undefined })
+            const detail = describeActionFailure(settled.action) ?? undefined
+            update(action.id, { state: 'errored', detail })
+            void window.bldeskApi?.sendNotification?.({ title: `${subject} failed`, body: detail || 'BinaryLane reported an error.', kind: 'action' })
           } else {
             update(action.id, { state: 'running' })
           }
@@ -197,7 +257,7 @@ export function ActionTrackerProvider({
         }
       })()
     },
-    [client, queryClient, update]
+    [client, queryClient, update, confirmPowerState]
   )
 
   /**

@@ -208,6 +208,15 @@ export async function initMobileBridge(): Promise<void> {
         new Notification(opts.title, { body: opts.body })
       }
     },
+    // No tray on Android; the summary has nowhere to go.
+    updateTray: async () => {},
+    getTraySettings: async () => ({
+      launchAtLogin: false,
+      closeToTray: false,
+      notifyServerState: true,
+      notifyActions: true,
+      notifyBalance: true
+    }),
     minimizeWindow: async () => {},
     maximizeWindow: async () => {},
     closeWindow: async () => {},

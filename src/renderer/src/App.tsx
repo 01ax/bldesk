@@ -19,7 +19,10 @@ import { AccountOverview } from './components/account/AccountOverview'
 import { ActionInteractionPrompt } from './components/actions/ActionInteractionPrompt'
 import { ActionToasts } from './components/actions/ActionToasts'
 import { ActionTrackerProvider } from './context/ActionTrackerContext'
-import { useServers } from './api/queries'
+import { useServers, useBalance, useActionsAwaitingInteraction, useUnpaidInvoices } from './api/queries'
+import { useFleetWatch } from './lib/fleetWatch'
+import { usePowerState, annotateServers } from './lib/powerState'
+import { useTrackedActions } from './context/ActionTrackerContext'
 import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
 import { ThemeProvider } from './context/ThemeContext'
@@ -43,6 +46,39 @@ const queryClient = new QueryClient({
     }
   }
 })
+
+/**
+ * Feeds the tray and raises background notifications. A separate component so
+ * it can sit inside ActionTrackerProvider and see in-flight actions.
+ */
+function FleetWatch({
+  servers,
+  isFetchedAfterMount,
+  client,
+  activeProfile
+}: {
+  servers: any[]
+  isFetchedAfterMount: boolean
+  client: ReturnType<typeof createBinaryLaneClient> | null
+  activeProfile: AccountProfile | null
+}) {
+  const { tracked } = useTrackedActions()
+  const { data: balance } = useBalance(client)
+  const { data: awaiting = [] } = useActionsAwaitingInteraction(client, activeProfile?.id)
+  const { data: unpaid = [] } = useUnpaidInvoices(client)
+  useFleetWatch({
+    servers,
+    isFetchedAfterMount,
+    inProgress: tracked.filter((t) => t.state === 'running').length,
+    awaitingAnswerIds: awaiting.map((a) => a.id),
+    trackedIds: tracked.map((t) => t.actionId),
+    failedInvoices: unpaid.length,
+    accountName: activeProfile?.name,
+    availableCredit: balance?.available_credit,
+    profileId: activeProfile?.id
+  })
+  return null
+}
 
 function MainDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
@@ -112,7 +148,21 @@ function MainDashboard() {
   }, [activeProfile?.token])
 
   // Queries with local cache rehydration
-  const { data: servers = [], isLoading: isLoadingServers } = useServers(client, activeProfile?.id)
+  const { data: apiServers = [], isLoading: isLoadingServers, isFetchedAfterMount } = useServers(client, activeProfile?.id)
+
+  // The API's `status` does not track power (vps/vps #161). Every view below
+  // gets servers whose `status` reflects the inferred power state instead, with
+  // the API's own value kept on `_apiStatus`. See lib/powerState.ts.
+  const { observations: powerObservations, confirmPowerState } = usePowerState(client, apiServers, activeProfile?.id)
+  const servers = React.useMemo(() => annotateServers(apiServers, powerObservations), [apiServers, powerObservations])
+
+  // `selectedServer` is the object clicked in the list — a snapshot. The
+  // details header reads status from it, so without this a server shut down
+  // from the details view said "Running" until you went back and re-opened it.
+  const liveSelectedServer = React.useMemo(
+    () => (selectedServer ? (servers.find((s) => s.id === selectedServer.id) ?? selectedServer) : null),
+    [servers, selectedServer]
+  )
 
   const handleSwitchProfile = async (profileId: string) => {
     if (!window.bldeskApi) return
@@ -172,7 +222,8 @@ function MainDashboard() {
   }
 
   return (
-    <ActionTrackerProvider client={client}>
+    <ActionTrackerProvider client={client} confirmPowerState={confirmPowerState}>
+      <FleetWatch servers={servers} isFetchedAfterMount={isFetchedAfterMount} client={client} activeProfile={activeProfile} />
       <div className="h-screen w-screen flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden font-sans select-none">
         {/* Frameless Custom Titlebar */}
         <TitleBar
@@ -226,7 +277,7 @@ function MainDashboard() {
             {activeTab === 'servers' && (
               selectedServer ? (
                 <ServerDetails
-                  server={selectedServer}
+                  server={liveSelectedServer}
                   client={client}
                   activeSubTab={activeServerSubTab}
                   onBack={() => setSelectedServer(null)}

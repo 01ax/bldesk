@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Notification, Tray, Menu, nativeImage, NativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeImage, NativeImage } from 'electron'
 import { join } from 'path'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -6,10 +6,22 @@ import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
 import { UpdaterManager } from './updater'
 import { DeepLinkManager } from './deeplink'
-import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, UpdateChannel } from '../shared/ipc-types'
+import { TrayManager } from './tray'
+import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
 let mainWindow: BrowserWindow | null = null
-let tray: Tray | null = null
+/** Set on before-quit so a window close from Quit is not turned into a hide. */
+let isQuitting = false
+
+function showMainWindow(): void {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  } else if (app.isReady()) {
+    createWindow()
+  }
+}
 
 function getPreloadPath(): string {
   const appPath = app.getAppPath()
@@ -174,53 +186,28 @@ function createWindow(): void {
     })
   }
 
+  // Close → hide when the tray is keeping the app alive; the renderer (and its
+  // polling) stays up, which is what makes background notifications possible.
+  mainWindow.on('close', (event) => {
+    if (isQuitting || !TrayManager.shouldHideOnClose()) return
+    event.preventDefault()
+    mainWindow?.hide()
+    TrayManager.onHiddenToTray()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
     DeepLinkManager.onWindowClosed()
+    TrayManager.clear()
   })
 }
 
 function createTray(): void {
-  try {
-    const icon = getTrayIcon()
-    tray = new Tray(icon)
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'BLDesk - BinaryLane Cloud', enabled: false },
-      { type: 'separator' },
-      {
-        label: 'Open Dashboard',
-        click: () => {
-          if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore()
-            mainWindow.show()
-            mainWindow.focus()
-          } else {
-            createWindow()
-          }
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit BLDesk',
-        click: () => {
-          app.quit()
-        }
-      }
-    ])
-    tray.setToolTip('BLDesk - BinaryLane Desktop')
-    tray.setContextMenu(contextMenu)
-    tray.on('double-click', () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore()
-        mainWindow.show()
-        mainWindow.focus()
-      } else {
-        createWindow()
-      }
-    })
-  } catch (err) {
-    console.warn('[Tray] Failed to initialize tray:', err)
-  }
+  TrayManager.init({
+    icon: getTrayIcon(),
+    getWindow: () => mainWindow,
+    showWindow: showMainWindow
+  })
 }
 
 function registerIpcHandlers(): void {
@@ -275,10 +262,12 @@ function registerIpcHandlers(): void {
 
   // Notifications
   ipcMain.handle('system:sendNotification', async (_, options: SystemNotificationOptions) => {
-    if (Notification.isSupported()) {
-      new Notification({ title: options.title, body: options.body }).show()
-    }
+    TrayManager.notify(options)
   })
+
+  // Tray / menu bar
+  ipcMain.handle('tray:update', (_, summary: TrayFleetSummary) => TrayManager.update(summary))
+  ipcMain.handle('tray:getSettings', () => TrayManager.getSettings())
 
   // Window Controls
   ipcMain.handle('window:minimize', () => mainWindow?.minimize())
@@ -314,11 +303,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', (_, argv) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    showMainWindow()
     // Windows / Linux deliver bldesk:// links to the running instance via argv
     DeepLinkManager.handleSecondInstance(argv)
   })
@@ -344,20 +329,19 @@ if (!gotTheLock) {
     UpdaterManager.init()
 
     app.on('activate', function () {
-      if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
-        createWindow()
-      } else {
-        mainWindow.show()
-        mainWindow.focus()
-      }
+      showMainWindow()
     })
   })
 
+  // Only reached when the window was actually destroyed (close-to-tray off, or
+  // a hide that was later followed by Quit); a hidden window keeps the app up.
   app.on('window-all-closed', () => {
     app.quit()
   })
 
   app.on('before-quit', () => {
+    isQuitting = true
     UpdaterManager.dispose()
+    TrayManager.dispose()
   })
 }
