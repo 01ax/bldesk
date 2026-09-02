@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, Copy, Grid3x3, Info, Loader2, Plus, RefreshCw, ShieldAlert, Tag, Trash2, Users, X } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Copy, Grid3x3, Info, Loader2, Plus, RefreshCw, ShieldAlert, Tag, Trash2, Users, X } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useFleetFirewalls, describeApiError } from '../../api/queries'
@@ -219,6 +219,9 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   }
   const previewCount = newPattern.trim() ? matchServers(servers, newPattern).matches.length : 0
 
+  const scroller = useRef<HTMLDivElement>(null)
+  const scrollBy = (dir: -1 | 1) => scroller.current?.scrollBy({ left: dir * Math.max(240, scroller.current.clientWidth * 0.6), behavior: 'smooth' })
+
   const cellClass = (state: 'accept' | 'drop' | 'mixed' | undefined) =>
     state === 'accept'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -404,13 +407,30 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
         </div>
       )}
 
-      {/* Matrix */}
-      <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg overflow-x-auto">
+      {/* Matrix — the container owns the horizontal scroll; the scrollbar is
+          forced visible because macOS hides overlay scrollbars until you move,
+          which made 47 columns look like 12. */}
+      {matrix.columns.length > 0 && (
+        <div className="flex items-center gap-2 text-[11px] text-[#6c757d] dark:text-slate-400 -mb-2">
+          <span>{matrix.columns.length} rule columns — Shift + wheel, drag the bar, or</span>
+          <button onClick={() => scrollBy(-1)} className="p-0.5 rounded border border-[#ced4da] dark:border-[#373b3e] hover:bg-white dark:hover:bg-[#32383e]" title="Scroll left">
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => scrollBy(1)} className="p-0.5 rounded border border-[#ced4da] dark:border-[#373b3e] hover:bg-white dark:hover:bg-[#32383e]" title="Scroll right">
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+          <span>Server and Audit stay put.</span>
+        </div>
+      )}
+      <div ref={scroller} className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg overflow-x-scroll [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:bg-[#f1f1f1] dark:[&::-webkit-scrollbar-track]:bg-[#212529] [&::-webkit-scrollbar-thumb]:bg-[#adb5bd] dark:[&::-webkit-scrollbar-thumb]:bg-[#495057] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#017cb6]">
         <table className="text-xs border-collapse min-w-full">
           <thead>
             <tr className="bg-[#f8f9fa] dark:bg-[#212529]">
               <th className="sticky left-0 z-10 bg-[#f8f9fa] dark:bg-[#212529] text-left px-3 py-2 font-semibold border-b border-r border-[#ced4da] dark:border-[#373b3e] min-w-[220px]">
                 Server
+              </th>
+              <th className="sticky left-[220px] z-10 bg-[#f8f9fa] dark:bg-[#212529] px-3 py-2 font-semibold border-b border-r border-[#ced4da] dark:border-[#373b3e] text-left min-w-[260px] max-w-[340px]">
+                Audit
               </th>
               {matrix.columns.map((c) => (
                 <th
@@ -424,7 +444,6 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                   <div className="text-[10px] text-[#6c757d] font-normal">← {c.source}</div>
                 </th>
               ))}
-              <th className="px-3 py-2 font-semibold border-b border-[#ced4da] dark:border-[#373b3e] text-left min-w-[240px]">Audit</th>
             </tr>
           </thead>
           <tbody>
@@ -484,6 +503,17 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                       )}
                     </div>
                   </td>
+                  <td className="sticky left-[220px] z-10 bg-white dark:bg-[#2b3035] px-3 py-1.5 border-r border-[#ced4da] dark:border-[#373b3e] min-w-[260px] max-w-[340px] align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {flags.length === 0 && rules && rules.length > 0 && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">no findings</span>}
+                      {flags.map((f, i) => (
+                        <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_CLASS[f.level]} flex items-center gap-1 whitespace-nowrap`}>
+                          {f.level === 'info' ? <Info className="w-3 h-3" /> : f.level === 'red' ? <ShieldAlert className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                          {f.text}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
                   {matrix.columns.map((c) => {
                     const state = row?.get(c.sig)
                     return (
@@ -492,17 +522,6 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                       </td>
                     )
                   })}
-                  <td className="px-3 py-1.5">
-                    <div className="flex flex-wrap gap-1">
-                      {flags.length === 0 && rules && rules.length > 0 && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">no findings</span>}
-                      {flags.map((f, i) => (
-                        <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded border ${LEVEL_CLASS[f.level]} flex items-center gap-1`}>
-                          {f.level === 'info' ? <Info className="w-3 h-3" /> : f.level === 'red' ? <ShieldAlert className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                          {f.text}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
                 </tr>
               )
             })}
