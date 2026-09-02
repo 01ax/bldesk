@@ -292,11 +292,11 @@ export const ServerList: React.FC<ServerListProps> = ({
                     {/* Server Name & Distro */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span className={`w-2 h-2 shrink-0 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                         <span>{server.name}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
-                        <img src={distroIcon} alt="" className="w-4 h-4 object-contain" />
+                        <img src={distroIcon} alt="" className="w-4 h-4 shrink-0 object-contain" />
                         <span>{server.image?.full_name || server.image?.name || 'Linux'}</span>
                       </div>
                       {server.cancelled_at && (
