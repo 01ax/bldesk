@@ -16,6 +16,7 @@ import { LoadBalancerManager } from './components/loadbalancers/LoadBalancerMana
 import { BackupManager } from './components/backups/BackupManager'
 import { BillingOverview } from './components/billing/BillingOverview'
 import { AccountOverview } from './components/account/AccountOverview'
+import { ActionInteractionPrompt } from './components/actions/ActionInteractionPrompt'
 import { useServers } from './api/queries'
 import { createBinaryLaneClient } from './api/client'
 import { AccountProfile } from '@shared/ipc-types'
@@ -305,6 +306,11 @@ function MainDashboard() {
         onSelectServer={handleSelectServer}
         onNavigateTab={setActiveTab}
       />
+
+      {/* Actions BinaryLane has paused pending an answer. Mounted at the shell so
+          the question still reaches the user after they navigate away from the
+          view that started it. */}
+      <ActionInteractionPrompt client={client} profileId={activeProfile?.id} servers={servers} />
     </div>
   )
 }
