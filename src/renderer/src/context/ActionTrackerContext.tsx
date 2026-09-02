@@ -94,26 +94,50 @@ export function ActionTrackerProvider({
         }
       ])
 
+      const trackingStartedAt = Date.now()
+
       void (async () => {
         try {
-          const settled = await pollActionToSettled(client, action.id, {
-            initial: action,
+          const pollOptions = {
             // No deadline: this is the long-operation path. A rebuild that takes
             // twenty minutes should say "still going", never "timed out".
             timeoutMs: null,
-            intervalMs: backgroundInterval,
+            // Measured from when tracking began, not from each call below, so a
+            // resumed watch does not drop back to the 3s opening cadence.
+            intervalMs: () => backgroundInterval(Date.now() - trackingStartedAt),
             signal: controller.signal,
-            onProgress: (fresh) => update(action.id, { percentComplete: fresh.progress?.percent_complete })
-          })
+            onProgress: (fresh: ServerAction) =>
+              update(action.id, { percentComplete: fresh.progress?.percent_complete })
+          }
+
+          let settled = await pollActionToSettled(client, action.id, { ...pollOptions, initial: action })
+
+          // `awaiting-interaction` settles the poll — the blocking mutation needs
+          // that, so it can release the UI lock instead of burning its timeout on
+          // a question no amount of waiting will answer. Background tracking
+          // wants the opposite: keep watching, because the operator is about to
+          // answer and the action will carry on. Without this the toast would
+          // sit on "waiting for your answer" forever, still pointing at a prompt
+          // that vanished the moment the answer was accepted.
+          let promptRequested = false
+          while (settled.state === 'awaiting-interaction' && !controller.signal.aborted) {
+            update(action.id, { state: 'awaiting-interaction' })
+            if (!promptRequested) {
+              promptRequested = true
+              // The toast tells the user to see the prompt, but the account-wide
+              // watch that renders it polls on its own 20s cycle. Pull it forward
+              // so the two never disagree about whether there is a question.
+              void queryClient.invalidateQueries({ queryKey: ['actions-awaiting-interaction'] })
+            }
+            // No `initial`: pass the stale paused snapshot back in and it would
+            // classify as waiting again without ever asking BinaryLane.
+            settled = await pollActionToSettled(client, action.id, pollOptions)
+          }
 
           if (controller.signal.aborted) return
 
           if (settled.state === 'completed') {
             update(action.id, { state: 'completed', percentComplete: 100 })
-          } else if (settled.state === 'awaiting-interaction') {
-            // The account-wide prompt owns the question itself. The toast only
-            // says why nothing is moving, so the same thing is not asked twice.
-            update(action.id, { state: 'awaiting-interaction' })
           } else if (settled.state === 'errored') {
             update(action.id, { state: 'errored', detail: settled.action.reason })
           } else {
@@ -122,7 +146,7 @@ export function ActionTrackerProvider({
 
           // Whatever happened, the cached view of the account is now stale.
           void queryClient.invalidateQueries({ queryKey: ['servers'] })
-          if (settled.state !== 'awaiting-interaction' && settled.action?.resource_id) {
+          if (settled.action?.resource_id) {
             void queryClient.invalidateQueries({ queryKey: ['server', settled.action.resource_id] })
           }
         } catch (err) {
@@ -132,7 +156,13 @@ export function ActionTrackerProvider({
             detail: err instanceof Error ? err.message : String(err)
           })
         } finally {
-          controllers.current.delete(action.id)
+          // Only retire our own controller. `finally` runs on the aborted early
+          // returns above too, so an unconditional delete here would evict a
+          // newer controller that had since been registered for the same id —
+          // leaving it invisible to both `dismiss` and the duplicate guard.
+          if (controllers.current.get(action.id) === controller) {
+            controllers.current.delete(action.id)
+          }
         }
       })()
     },
