@@ -440,7 +440,7 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
                   ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                   : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${networks?.recent_ddos ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
+                <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${networks?.recent_ddos ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
                 {networks?.recent_ddos ? 'Active Attack Mitigation' : 'Active & Protected'}
               </span>
             </div>

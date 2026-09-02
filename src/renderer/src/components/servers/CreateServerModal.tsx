@@ -289,7 +289,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
             <Loader2 className="w-4 h-4 animate-spin" /> Loading plans and images...
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-5">
             {/* ---------- 1. location and operating system ---------- */}
             <Section step={1} title="Select your location and operating system">
               <TileRow>
@@ -337,15 +337,22 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 ))}
               </TileRow>
 
-              <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
-                <table className="w-full text-xs">
+              {/*
+                 * The plan table is wider than a phone. It scrolls inside its own
+                 * box: with `overflow-hidden` the Transfer and Price columns were
+                 * simply clipped and unreachable, and the row width still dragged
+                 * the whole form sideways, which clipped the left edge of every
+                 * label and dropdown below it.
+                 */}
+              <div className="mt-3 border border-[#ced4da] dark:border-[#373b3e] rounded overflow-x-auto">
+                <table className="w-full text-[10px] sm:text-xs">
                   <thead>
                     <tr className="bg-[#f8f9fa] dark:bg-[#212529] text-[#6c757d] text-left">
-                      <th className="py-2 px-3 font-semibold">Processor</th>
-                      <th className="py-2 px-3 font-semibold">Memory</th>
-                      <th className="py-2 px-3 font-semibold">Storage</th>
-                      <th className="py-2 px-3 font-semibold">Transfer</th>
-                      <th className="py-2 px-3 font-semibold text-right">Price</th>
+                      <th className="py-2 px-1 sm:px-3 font-semibold">Processor</th>
+                      <th className="py-2 px-1 sm:px-3 font-semibold">Memory</th>
+                      <th className="py-2 px-1 sm:px-3 font-semibold">Storage</th>
+                      <th className="py-2 px-1 sm:px-3 font-semibold">Transfer</th>
+                      <th className="py-2 px-1 sm:px-3 font-semibold text-right">Price</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
@@ -363,7 +370,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               : 'cursor-pointer hover:bg-[#f8f9fa] dark:hover:bg-[#32383e]'
                           } ${isSel ? 'bg-[#017cb6]/10' : ''}`}
                         >
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-1 sm:px-3">
                             <span className="flex items-center gap-2">
                               <Radio selected={isSel} blocked={!!blocked} />
                               <span className="text-[#212529] dark:text-white">
@@ -372,14 +379,14 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               </span>
                             </span>
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-1 sm:px-3">
                             {isSel && memoryChoices(p).length > 1 ? (
                               <Select value={memory} onChange={(v) => setMemoryMb(v)} options={memoryChoices(p).map((m) => ({ value: m, label: `${m / 1024} GB` }))} />
                             ) : (
                               <span className="text-[#212529] dark:text-white">{p.memory / 1024} GB</span>
                             )}
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-1 sm:px-3">
                             {isSel && diskChoices(p).length > 1 ? (
                               <Select value={disk} onChange={(v) => setDiskGb(v)} options={diskChoices(p).map((d) => ({ value: d, label: `${d} GB` }))} />
                             ) : (
@@ -389,7 +396,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                             )}
                           </td>
                           <td className="py-2 px-3 text-[#212529] dark:text-white">{p.transfer * 1000} GB</td>
-                          <td className="py-2 px-3 text-right font-medium text-[#212529] dark:text-white">
+                          <td className="py-2 px-1 sm:px-3 text-right font-medium text-[#212529] dark:text-white">
                             ${planMonthlyPrice(p, image, isSel ? memory : p.memory, isSel ? disk : p.disk).toFixed(2)}
                           </td>
                         </tr>
@@ -630,7 +637,7 @@ const Section: React.FC<{ step: number; title: string; action?: React.ReactNode;
   <section>
     <div className="flex items-center justify-between gap-3 mb-2">
       <h4 className="flex items-center gap-2 text-sm font-bold text-[#017cb6]">
-        <span className="w-5 h-5 rounded-full bg-[#f1ca00] text-[#212529] text-[11px] font-bold flex items-center justify-center">
+        <span className="w-5 h-5 shrink-0 rounded-full bg-[#f1ca00] text-[#212529] text-[11px] font-bold flex items-center justify-center">
           {step}
         </span>
         {title}
@@ -663,7 +670,7 @@ const Tile: React.FC<{
     type="button"
     disabled={disabled}
     onClick={onClick}
-    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded border transition ${
+    className={`flex items-center justify-center gap-2 px-2.5 py-2 text-xs sm:px-4 sm:py-2.5 sm:text-sm font-medium rounded border transition ${
       selected
         ? 'bg-[#6c757d] text-white border-[#6c757d]'
         : 'bg-[#f8f9fa] dark:bg-[#212529] text-[#495057] dark:text-[#adb5bd] border-[#ced4da] dark:border-[#373b3e] hover:border-[#017cb6]'
