@@ -16,6 +16,7 @@ import { logoForDistribution } from '../../lib/distroHelper'
 import {
   planMonthlyPrice,
   planUnavailableReason,
+  isCapacityBlock,
   memoryChoices,
   diskChoices,
   billingTotal,
@@ -132,10 +133,24 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   const selectedSize = useMemo(() => plans.find((p) => p.slug === sizeSlug), [plans, sizeSlug])
 
-  // Every plan in this tab is unusable here — the web panel says so rather than
-  // leaving an all-grey table unexplained.
-  const allPlansBlocked =
-    plans.length > 0 && plans.every((p) => planUnavailableReason(p, region, image) !== null)
+  /*
+   * Distinct reasons why plans in this tab are unusable.
+   *
+   * The web panel shows this whenever ANY row is greyed out, not only when every
+   * row is - and the per-row reason used to live in a `title` tooltip, which does
+   * not exist on touch, so on Android a greyed row had no explanation at all.
+   */
+  const planBlocks = useMemo(() => {
+    const seen = new Map<string, { kind: string; message: string }>()
+    for (const p of plans) {
+      const b = planUnavailableReason(p, region, image)
+      if (b) seen.set(b.message, b)
+    }
+    return [...seen.values()]
+  }, [plans, region, image?.slug])
+
+  // Capacity gets the web panel's wording; an image minimum has to say so itself.
+  const capacityOnly = planBlocks.length > 0 && planBlocks.every((b) => isCapacityBlock(b as any))
 
   // Keep the version choice valid when the distribution or region changes.
   useEffect(() => {
@@ -192,7 +207,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (!image?.slug) return setErrorMsg('Choose an operating system.')
     if (!selectedSize) return setErrorMsg('Choose a plan.')
     const blocked = planUnavailableReason(selectedSize, region, image)
-    if (blocked) return setErrorMsg(blocked)
+    if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
 
     // The simple view collapses the three retention dropdowns into one choice.
@@ -257,10 +272,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
    * through.
    */
   return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 overlay-safe">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-5xl max-h-[calc(100vh-2rem)] flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
+        className="w-full max-w-5xl max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
       >
         <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add a Cloud Server</h3>
@@ -291,7 +306,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                     <img
                       src={logoForDistribution(d)}
                       alt=""
-                      className={`w-11 h-11 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
+                      className={`w-8 h-8 sm:w-11 sm:h-11 object-contain transition ${distro === d ? '' : 'grayscale opacity-60'}`}
                     />
                     <span>{d}</span>
                   </Tile>
@@ -341,7 +356,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                         <tr
                           key={p.slug}
                           onClick={() => !blocked && setSizeSlug(p.slug)}
-                          title={blocked || undefined}
+                          title={blocked?.message || undefined}
                           className={`${
                             blocked
                               ? 'opacity-45 cursor-not-allowed'
@@ -383,10 +398,21 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                   </tbody>
                 </table>
 
-                {allPlansBlocked && (
-                  <div className="flex items-center gap-2 px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
-                    We currently do not have resources available to provision a server on these plans.
+                {planBlocks.length > 0 && (
+                  <div className="px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] text-[11px] text-[#6c757d] dark:text-[#adb5bd] space-y-1">
+                    {capacityOnly ? (
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500 mt-px" />
+                        <span>We currently do not have resources available to provision a server on these plans.</span>
+                      </div>
+                    ) : (
+                      planBlocks.map((b) => (
+                        <div key={b.message} className="flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500 mt-px" />
+                          <span>{b.message}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
@@ -615,9 +641,16 @@ const Section: React.FC<{ step: number; title: string; action?: React.ReactNode;
   </section>
 )
 
-const TileRow: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`flex flex-wrap gap-2 ${className}`}>{children}</div>
-)
+/*
+ * Tiles wrap as an even grid on a phone and only fall back to free-flowing wrap
+ * once there is room. `flex flex-wrap` alone left ragged, left-bunched rows on a
+ * narrow screen because the items keep their intrinsic width.
+ */
+const TileRow: React.FC<{ children: React.ReactNode; className?: string; cols?: string }> = ({
+  children,
+  className = '',
+  cols = 'grid-cols-3'
+}) => <div className={`grid ${cols} gap-2 sm:flex sm:flex-wrap ${className}`}>{children}</div>
 
 const Tile: React.FC<{
   selected: boolean
@@ -716,7 +749,7 @@ const AddSshKeyDialog: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 overlay-safe">
       <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
         <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
           <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add SSH Key</h3>

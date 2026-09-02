@@ -31,7 +31,7 @@ export const RemoveDnsHostingDialog: React.FC<{
   }, [onCancel, isDeleting])
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 overlay-safe">
       <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
         <div className="flex items-start justify-between gap-3 p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
           <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">

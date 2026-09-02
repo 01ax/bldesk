@@ -57,3 +57,30 @@
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/*
+ * Safe-area aware overlays (Android/iOS).
+ *
+ * `viewport-fit=cover` makes the WebView viewport the full physical screen, so
+ * `fixed inset-0` spans the status bar and the gesture/navigation bar too. A
+ * backdrop should cover all of it — a scrim that stops short of the status bar
+ * looks broken — but panel content must stay inside the usable region.
+ *
+ * `.overlay-safe` replaces the `p-4` on an overlay: it keeps the same 1rem
+ * breathing room on desktop, where the insets are 0, and grows to clear the
+ * system bars on a device. Panels inside it size with `max-h-full`, which then
+ * resolves against the usable height rather than the whole screen.
+ */
+.overlay-safe {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/* For a panel that is itself the full-height surface (the mobile drawer): the
+ * background runs edge to edge under the system bars, only the content insets. */
+.panel-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

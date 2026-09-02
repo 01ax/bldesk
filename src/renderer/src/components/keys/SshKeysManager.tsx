@@ -219,7 +219,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
 
       {/* Add Modal */}
       {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
               <h2 className="text-base font-bold text-[#212529] dark:text-white">Add Public SSH Key</h2>
