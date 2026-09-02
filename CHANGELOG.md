@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.37] - 2026-09-02
+
+### Fixed
+- **Windows NSIS Auto-Updater Relaunch Target** (*thanks @01ax!*):
+  - Configured custom NSIS installer script (`nsis/installer.nsh`) overriding `$launchLink` to target `$INSTDIR\${APP_EXECUTABLE_FILENAME}` directly instead of the Start Menu shortcut link.
+  - Fixes missing shortcut error dialogs upon restart after applying auto-updates on Windows 11.
+- **Linux Package Maintainer Metadata**:
+  - Updated `author` in `package.json` with an explicit email address (`support@binarylane.com.au`) to satisfy Debian package control metadata requirements and enable clean Linux `.deb` packaging.
+
+---
+
 ## [1.0.36] - 2026-09-02
 
 ### Fixed
