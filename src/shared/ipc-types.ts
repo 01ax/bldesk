@@ -68,7 +68,7 @@ export interface UpdaterState {
   status: UpdaterStatus
   currentVersion: string
   channel: UpdateChannel
-  /** false in dev / unpackaged builds and on mobile. */
+  /** false in dev / unpackaged desktop builds. */
   supported: boolean
   availableVersion?: string
   releaseNotes?: string
@@ -76,6 +76,7 @@ export interface UpdaterState {
   progress?: number
   error?: string
   lastCheckedAt?: string
+  apkUrl?: string
 }
 
 export interface IpcApi {
