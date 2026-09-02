@@ -156,16 +156,42 @@ export function useBalance(client: BinaryLaneClient | null) {
   })
 }
 
-export function useInvoices(client: BinaryLaneClient | null) {
+/**
+ * Invoices whose payment attempt failed and remain unpaid. Surfaced separately so
+ * the billing view can warn about them without the user opening every invoice.
+ */
+export function useUnpaidInvoices(client: BinaryLaneClient | null) {
   return useQuery({
-    queryKey: ['invoices'],
+    queryKey: ['unpaid-invoices'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/customers/my/invoices')
+      const { data, error } = await client.GET('/v2/customers/my/unpaid-payment-failed-invoices')
       if (error) throw new Error(JSON.stringify(error))
       return data?.invoices || []
     },
     enabled: !!client
+  })
+}
+
+/**
+ * Invoices are paginated server-side: `per_page` defaults to 20 and caps at 200.
+ * Calling this without parameters silently returns only the 20 most recent and
+ * drops `meta.total`, leaving older invoices unreachable — so page through it
+ * explicitly and hand the total back for the pager.
+ */
+export function useInvoices(client: BinaryLaneClient | null, page = 1, perPage = 20) {
+  return useQuery({
+    queryKey: ['invoices', page, perPage],
+    queryFn: async () => {
+      if (!client) return { invoices: [], total: 0 }
+      const { data, error } = await client.GET('/v2/customers/my/invoices', {
+        params: { query: { page, per_page: perPage } }
+      })
+      if (error) throw new Error(JSON.stringify(error))
+      return { invoices: data?.invoices || [], total: data?.meta?.total ?? 0 }
+    },
+    enabled: !!client,
+    placeholderData: (prev) => prev
   })
 }
 
