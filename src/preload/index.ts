@@ -19,6 +19,12 @@ const api: IpcApi = {
   // System Notifications
   sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),
 
+  // Local change log
+  changelogAppend: (entry) => ipcRenderer.invoke('changelog:append', entry),
+  changelogUpdate: (profileId, id, patch) => ipcRenderer.invoke('changelog:update', profileId, id, patch),
+  changelogList: (profileId, limit) => ipcRenderer.invoke('changelog:list', profileId, limit),
+  changelogClear: (profileId) => ipcRenderer.invoke('changelog:clear', profileId),
+
   // Tray / menu bar
   updateTray: (summary) => ipcRenderer.invoke('tray:update', summary),
   getTraySettings: () => ipcRenderer.invoke('tray:getSettings'),

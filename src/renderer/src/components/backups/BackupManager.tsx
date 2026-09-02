@@ -25,6 +25,8 @@ import {
   useImageDownloadMutation
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
+import { useConfirm } from '../../context/ConfirmContext'
+import { recordChange, updateChange } from '../../lib/changelog'
 
 interface BackupManagerProps {
   client: BinaryLaneClient | null
@@ -103,7 +105,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       // A backup of a 40 GB disk runs for minutes and reports rich progress
       // while it does. Tracking it means the user learns whether it landed,
       // instead of only that it started.
-      if (queued) track(queued, 'Take Backup', activeServer?.name)
+      const changeId = await recordChange({
+        label: 'Take Backup',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        severity: 'normal',
+        summary: snapshotLabel.trim() ? `Label "${snapshotLabel.trim()}"` : undefined,
+        source: 'ui'
+      })
+      if (queued) track(queued, 'Take Backup', activeServer?.name, changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Snapshot Initiated',
         body: `Snapshot creation started for server #${activeServerId}.`
@@ -116,22 +125,33 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     }
   }
 
+  const confirmAction = useConfirm()
   // Restore snapshot
   const handleRestore = async (imageId: number, name: string) => {
     if (!activeServerId) return
-    if (!confirm(`RESTORE server #${activeServerId} to image "${name}" (#${imageId})? Current disk data will be overwritten.`)) return
+    const c = await confirmAction({
+      title: 'Restore from backup',
+      target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+      summary: `Overwrites the server's current disk with image "${name}" (#${imageId}). Everything written since that image was taken is lost.`,
+      severity: 'irreversible',
+      changes: [{ label: 'Disk contents', from: 'current', to: `${name} (#${imageId})` }],
+      notes: ['Take a snapshot first if the current state might be needed again.'],
+      confirmLabel: 'Restore'
+    })
+    if (!c.ok) return
 
     setActionProcessingId(imageId)
     try {
       const queued = await restoreBackupMutation.mutateAsync(imageId)
       // A restore overwrites the disk and runs for a while. "Initiated" was true
       // but the user was never told whether it actually landed.
-      if (queued) track(queued, `Restore from "${name}"`, activeServer?.name)
+      if (queued) track(queued, `Restore from "${name}"`, activeServer?.name, c.changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Restore Initiated',
         body: `Server #${activeServerId} is restoring from image #${imageId}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Restore failed: ${err.message}`)
     } finally {
       setActionProcessingId(null)
@@ -196,16 +216,24 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const handleToggleAuto = async () => {
     if (!activeServerId) return
     const enable = !isAutoBackupEnabled
-    if (!confirm(`${enable ? 'Enable' : 'Disable'} automated nightly backups for ${activeServer?.name}?`)) return
+    const c = await confirmAction({
+      title: `${enable ? 'Enable' : 'Disable'} automated backups`,
+      target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+      summary: enable ? 'BinaryLane takes a nightly backup on the server\'s schedule.' : 'Nightly backups stop. Existing backups are kept until they age out.',
+      severity: enable ? 'normal' : 'destructive',
+      changes: [{ label: 'Automated backups', from: enable ? 'off' : 'on', to: enable ? 'on' : 'off' }]
+    })
+    if (!c.ok) return
 
     try {
       const queued = await toggleAutomatedBackups.mutateAsync(enable)
-      if (queued) track(queued, `${enable ? 'Enable' : 'Disable'} Automated Backups`, activeServer?.name)
+      if (queued) track(queued, `${enable ? 'Enable' : 'Disable'} Automated Backups`, activeServer?.name, c.changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Schedule Change Requested',
         body: `${enable ? 'Enabling' : 'Disabling'} automated backups for server #${activeServerId}.`
       })
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Schedule update failed: ${err.message}`)
     }
   }

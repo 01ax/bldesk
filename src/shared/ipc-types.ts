@@ -123,6 +123,13 @@ export interface UpdaterState {
   apkUrl?: string
 }
 
+/** A change-log entry as stored; the renderer's lib/changelog.ts owns the shape. */
+export interface ChangeLogRecord {
+  id: string
+  at: string
+  profileId: string
+}
+
 export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
@@ -140,6 +147,12 @@ export interface IpcApi {
 
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>
+
+  // Local change log — see main/changelog.ts and renderer lib/changelog.ts
+  changelogAppend: (entry: ChangeLogRecord) => Promise<void>
+  changelogUpdate: (profileId: string, id: string, patch: Record<string, unknown>) => Promise<void>
+  changelogList: (profileId: string, limit?: number) => Promise<any[]>
+  changelogClear: (profileId: string) => Promise<void>
 
   // Tray / menu bar — see main/tray.ts
   /** Push the current fleet picture; main rebuilds the tray tooltip and menu from it. */

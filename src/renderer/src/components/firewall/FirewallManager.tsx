@@ -17,6 +17,11 @@ import {
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useServers, useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { recordChange, updateChange, type ChangeTarget } from '../../lib/changelog'
+import { diffLines, describeFirewallRule } from '../../lib/diff'
+import { useTrackedActions } from '../../context/ActionTrackerContext'
+import { describeApiError } from '../../api/queries'
 
 interface FirewallManagerProps {
   client: BinaryLaneClient | null
@@ -61,6 +66,21 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const currentRules = (firewallQuery.data || []) as any[]
 
   // Handle Preset Selection
+  const confirmAction = useConfirm()
+  const { track } = useTrackedActions()
+  const fwTarget = (): ChangeTarget => ({ kind: 'server', id: activeServerId ?? undefined, name: activeServer?.name || String(activeServerId) })
+  /** Run a rule-list write, hand the action to the tracker, and keep the change log honest. */
+  const finishFirewall = async (changeId: string | undefined, write: Promise<any>) => {
+    try {
+      const action = await write
+      if (action) track(action, 'Firewall rules', activeServer?.name, changeId)
+      else void updateChange(changeId, { outcome: 'completed' })
+      return action
+    } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err?.message || String(err) })
+      throw err
+    }
+  }
   const applyPreset = (preset: 'ssh' | 'http_https' | 'openvpn' | 'wireguard' | 'drop_all') => {
     switch (preset) {
       case 'ssh':
@@ -152,8 +172,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       }
     }
 
+    const c = await confirmAction({
+      title: 'Add firewall rule',
+      target: fwTarget(),
+      summary: `Adds "${newRule.description || ruleAction}" and writes the full rule list back to the server.`,
+      diff: diffLines(currentRules.map(describeFirewallRule), updatedList.map(describeFirewallRule))
+    })
+    if (!c.ok) return
+
     try {
-      await updateFirewall.mutateAsync(updatedList)
+      await finishFirewall(c.changeId, updateFirewall.mutateAsync(updatedList))
       setIsAdding(false)
       setRuleDescription('')
       window.bldeskApi?.sendNotification?.({
@@ -175,8 +203,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     const [moved] = reordered.splice(index, 1)
     reordered.splice(newIndex, 0, moved)
 
+    // Reordering changes which rule wins; worth a log line but not a dialog.
+    const changeId = await recordChange({
+      label: 'Reorder firewall rules',
+      target: fwTarget(),
+      severity: 'normal',
+      diff: diffLines(currentRules.map(describeFirewallRule), reordered.map(describeFirewallRule)),
+      source: 'ui'
+    })
     try {
-      await updateFirewall.mutateAsync(reordered)
+      await finishFirewall(changeId, updateFirewall.mutateAsync(reordered))
     } catch (err: any) {
       alert(`Reorder failed: ${err.message}`)
     }
@@ -186,11 +222,19 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const handleDeleteRule = async (index: number) => {
     if (!activeServerId) return
     const rule = currentRules[index]
-    if (!confirm(`Delete firewall rule #${index + 1} (${rule.description || rule.action})?`)) return
-
     const filtered = currentRules.filter((_, i) => i !== index)
+    const c = await confirmAction({
+      title: 'Delete firewall rule',
+      target: fwTarget(),
+      summary: `Removes rule #${index + 1} (${rule.description || rule.action}) and writes the remaining rules back to the server.`,
+      severity: 'destructive',
+      diff: diffLines(currentRules.map(describeFirewallRule), filtered.map(describeFirewallRule)),
+      confirmLabel: 'Delete rule'
+    })
+    if (!c.ok) return
+
     try {
-      await updateFirewall.mutateAsync(filtered)
+      await finishFirewall(c.changeId, updateFirewall.mutateAsync(filtered))
       window.bldeskApi?.sendNotification?.({
         title: 'Firewall Rule Removed',
         body: `Rule #${index + 1} removed.`
@@ -203,11 +247,19 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   // Handle Disable / Flush Firewall
   const handleFlushFirewall = async () => {
     if (!activeServerId) return
-    if (!confirm(`Flush and DISABLE all external firewall rules for ${activeServer?.name || activeServerId}? This will allow all inbound traffic.`))
-      return
+    const c = await confirmAction({
+      title: 'Disable firewall',
+      target: fwTarget(),
+      summary: `Removes every rule. With no rules, BinaryLane's external firewall allows all inbound traffic to ${activeServer?.name || activeServerId}.`,
+      severity: 'irreversible',
+      notes: ['Export the rules first if you may want them back — there is no undo on the BinaryLane side.'],
+      diff: diffLines(currentRules.map(describeFirewallRule), []),
+      confirmLabel: 'Disable firewall'
+    })
+    if (!c.ok) return
 
     try {
-      await updateFirewall.mutateAsync([])
+      await finishFirewall(c.changeId, updateFirewall.mutateAsync([]))
       window.bldeskApi?.sendNotification?.({
         title: 'Firewall Disabled',
         body: `Flushed all firewall rules on #${activeServerId}.`
@@ -240,7 +292,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         throw new Error('Firewall rules configuration must be a JSON array of rule objects.')
       }
 
-      await updateFirewall.mutateAsync(parsed)
+      const c = await confirmAction({
+        title: 'Import firewall rules',
+        target: fwTarget(),
+        summary: `Replaces the current ${currentRules.length} rule${currentRules.length === 1 ? '' : 's'} with the ${parsed.length} imported.`,
+        severity: 'destructive',
+        diff: diffLines(currentRules.map(describeFirewallRule), parsed.map(describeFirewallRule)),
+        confirmLabel: 'Import'
+      })
+      if (!c.ok) return
+      await finishFirewall(c.changeId, updateFirewall.mutateAsync(parsed))
       setIsImportOpen(false)
       setImportJsonText('')
       window.bldeskApi?.sendNotification?.({
@@ -268,22 +329,35 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     e.preventDefault()
     if (!client || !targetServerId) return
 
+    const targetName = servers.find((s) => s.id === targetServerId)?.name || String(targetServerId)
+    const c = await confirmAction({
+      title: 'Clone firewall rules',
+      target: { kind: 'server', id: targetServerId, name: String(targetName) },
+      summary: `Replaces whatever rules ${targetName} has now with the ${currentRules.length} rule${currentRules.length === 1 ? '' : 's'} from ${activeServer?.name}. The target's existing rules are not shown here because they have not been fetched.`,
+      severity: 'destructive',
+      diff: diffLines([], currentRules.map(describeFirewallRule)),
+      confirmLabel: 'Clone rules'
+    })
+    if (!c.ok) return
+
     setIsCloning(true)
     try {
-      await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: targetServerId } },
         body: {
           type: 'change_advanced_firewall_rules',
           firewall_rules: currentRules
         }
       })
-      const targetName = servers.find((s) => s.id === targetServerId)?.name || targetServerId
+      if (error) throw new Error(describeApiError(error))
+      if (data?.action) track(data.action, 'Clone firewall rules', String(targetName), c.changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Firewall Rules Cloned',
         body: `Applied ${currentRules.length} rules from ${activeServer?.name} to ${targetName}.`
       })
       setIsCloneOpen(false)
     } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
       alert(`Clone failed: ${err.message}`)
     } finally {
       setIsCloning(false)

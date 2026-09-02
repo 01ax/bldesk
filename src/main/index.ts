@@ -7,6 +7,7 @@ import { launchNativeTerminal } from './terminal'
 import { UpdaterManager } from './updater'
 import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
+import { ChangeLogStore } from './changelog'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
 let mainWindow: BrowserWindow | null = null
@@ -264,6 +265,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle('system:sendNotification', async (_, options: SystemNotificationOptions) => {
     TrayManager.notify(options)
   })
+
+  // Local change log
+  ipcMain.handle('changelog:append', (_, entry) => ChangeLogStore.append(entry))
+  ipcMain.handle('changelog:update', (_, profileId: string, id: string, patch) => ChangeLogStore.update(profileId, id, patch))
+  ipcMain.handle('changelog:list', (_, profileId: string, limit?: number) => ChangeLogStore.list(profileId, limit))
+  ipcMain.handle('changelog:clear', (_, profileId: string) => ChangeLogStore.clear(profileId))
 
   // Tray / menu bar
   ipcMain.handle('tray:update', (_, summary: TrayFleetSummary) => TrayManager.update(summary))

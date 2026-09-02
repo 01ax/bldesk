@@ -18,7 +18,7 @@ export const DEEP_LINK_SCHEME = 'bldesk'
 export const SERVER_SUB_TABS = ['overview', 'remote-access', 'usage', 'network', 'backups', 'firewall', 'settings', 'recovery'] as const
 export type DeepLinkServerSubTab = (typeof SERVER_SUB_TABS)[number]
 
-export const TOP_TABS = ['servers', 'vpcs', 'firewall', 'loadbalancers', 'dns', 'backups', 'keys', 'billing', 'terminal'] as const
+export const TOP_TABS = ['servers', 'vpcs', 'firewall', 'loadbalancers', 'dns', 'backups', 'keys', 'billing', 'account', 'history', 'terminal'] as const
 export type DeepLinkTab = (typeof TOP_TABS)[number]
 
 export type DeepLink =

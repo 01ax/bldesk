@@ -36,6 +36,9 @@ import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerSubTab } from '../layout/Sidebar'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
+import { powerActionSummary } from '../../lib/actionLabels'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -173,8 +176,20 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     setTimeout(() => setCopiedText(null), 1500)
   }
 
+  const confirmAction = useConfirm()
   const handleAction = async (actionType: string, customPayload: any = {}) => {
-    if (!confirm(`Trigger action "${actionType}" on server #${server.id}?`)) return
+    // Diagnostics change nothing; asking "are you sure?" before a ping is noise.
+    let changeId: string | undefined
+    if (!isDiagnostic(actionType)) {
+      const c = await confirmAction({
+        title: describeActionType(actionType),
+        target: { kind: 'server', id: server.id, name: server.name },
+        summary: powerActionSummary(actionType),
+        severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal'
+      })
+      if (!c.ok) return
+      changeId = c.changeId
+    }
     setActionInProgress(actionType)
     try {
       // Diagnostics are awaited, because their answer only exists once the
@@ -195,8 +210,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         title: `Server Action: ${describeActionType(actionType)}`,
         body: `Action initiated successfully.`
       })
-      if (res) track(res, describeActionType(actionType), server.name)
+      if (res) track(res, describeActionType(actionType), server.name, changeId)
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err?.message })
       if (isDiagnostic(actionType)) {
         setDiagnosticResult({
           text: `${DIAGNOSTIC_LABELS[actionType]} failed: ${err.message || 'Unknown error'}`,

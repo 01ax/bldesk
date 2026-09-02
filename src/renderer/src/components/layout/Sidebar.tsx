@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Terminal,
   Activity,
+  History,
   ChevronLeft,
   X, UserCircle} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
@@ -27,6 +28,7 @@ export type ActiveTab =
   | 'keys'
   | 'billing'
   | 'account'
+  | 'history'
   | 'terminal'
 
 export type ServerSubTab =
@@ -74,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'keys', label: 'SSH Keys', icon: Key },
     { id: 'billing', label: 'Billing & Invoices', icon: Receipt },
     { id: 'account', label: 'Account Details', icon: UserCircle },
+    { id: 'history', label: 'History', icon: History },
     { id: 'terminal', label: 'Embedded Shell', icon: Terminal }
   ]
 

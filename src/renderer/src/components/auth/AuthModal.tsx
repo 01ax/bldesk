@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { X, Key, ShieldCheck, ExternalLink, Trash2, CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { AccountProfile } from '@shared/ipc-types'
 import { createBinaryLaneClient } from '../../api/client'
+import { useConfirm } from '../../context/ConfirmContext'
 
 interface AuthModalProps {
   isOpen: boolean
@@ -104,8 +105,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }
 
+  const confirmAction = useConfirm()
   const handleDeleteProfile = async (id: string, name: string) => {
-    if (!confirm(`Remove account profile "${name}"? You will need to re-enter your API token to use it again.`)) return
+    const ok = await confirmAction({
+      title: 'Remove account profile',
+      target: { kind: 'account', name },
+      summary: 'The saved API token for this profile is deleted from the vault. You will need to re-enter it to use the account again.',
+      severity: 'destructive',
+      log: false,
+      confirmLabel: 'Remove profile'
+    })
+    if (!ok.ok) return
     try {
       await window.bldeskApi?.deleteProfile?.(id)
       onProfileAddedOrUpdated()

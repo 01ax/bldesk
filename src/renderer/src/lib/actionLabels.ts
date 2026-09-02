@@ -29,3 +29,21 @@ export function describeActionType(type: string): string {
     .map((word) => ACRONYMS[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }
+
+/** One honest sentence per power action, for the confirm dialog. */
+export function powerActionSummary(type: string): string {
+  switch (type) {
+    case 'reboot':
+      return 'Asks the OS to restart cleanly (ACPI). The server is back within a minute or two if the OS cooperates.'
+    case 'shutdown':
+      return 'Sends an ACPI shutdown signal. The OS decides whether to honour it — BinaryLane reports the signal delivered, not the server off.'
+    case 'power_off':
+      return 'Cuts power at the hypervisor. Equivalent to pulling the plug: anything unsaved in the guest is lost.'
+    case 'power_cycle':
+      return 'Cuts power at the hypervisor and starts the server again. Equivalent to pulling the plug and reconnecting it.'
+    case 'power_on':
+      return 'Starts the server.'
+    default:
+      return `Submits "${describeActionType(type)}" to BinaryLane.`
+  }
+}

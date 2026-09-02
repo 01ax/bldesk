@@ -77,7 +77,9 @@ tag add prod wp-*
 
 ## 5. Diff-based change review and local changelog
 
-**Today:** ten `window.confirm()` prompts guard destructive actions; there is no record of what was changed.
+**Status: built** (unreleased at time of writing). `context/ConfirmContext.tsx` is the one dialog (`useConfirm()` → summary / change table / line diff / type-to-confirm), `lib/diff.ts` the LCS diff and describers, `lib/changelog.ts` + `main/changelog.ts` the per-profile JSONL log, `components/history/HistoryView.tsx` the History tab. The action tracker takes a change id and writes the outcome back. Not yet: a diff for load-balancer forwarding-rule edits (that form writes fields, not a list) and export of the log.
+
+**Before:** sixteen `window.confirm()` prompts guarded destructive actions; there was no record of what was changed.
 
 **Proposed:**
 - Before any mutation (firewall, DNS, LB config, server settings, rebuild/restore) show a unified diff of current → proposed and confirm *the diff*, with type-the-name confirmation for irreversible actions.

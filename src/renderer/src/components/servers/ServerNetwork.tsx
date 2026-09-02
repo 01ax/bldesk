@@ -24,6 +24,8 @@ import {
   useServer,
   useVpcs
 } from '../../api/queries'
+import { useConfirm } from '../../context/ConfirmContext'
+import { updateChange } from '../../lib/changelog'
 
 type Server = components['schemas']['Server']
 type Network = components['schemas']['Network']
@@ -257,6 +259,7 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
 
   // Synchronous re-entry lock: `action.isPending` only flips after a render, so two clicks in the
   // same tick (or a click during the confirm dialog of another) could otherwise both submit.
+  const confirmAction = useConfirm()
   const inFlight = useRef(false)
 
   /**
@@ -267,11 +270,23 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
     if (inFlight.current || busy) return false
     inFlight.current = true
     try {
-      if (!confirm(confirmText)) return false
+      const c = await confirmAction({
+        title: label,
+        target: { kind: 'server', id: server.id, name: server.name },
+        summary: confirmText,
+        severity: 'normal'
+      })
+      if (!c.ok) return false
       setError(null)
       setNotice(null)
       setPending(label)
-      await action.mutateAsync(payload)
+      try {
+        const done = await action.mutateAsync(payload)
+        void updateChange(c.changeId, { outcome: 'completed', actionId: done?.id })
+      } catch (err) {
+        void updateChange(c.changeId, { outcome: 'failed', detail: err instanceof Error ? err.message : String(err) })
+        throw err
+      }
       setNotice(`${label} — done.`)
       window.bldeskApi?.sendNotification?.({ title: `Network: ${server.name}`, body: `${label} completed.` })
       return true
