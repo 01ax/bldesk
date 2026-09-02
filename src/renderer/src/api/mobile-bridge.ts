@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences'
+import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import { AccountProfile, IpcApi, UpdateChannel, UpdaterState } from '@shared/ipc-types'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
@@ -105,20 +106,64 @@ export async function initMobileBridge(): Promise<void> {
 
   console.log('[MobileBridge] Initializing Capacitor/Web bridge for mobile Android...')
 
+  /*
+   * Profiles hold the account's API token, so they go in the platform secure
+   * store, not Preferences.
+   *
+   * Preferences is plain SharedPreferences on Android: the token sat on disk in
+   * cleartext, was eligible for Android Auto Backup, and the sign-in dialog
+   * called itself a "Hardware Encrypted Vault" while offering none. SecureStorage
+   * encrypts with AES-GCM under a key generated in the Android Keystore, so the
+   * key is non-exportable and the ciphertext is useless off the device.
+   *
+   * Note the limit: a process running as this app's own UID can still ask the
+   * Keystore to decrypt. This closes the at-rest and backup paths, not an
+   * attacker who is already running as the app.
+   */
   const getStoredProfiles = async (): Promise<AccountProfile[]> => {
     try {
+      const secure = await SecureStorage.get(PROFILES_KEY, false, false)
+      if (typeof secure === 'string' && secure) return JSON.parse(secure)
+      if (secure && typeof secure === 'object') return secure as unknown as AccountProfile[]
+    } catch (err) {
+      console.warn('[MobileBridge] secure store unavailable, falling back:', err)
+    }
+
+    // One-time migration off the cleartext stores, which are then purged rather
+    // than left behind as a second copy of the token.
+    try {
       const { value } = await Preferences.get({ key: PROFILES_KEY })
-      if (value) {
-        return JSON.parse(value)
+      const legacy = value ?? localStorage.getItem(PROFILES_KEY)
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as AccountProfile[]
+        try {
+          await SecureStorage.set(PROFILES_KEY, JSON.stringify(parsed), false, false)
+          await Preferences.remove({ key: PROFILES_KEY })
+          localStorage.removeItem(PROFILES_KEY)
+          console.log('[MobileBridge] migrated profiles to the secure store')
+        } catch (err) {
+          // Keep the legacy copy if the secure write failed - losing the token
+          // outright is worse than leaving it where it already was.
+          console.warn('[MobileBridge] secure migration failed, keeping legacy store:', err)
+        }
+        return parsed
       }
     } catch {
-      const local = localStorage.getItem(PROFILES_KEY)
-      if (local) return JSON.parse(local)
+      /* nothing stored yet */
     }
     return []
   }
 
   const saveStoredProfiles = async (profiles: AccountProfile[]): Promise<void> => {
+    try {
+      await SecureStorage.set(PROFILES_KEY, JSON.stringify(profiles), false, false)
+      // Make sure no cleartext copy survives a save.
+      await Preferences.remove({ key: PROFILES_KEY }).catch(() => undefined)
+      localStorage.removeItem(PROFILES_KEY)
+      return
+    } catch (err) {
+      console.warn('[MobileBridge] secure store write failed, falling back:', err)
+    }
     try {
       await Preferences.set({ key: PROFILES_KEY, value: JSON.stringify(profiles) })
     } catch {

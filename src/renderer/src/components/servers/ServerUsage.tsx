@@ -395,7 +395,7 @@ const UsageSvgChart: React.FC<{
             {seriesList.map((s, i) => (
               <tr key={i} className="hover:bg-[#262c33] transition">
                 <td className="py-1.5 px-3 font-sans text-slate-200 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="w-2 h-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
                   <span>{s.name}</span>
                 </td>
                 <td className="py-1.5 px-3 text-slate-300">{s.formatter(s.summary.avg)}</td>

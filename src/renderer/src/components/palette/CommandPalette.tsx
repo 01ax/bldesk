@@ -688,7 +688,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   return (
     <div
       onClick={stage === 'running' ? undefined : close}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-100"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 overlay-safe bg-black/60 backdrop-blur-sm animate-in fade-in duration-100"
     >
       <div
         onClick={(e) => e.stopPropagation()}

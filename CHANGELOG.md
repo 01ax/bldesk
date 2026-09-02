@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.44] - 2026-09-03
+
+### Fixed
+- **Android Mutation Transport Fix** (*thanks @01ax!*):
+  - Fixed mobile bridge request extraction where `Request` objects were treated as empty options, causing mutations (power actions, reboots, DNS edits, backups) to be sent as silent `GET` requests instead of `POST`/`PUT`/`DELETE`.
+  - Re-enabled deduplication guards on duplicate in-flight submissions.
+- **Hardware-Backed Keystore Encryption on Android** (*thanks @01ax!*):
+  - Migrated profile and token storage to `@aparajita/capacitor-secure-storage` using AES-GCM keys backed by the Android Keystore.
+  - Automatically migrates existing cleartext SharedPreferences tokens and purges unencrypted legacy copies.
+  - Set `allowBackup="false"` in Android manifest to prevent token exfiltration via cloud backups.
+- **Mobile Safe-Area Insets on All Modals & Drawers** (*thanks @01ax!*):
+  - Applied `.overlay-safe` and `.panel-safe` rules across all 16 modal dialogs and side drawers to prevent content overlapping Android status and gesture bars.
+- **Mobile Create Server Form & Table Layout** (*thanks @01ax!*):
+  - Constrained dialog sizing to `max-h-full` within safe-area boundaries, making the bottom submission buttons and cloud-init inputs fully reachable.
+  - Optimized plan table with single-line rows, centred headers, and responsive column widths fitting 412px phone viewports without horizontal drag.
+  - Sized distribution tiles and logos responsively for mobile screens.
+  - Replaced hover tooltips on blocked plans with tap-friendly inline explanations.
+  - Matched storage sizing steps to mPanel's exact dropdown ladder (5 GB to 60, 10 GB to 200, 100 GB to 2000).
+- **Status Indicator Dot Deforming**:
+  - Added `shrink-0` to circular status indicators across server rows and headers to prevent oval squishing beside wrapping text.
+- **Region Filter Completeness**:
+  - Pre-seeded region dropdown from `/v2/regions` so all available regions (including ADL, PER, SIN) appear even before servers exist in those locations.
+
+---
+
 ## [1.0.43] - 2026-09-02
 
 ### Improved
