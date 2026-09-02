@@ -49,7 +49,9 @@ Ideas for taking BLDesk from "mPanel in a window" to a fleet tool. Ordered rough
 
 ## 4. Verb-first command palette
 
-**Today:** `CommandPalette.tsx` fuzzy-matches server names / IPs / VPCs and navigation tabs.
+**Status: built** (unreleased at time of writing). Grammar lives in `src/renderer/src/lib/commands.ts` (pure, no React); the palette in `CommandPalette.tsx` resolves targets against the loaded server list, previews eligible / skipped / unmatched, and requires a second Enter before submitting. Not yet: `firewall allow …` (needs #2's fetch-merge-write per server), `tag …` (the API has no server tags), and argument completion beyond Tab-to-fill.
+
+**Before:** `CommandPalette.tsx` fuzzy-matched server names / IPs / VPCs and navigation tabs.
 
 **Proposed:** make the palette accept commands, not just nouns:
 

@@ -35,7 +35,7 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 * **🌐 VPCs, Firewalls & Load Balancers**: Interactive Inbound/Outbound firewall rule manager, VPC network routing, and load balancer health monitoring.
 * **💾 Snapshots & Automated Backups**: Create point-in-time snapshots, manage scheduled nightly backups, and mount backup images as secondary drives.
 * **🌍 DNS Zone Manager**: Full DNS record management (A, AAAA, CNAME, MX, TXT, SRV, NS, CAA) with real-time propagation checks.
-* **⌨️ Command Palette (`Cmd+K` / `Ctrl+K`)**: Instant fuzzy search across servers, IP addresses, VPCs, and navigation tabs.
+* **⌨️ Command Palette (`Cmd+K` / `Ctrl+K`)**: Fuzzy search across servers, IPs and tabs — and verb-first commands with glob targets: `restart wp-*`, `snapshot db "pre-upgrade"`, `ssh 43.224`, `open jumpbox firewall`, `dns add A foo.example.com 203.0.113.9`. Every mutating command previews its targets and needs a second `Enter`.
 
 ---
 

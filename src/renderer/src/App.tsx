@@ -311,9 +311,12 @@ function MainDashboard() {
         {/* Command Palette (Ctrl+K / Cmd+K) */}
         <CommandPalette
           isOpen={isPaletteOpen}
+          onOpen={() => setIsPaletteOpen(true)}
           onClose={() => setIsPaletteOpen(false)}
           servers={servers}
+          client={client}
           onSelectServer={handleSelectServer}
+          onSelectServerSubTab={setActiveServerSubTab}
           onNavigateTab={setActiveTab}
         />
 
