@@ -25,7 +25,8 @@ import {
   useServerThresholdAlerts,
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
-  networkActionMutationKey
+  networkActionMutationKey,
+  actionFailureMessage
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
@@ -159,8 +160,16 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
           track(outcome.action, label, server.name)
           setNotice(`"${label}" is waiting for your answer — see the prompt.`)
           return true
-        default:
-          setErrorMsg(outcome.action.reason || `"${label}" ${outcome.action.status}`)
+        case 'blocked-by-invoice':
+          // Tracked as well: paying the invoice may release it, and the toast is
+          // then what reports the real outcome.
+          track(outcome.action, label, server.name)
+          setErrorMsg(
+            `"${label}" is blocked by invoice #${outcome.action.blocking_invoice_id}, which requires payment.`
+          )
+          return false
+        case 'errored':
+          setErrorMsg(actionFailureMessage(label, outcome.action))
           return false
       }
     } catch (err: any) {
