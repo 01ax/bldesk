@@ -761,13 +761,12 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
 
 /**
  * Every server action is asynchronous: the POST returns an `in-progress` action
- * and a 200 means "queued", not "done". There are three ways to submit one, and
+ * and a 200 means "queued", not "done". There are four ways to submit one, and
  * the difference is what should happen to the UI while it runs:
  *
  * - `useServerActionMutation` — submit and return immediately. For the list and
  *   detail views, whose callers hand the queued action to the action tracker and
- *   let a toast report the outcome. Also the path for diagnostics, which answer
- *   in the response itself.
+ *   let a toast report the outcome.
  * - `useServerActionWithHandoff` — submit, wait briefly, then release the UI and
  *   return the action still running for the caller to track. For the settings
  *   panel, where a quick change should confirm inline but a rebuild must not
@@ -775,9 +774,14 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
  * - `useNetworkActionMutation` — submit and block until it settles. For network
  *   changes only, where the hazard is a second write landing on top of an
  *   unsettled first one, so keeping the UI locked is the point.
+ * - `useServerDiagnosticMutation` — submit and block until it completes, then
+ *   return the action for its `result_data`. For `ping` / `uptime` /
+ *   `is_running`, whose whole purpose is a value that does not exist until the
+ *   action finishes.
  *
- * All three share `pollActionToSettled`, so the per-request cap, the tolerance
- * for one slow poll, and the paused-for-operator check cannot drift apart.
+ * All four share `pollActionToSettled`, so the per-request cap, the tolerance
+ * for one slow poll, and the checks for an action stalled on an operator answer
+ * or an unpaid invoice cannot drift apart between them.
  */
 
 type ServerAction = components['schemas']['Action']
@@ -795,6 +799,28 @@ export function describeApiError(error: unknown): string {
       .join('; ')
   }
   return e.title || JSON.stringify(error)
+}
+
+/**
+ * The detail of a failed action, or null when BinaryLane gave none.
+ *
+ * Deliberately does NOT fall back to `reason`. The spec defines that field as
+ * "a user-friendly explanation of what is happening" — a running description,
+ * not a verdict. A ping action carries reason "Your server is being pinged"
+ * whether it succeeds or fails, so presenting it as the cause of a failure reads
+ * as nonsense. The field that carries the cause is `error_message`, which the
+ * live API returns on a failed action but which the generated schema only
+ * declares on `Image` — hence the local cast rather than a schema change.
+ */
+export function describeActionFailure(action: ServerAction): string | null {
+  const detail = (action as { error_message?: string | null }).error_message
+  return detail && detail.trim() ? detail.trim() : null
+}
+
+/** One phrasing for "this action ended badly", used wherever an action is reported. */
+export function actionFailureMessage(label: string, action: ServerAction): string {
+  const detail = describeActionFailure(action)
+  return detail ? `"${label}" ${action.status}: ${detail}` : `"${label}" ${action.status}`
 }
 
 /** The server actions the Network tab is allowed to submit — typed against the generated schema. */
@@ -818,16 +844,19 @@ const isTimeoutError = (err: unknown): boolean =>
 /**
  * How an action finished, from the client's point of view.
  *
- * `awaiting-interaction` is a first-class outcome rather than a flavour of
- * "still running", because BinaryLane has no status for it: a paused action
- * reports `in-progress` forever and only a non-null `user_interaction_required`
- * gives it away. Anything that treats it as "keep waiting" burns its whole
- * timeout and then blames the server for being slow.
+ * `awaiting-interaction` and `blocked-by-invoice` are first-class outcomes
+ * rather than flavours of "still running", because BinaryLane has no status for
+ * either: a stalled action reports `in-progress` indefinitely, and the only
+ * signals are a non-null `user_interaction_required` or `blocking_invoice_id`.
+ * Anything that treats them as "keep waiting" burns its whole timeout and then
+ * blames the server for being slow — or, with no deadline, waits for something
+ * that will never arrive on its own.
  */
 export type SettledAction =
   | { state: 'completed'; action: ServerAction }
   | { state: 'errored'; action: ServerAction }
   | { state: 'awaiting-interaction'; action: ServerAction }
+  | { state: 'blocked-by-invoice'; action: ServerAction }
   | { state: 'timed-out'; action: ServerAction | null }
 
 export interface PollActionOptions {
@@ -867,8 +896,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 /** Classify a snapshot, or null if it is genuinely still working. */
 function classifyAction(action: ServerAction): SettledAction | null {
-  // Checked before status on purpose: a paused action still says `in-progress`.
+  // Both checked before status on purpose: a stalled action still says `in-progress`.
   if (action.user_interaction_required) return { state: 'awaiting-interaction', action }
+  if (action.blocking_invoice_id) return { state: 'blocked-by-invoice', action }
   if (action.status === 'completed') return { state: 'completed', action }
   if (action.status === 'errored') return { state: 'errored', action }
   return null
@@ -976,12 +1006,16 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
           throw new Error(
             `"${actionPayload.type}" is waiting for your confirmation (action #${settled.action.id}). Answer the prompt to let it continue.`
           )
+        case 'blocked-by-invoice':
+          throw new Error(
+            `"${actionPayload.type}" is blocked by invoice #${settled.action.blocking_invoice_id}, which requires payment (action #${settled.action.id}).`
+          )
         case 'timed-out':
           throw new Error(
             `"${actionPayload.type}" is still in progress after ${ACTION_POLL_TIMEOUT_MS / 1000}s (action #${queued.id}). It may still complete; this page refreshes automatically.`
           )
-        default:
-          throw new Error(settled.action.reason || `"${actionPayload.type}" ${settled.action.status}`)
+        case 'errored':
+          throw new Error(actionFailureMessage(actionPayload.type, settled.action))
       }
     },
     onSettled: async () => {
@@ -1020,6 +1054,7 @@ export type ServerActionOutcome =
   | { state: 'completed'; action: ServerAction }
   | { state: 'errored'; action: ServerAction }
   | { state: 'awaiting-interaction'; action: ServerAction }
+  | { state: 'blocked-by-invoice'; action: ServerAction }
   /** Still running, and no longer holding the UI. The caller should track it. */
   | { state: 'handed-off'; action: ServerAction }
 
@@ -1075,6 +1110,67 @@ export function useServerActionWithHandoff(client: BinaryLaneClient | null, serv
         queryClient.invalidateQueries({ queryKey: ['server-advanced-features', serverId] })
       ])
       await Promise.race([refetch, new Promise((r) => setTimeout(r, ACTION_REQUEST_TIMEOUT_MS))])
+    }
+  })
+}
+
+/**
+ * Diagnostics answer in seconds, and the caller is watching a spinner, so this
+ * polls faster than the default and gives up sooner. Neither number is a
+ * measurement of how long a diagnostic takes — the cap only has to be long
+ * enough that a healthy one is never cut short.
+ */
+const DIAGNOSTIC_POLL_INTERVAL_MS = 1000
+const DIAGNOSTIC_POLL_TIMEOUT_MS = 30_000
+
+/**
+ * Submit a diagnostic (`ping`, `uptime`, `is_running`) and wait for its answer.
+ *
+ * These are the one case that must block: the value the user asked for arrives
+ * in `result_data`, which is only populated once the action reaches `completed`.
+ * Reading the action returned by the POST gives `status: 'in-progress'` and no
+ * result at all — which is why the panel used to report `"in-progress"` forever.
+ * A toast is no use here either; the answer belongs inline, next to the button
+ * that asked for it.
+ */
+export function useServerDiagnosticMutation(client: BinaryLaneClient | null, serverId: number | null) {
+  return useMutation<ServerAction, Error, Record<string, unknown> & { type: string }>({
+    mutationFn: async (actionPayload) => {
+      if (!client || !serverId) throw new Error('No client available')
+
+      const submitted = await client.POST('/v2/servers/{server_id}/actions', {
+        params: { path: { server_id: serverId } },
+        body: actionPayload as never,
+        signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
+      })
+      if (submitted.error) throw new Error(describeApiError(submitted.error))
+
+      const queued = submitted.data?.action
+      if (!queued?.id) throw new Error(`BinaryLane accepted "${actionPayload.type}" but returned no action to track.`)
+
+      const settled = await pollActionToSettled(client, queued.id, {
+        initial: queued,
+        timeoutMs: DIAGNOSTIC_POLL_TIMEOUT_MS,
+        intervalMs: DIAGNOSTIC_POLL_INTERVAL_MS
+      })
+      switch (settled.state) {
+        case 'completed':
+          return settled.action
+        case 'errored':
+          throw new Error(actionFailureMessage(actionPayload.type, settled.action))
+        case 'awaiting-interaction':
+          throw new Error(
+            `"${actionPayload.type}" is waiting for your confirmation (action #${settled.action.id}). Answer the prompt to let it continue.`
+          )
+        case 'blocked-by-invoice':
+          throw new Error(
+            `"${actionPayload.type}" is blocked by invoice #${settled.action.blocking_invoice_id}, which requires payment.`
+          )
+        case 'timed-out':
+          throw new Error(
+            `"${actionPayload.type}" had not finished after ${DIAGNOSTIC_POLL_TIMEOUT_MS / 1000}s (action #${queued.id}). It may still complete — check the server's action history.`
+          )
+      }
     }
   })
 }

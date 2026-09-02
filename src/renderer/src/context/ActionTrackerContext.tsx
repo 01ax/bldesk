@@ -2,11 +2,17 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../api/client'
-import { pollActionToSettled } from '../api/queries'
+import { describeActionFailure, pollActionToSettled } from '../api/queries'
 
 type ServerAction = components['schemas']['Action']
 
-export type TrackedActionState = 'running' | 'completed' | 'errored' | 'awaiting-interaction' | 'lost'
+export type TrackedActionState =
+  | 'running'
+  | 'completed'
+  | 'errored'
+  | 'awaiting-interaction'
+  | 'blocked-by-invoice'
+  | 'lost'
 
 export interface TrackedAction {
   actionId: number
@@ -120,17 +126,27 @@ export function ActionTrackerProvider({
           // sit on "waiting for your answer" forever, still pointing at a prompt
           // that vanished the moment the answer was accepted.
           let promptRequested = false
-          while (settled.state === 'awaiting-interaction' && !controller.signal.aborted) {
-            update(action.id, { state: 'awaiting-interaction' })
-            if (!promptRequested) {
-              promptRequested = true
-              // The toast tells the user to see the prompt, but the account-wide
-              // watch that renders it polls on its own 20s cycle. Pull it forward
-              // so the two never disagree about whether there is a question.
-              void queryClient.invalidateQueries({ queryKey: ['actions-awaiting-interaction'] })
+          while (
+            (settled.state === 'awaiting-interaction' || settled.state === 'blocked-by-invoice') &&
+            !controller.signal.aborted
+          ) {
+            if (settled.state === 'awaiting-interaction') {
+              update(action.id, { state: 'awaiting-interaction' })
+              if (!promptRequested) {
+                promptRequested = true
+                // The toast tells the user to see the prompt, but the account-wide
+                // watch that renders it polls on its own 20s cycle. Pull it forward
+                // so the two never disagree about whether there is a question.
+                void queryClient.invalidateQueries({ queryKey: ['actions-awaiting-interaction'] })
+              }
+            } else {
+              update(action.id, {
+                state: 'blocked-by-invoice',
+                detail: `Blocked by invoice #${settled.action.blocking_invoice_id}, which requires payment.`
+              })
             }
-            // No `initial`: pass the stale paused snapshot back in and it would
-            // classify as waiting again without ever asking BinaryLane.
+            // No `initial`: pass the stale stalled snapshot back in and it would
+            // classify the same way again without ever asking BinaryLane.
             settled = await pollActionToSettled(client, action.id, pollOptions)
           }
 
@@ -139,7 +155,7 @@ export function ActionTrackerProvider({
           if (settled.state === 'completed') {
             update(action.id, { state: 'completed', percentComplete: 100 })
           } else if (settled.state === 'errored') {
-            update(action.id, { state: 'errored', detail: settled.action.reason })
+            update(action.id, { state: 'errored', detail: describeActionFailure(settled.action) ?? undefined })
           } else {
             update(action.id, { state: 'running' })
           }
@@ -147,7 +163,13 @@ export function ActionTrackerProvider({
           // Whatever happened, the cached view of the account is now stale.
           void queryClient.invalidateQueries({ queryKey: ['servers'] })
           if (settled.action?.resource_id) {
-            void queryClient.invalidateQueries({ queryKey: ['server', settled.action.resource_id] })
+            const resourceId = settled.action.resource_id
+            void queryClient.invalidateQueries({ queryKey: ['server', resourceId] })
+            // Backups and snapshots are cached under their own keys, so a
+            // completed take_backup or restore would otherwise leave the list
+            // showing what it held before the action ran.
+            void queryClient.invalidateQueries({ queryKey: ['serverBackups', resourceId] })
+            void queryClient.invalidateQueries({ queryKey: ['serverSnapshots', resourceId] })
           }
         } catch (err) {
           if (controller.signal.aborted) return

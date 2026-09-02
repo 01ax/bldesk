@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, Receipt, X } from 'lucide-react'
 import { TrackedAction, TrackedActionState, useTrackedActions } from '../../context/ActionTrackerContext'
 
 /**
@@ -14,6 +14,7 @@ const TONE: Record<TrackedActionState, { icon: typeof Loader2; className: string
   completed: { icon: CheckCircle2, className: 'text-emerald-500' },
   errored: { icon: AlertTriangle, className: 'text-red-500' },
   'awaiting-interaction': { icon: HelpCircle, className: 'text-[#f1ca00]' },
+  'blocked-by-invoice': { icon: Receipt, className: 'text-[#f1ca00]' },
   lost: { icon: AlertTriangle, className: 'text-amber-500' }
 }
 
@@ -29,6 +30,11 @@ function statusLine(action: TrackedAction): string {
       return action.detail || 'BinaryLane reported an error'
     case 'awaiting-interaction':
       return 'Waiting for your answer — see the prompt'
+    case 'blocked-by-invoice':
+      // Says what BinaryLane reports and no more: the spec states only that the
+      // action is blocked by an invoice requiring payment. Whether paying it
+      // resumes this action is not something to promise on its behalf.
+      return action.detail || 'Blocked by an invoice that requires payment'
     case 'lost':
       // Careful wording: losing track of an action says nothing about whether
       // it applied. Claiming either way here would be a guess.
