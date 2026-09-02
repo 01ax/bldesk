@@ -20,6 +20,16 @@ const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as 
  */
 
 const SETTINGS_FILE = 'updater.json'
+/** Network-level failures that mean "couldn't reach the feed", not "no update". */
+const OFFLINE_CODES = new Set([
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'EHOSTUNREACH'
+])
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h
 const INITIAL_DELAY_MS = 15 * 1000 // let the UI settle before hitting GitHub
 
@@ -104,16 +114,7 @@ export class UpdaterManager {
         }).show()
       }
     })
-    autoUpdater.on('error', (err: Error) => {
-      const msg = err?.message || String(err)
-      // 404 on latest.yml means no update manifest is published for this release yet (app is already on latest)
-      if (msg.includes('404') || msg.includes('latest.yml') || msg.includes('Cannot find')) {
-        console.log('[Updater] No newer update manifest on GitHub Releases:', msg)
-        this.setState({ status: 'up-to-date', availableVersion: undefined, error: undefined, lastCheckedAt: new Date().toISOString() })
-        return
-      }
-      this.setState({ status: 'error', error: msg })
-    })
+    autoUpdater.on('error', (err: Error) => this.handleCheckError(err))
 
     setTimeout(() => this.check(), INITIAL_DELAY_MS)
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS)
@@ -130,13 +131,7 @@ export class UpdaterManager {
     try {
       await autoUpdater.checkForUpdates()
     } catch (err: any) {
-      const msg = err?.message || String(err)
-      if (msg.includes('404') || msg.includes('latest.yml') || msg.includes('Cannot find')) {
-        console.log('[Updater] No newer update manifest on GitHub Releases:', msg)
-        this.setState({ status: 'up-to-date', availableVersion: undefined, error: undefined, lastCheckedAt: new Date().toISOString() })
-      } else {
-        this.setState({ status: 'error', error: msg })
-      }
+      this.handleCheckError(err)
     }
     return this.getState()
   }
@@ -161,6 +156,32 @@ export class UpdaterManager {
     this.timer = null
   }
 
+  /**
+   * A check that could not complete is reported as `check-failed`, never as
+   * `up-to-date`. The two are not the same: `up-to-date` is a positive answer
+   * from the feed, whereas an unreachable feed leaves the real version unknown.
+   * Collapsing them hides a broken update channel behind a green tick.
+   *
+   * `check-failed` is deliberately not `error` — a missing manifest or an
+   * offline machine is expected and shouldn't raise an alarm badge. It is still
+   * surfaced honestly rather than silently.
+   */
+  private static handleCheckError(err: any): void {
+    const msg = err?.message || String(err)
+    const status = isFeedUnreachable(err) ? 'check-failed' : 'error'
+    if (status === 'check-failed') {
+      console.log('[Updater] Update check could not complete:', msg)
+    } else {
+      console.error('[Updater] Update check failed:', msg)
+    }
+    this.setState({
+      status,
+      availableVersion: undefined,
+      error: msg,
+      lastCheckedAt: new Date().toISOString()
+    })
+  }
+
   private static applyChannel(channel: UpdateChannel): void {
     if (!app.isPackaged) return
     // "latest" is electron-updater's name for the stable channel file.
@@ -175,6 +196,21 @@ export class UpdaterManager {
       if (!win.isDestroyed()) win.webContents.send('updater:state', this.state)
     }
   }
+}
+
+/**
+ * True when the check failed because the update feed could not be read at all:
+ * no manifest published for this platform (404), or no usable network.
+ *
+ * Matched on `statusCode` and error codes rather than by searching the message
+ * for "latest.yml" or "Cannot find", which also swallow real failures such as a
+ * malformed manifest or a checksum mismatch.
+ */
+function isFeedUnreachable(err: any): boolean {
+  if (err?.statusCode === 404) return true
+  const code = err?.code
+  if (typeof code === 'string' && OFFLINE_CODES.has(code)) return true
+  return /HttpError:\s*404|\b404\s+Not Found\b/i.test(err?.message || '')
 }
 
 function notesToString(info: UpdateInfo): string | undefined {
