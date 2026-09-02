@@ -852,6 +852,16 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
         }
         if (poll.error) throw new Error(`Lost track of action #${action.id}: ${describeApiError(poll.error)}`)
         if (poll.data?.action) action = poll.data.action
+        if (action.user_interaction_required) {
+          // Waiting on the operator, not on BinaryLane. `status` stays `in-progress`
+          // the whole time it waits, so without this the loop would spin out the full
+          // timeout and then report a misleading "still in progress after 90s".
+          // Release the UI lock and let the account-wide prompt collect the answer —
+          // this is not something more waiting can resolve.
+          throw new Error(
+            `"${actionPayload.type}" is waiting for your confirmation (action #${action.id}). Answer the prompt to let it continue.`
+          )
+        }
       }
       if (action.status !== 'completed') {
         throw new Error(action.reason || `"${actionPayload.type}" ${action.status}`)
@@ -904,5 +914,125 @@ export function useAvailableAdvancedFeatures(client: BinaryLaneClient | null, se
       return data?.available_advanced_server_features || null
     },
     enabled: !!client && !!serverId
+  })
+}
+
+// --- ACTIONS AWAITING USER INTERACTION (account-wide) ---
+
+/**
+ * BinaryLane can pause an action partway through and wait for the operator to
+ * answer a yes/no question — a new server that never answered a ping, or one
+ * that would not shut down cleanly. Two things make this easy to miss:
+ *
+ * 1. `status` stays `in-progress` the whole time it waits. There is no distinct
+ *    status value for it; the only signal is a non-null `user_interaction_required`.
+ * 2. Nothing resumes until someone answers via POST /v2/actions/{id}/proceed, so
+ *    an unanswered prompt is a wedged operation, not a slow one.
+ *
+ * The watch is account-wide on purpose: the question usually arrives a minute or
+ * more after the click that caused it (BinaryLane has to time out a ping or a
+ * clean shutdown first), by which point the user has very likely navigated away
+ * from — or closed — the view that started it.
+ */
+
+const INTERACTION_POLL_INTERVAL_MS = 20_000
+const INTERACTION_PAGE_SIZE = 50
+
+export type ActionAwaitingInteraction = ServerAction & {
+  user_interaction_required: NonNullable<ServerAction['user_interaction_required']>
+}
+
+const awaitsInteraction = (action: ServerAction): action is ActionAwaitingInteraction =>
+  action.user_interaction_required != null
+
+async function fetchActionsPage(
+  client: BinaryLaneClient,
+  page: number
+): Promise<{ actions: ServerAction[]; total: number }> {
+  const { data, error } = await client.GET('/v2/actions', {
+    params: { query: { page, per_page: INTERACTION_PAGE_SIZE } }
+  })
+  if (error) throw new Error(describeApiError(error))
+  return { actions: data?.actions ?? [], total: data?.meta?.total ?? 0 }
+}
+
+/**
+ * `/v2/actions` does not document its sort order, and guessing wrong would make
+ * this watch silently never fire on a long-lived account — the worst failure
+ * mode for a prompt whose whole job is to unblock a stuck operation. So rather
+ * than assume, read the page we got: if its timestamps ascend, the newest
+ * actions are at the far end and we go fetch that page too.
+ */
+function looksOldestFirst(actions: ServerAction[]): boolean {
+  if (actions.length < 2) return false
+  const first = Date.parse(actions[0].started_at)
+  const last = Date.parse(actions[actions.length - 1].started_at)
+  if (Number.isNaN(first) || Number.isNaN(last)) return false
+  return last > first
+}
+
+export function useActionsAwaitingInteraction(client: BinaryLaneClient | null, profileId?: string) {
+  return useQuery<ActionAwaitingInteraction[]>({
+    queryKey: ['actions-awaiting-interaction', profileId || 'default'],
+    queryFn: async () => {
+      if (!client) return []
+      const firstPage = await fetchActionsPage(client, 1)
+      const seen = new Map<number, ServerAction>()
+      for (const action of firstPage.actions) seen.set(action.id, action)
+
+      if (firstPage.total > firstPage.actions.length && looksOldestFirst(firstPage.actions)) {
+        const lastPage = Math.ceil(firstPage.total / INTERACTION_PAGE_SIZE)
+        if (lastPage > 1) {
+          const tail = await fetchActionsPage(client, lastPage)
+          for (const action of tail.actions) seen.set(action.id, action)
+          // A trailing page is usually a partial one — with total 101 and 50 per
+          // page the newest page holds a single action, and a question raised a
+          // few actions earlier would sit just off the end of it. Take one more
+          // page back so a full page of recent history is always inspected.
+          if (tail.actions.length < INTERACTION_PAGE_SIZE) {
+            const previous = await fetchActionsPage(client, lastPage - 1)
+            for (const action of previous.actions) seen.set(action.id, action)
+          }
+        }
+      }
+
+      return [...seen.values()].filter(awaitsInteraction)
+    },
+    enabled: !!client,
+    refetchInterval: INTERACTION_POLL_INTERVAL_MS,
+    // The interval is the retry: a failed poll should wait its turn rather than
+    // stack extra requests on an API that may already be unhappy.
+    retry: 0,
+    staleTime: 0
+  })
+}
+
+/**
+ * Answer a waiting action. `proceed: true` means the operator agreed to the
+ * specific thing `interaction_type` names — assume the server came up despite
+ * the failed ping, or permit the unclean power off.
+ */
+export function useActionProceedMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, { actionId: number; proceed: boolean }>({
+    mutationFn: async ({ actionId, proceed }) => {
+      if (!client) throw new Error('No client available')
+      const { error, response } = await client.POST('/v2/actions/{action_id}/proceed', {
+        params: { path: { action_id: actionId } },
+        body: { proceed }
+      })
+      if (error) throw new Error(describeApiError(error))
+      // A successful answer is 204 No Content. There is deliberately no `data`
+      // check here: treating an empty body as failure would report every
+      // success as an error.
+      if (!response.ok) {
+        throw new Error(`BinaryLane did not accept the answer to action #${actionId} (HTTP ${response.status}).`)
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['actions-awaiting-interaction'] })
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+      queryClient.invalidateQueries({ queryKey: ['serverActions'] })
+    }
   })
 }
