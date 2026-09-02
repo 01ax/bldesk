@@ -450,6 +450,11 @@ export function useHistoricalMetrics(client: BinaryLaneClient | null, serverId: 
   })
 }
 
+/** API maximum for this endpoint. */
+const SAMPLE_PAGE_SIZE = 200
+/** Ceiling on paging, so an unexpectedly huge window can't fan out endlessly. */
+const MAX_SAMPLE_PAGES = 6
+
 export function useSampleSets(
   client: BinaryLaneClient | null,
   serverId: number | undefined,
@@ -461,25 +466,48 @@ export function useSampleSets(
     queryKey: ['sample-sets', serverId, interval, start, end],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const query: Record<string, any> = {
-        data_interval: interval,
-        per_page: 200
-      }
-      if (start) query.start = start
-      if (end) query.end = end
 
-      const { data, error } = await client.GET('/v2/samplesets/{server_id}', {
-        params: {
-          path: { server_id: serverId },
-          query: query as any
+      // `per_page` caps at 200, but a day at five-minute resolution is ~288
+      // samples, so a single request silently returned the oldest 200 and left
+      // the most recent several hours missing from the chart. Page through until
+      // the window is complete.
+      const fetchPage = async (page: number) => {
+        const query: Record<string, any> = {
+          data_interval: interval,
+          per_page: SAMPLE_PAGE_SIZE,
+          page
         }
-      })
-      console.log('[DEBUG useSampleSets]', { serverId, interval, start, end, dataCount: data?.sample_sets?.length, error })
-      if (error) {
-        console.warn('[useSampleSets] Error loading sample sets:', error)
+        if (start) query.start = start
+        if (end) query.end = end
+        return client.GET('/v2/samplesets/{server_id}', {
+          params: { path: { server_id: serverId }, query: query as any }
+        })
+      }
+
+      const first = await fetchPage(1)
+      if (first.error) {
+        console.warn('[useSampleSets] Error loading sample sets:', first.error)
         return []
       }
-      return data?.sample_sets || []
+
+      const sets = [...(first.data?.sample_sets || [])]
+      const total = first.data?.meta?.total ?? sets.length
+      const pages = Math.min(Math.ceil(total / SAMPLE_PAGE_SIZE), MAX_SAMPLE_PAGES)
+
+      if (pages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) => fetchPage(i + 2))
+        )
+        for (const r of rest) {
+          if (r.error) {
+            // A partial window still charts; better than dropping everything.
+            console.warn('[useSampleSets] Error loading a sample page:', r.error)
+            continue
+          }
+          sets.push(...(r.data?.sample_sets || []))
+        }
+      }
+      return sets
     },
     enabled: !!client && !!serverId,
     refetchInterval: interval === 'five-minute' ? 30000 : 120000
