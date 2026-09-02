@@ -13,14 +13,25 @@ type ServerResponse = components['schemas']['Server']
 
 interface InteractionCopy {
   heading: string
-  /** What happened, in the operator's terms. */
-  explanation: string
+  /**
+   * What happened, in the operator's terms. Takes the action because the same
+   * interaction can be raised by more than one request: a stalled clean
+   * shutdown is equally reachable from Shutdown, Reboot or Power Cycle, and
+   * "would not shut down" reads wrong under a title that says "Reboot".
+   */
+  explanation: (action: ActionAwaitingInteraction) => string
   /** The exact question being asked, phrased as the API documents it. */
   question: string
   confirmLabel: string
   declineLabel: string
   /** `danger` gets the red treatment — reserved for answers that can lose data. */
   tone: 'danger' | 'normal'
+}
+
+/** Lower-cased operation name for prose, e.g. "reboot". Falls back to neutral wording. */
+function operationPhrase(action: ActionAwaitingInteraction): string {
+  const label = (action.title || action.type || '').trim()
+  return label ? `the ${label.toLowerCase()}` : 'this operation'
 }
 
 /**
@@ -37,7 +48,7 @@ interface InteractionCopy {
 const INTERACTION_COPY: Record<UserInteractionType, InteractionCopy> = {
   'continue-after-ping-failure': {
     heading: 'Server did not answer after it was created',
-    explanation:
+    explanation: () =>
       'BinaryLane finished creating this server but got no reply when it pinged it. Often the server is up and simply is not answering pings — a firewall rule, or an image that blocks ICMP. It can also mean the server did not boot.',
     question: 'Assume the server was created successfully despite the failed ping?',
     confirmLabel: 'Assume it succeeded',
@@ -46,8 +57,8 @@ const INTERACTION_COPY: Record<UserInteractionType, InteractionCopy> = {
   },
   'allow-unclean-power-off': {
     heading: 'Server would not shut down cleanly',
-    explanation:
-      'BinaryLane asked this server to shut down and it did not comply. An unclean power off is the equivalent of pulling the plug: anything not yet written to disk is lost, and the filesystem may need repair on the next boot.',
+    explanation: (action) =>
+      `BinaryLane asked this server to shut down as part of ${operationPhrase(action)} and it did not comply. An unclean power off is the equivalent of pulling the plug: anything not yet written to disk is lost, and the filesystem may need repair on the next boot.`,
     question: 'Permit an unclean power off?',
     confirmLabel: 'Force power off',
     declineLabel: 'Do not force it',
@@ -132,20 +143,24 @@ export function ActionInteractionPrompt({ client, profileId, servers = [] }: Act
           )}
 
           <p className="text-[#495057] dark:text-[#ced4da] leading-relaxed">
-            {copy?.explanation ||
-              'This action is paused until you answer. BLDesk does not recognise this interaction type, so please check the BinaryLane control panel before answering.'}
+            {copy
+              ? copy.explanation(current)
+              : 'This action is paused until you answer. BLDesk does not recognise this interaction type, so please check the BinaryLane control panel before answering.'}
           </p>
 
           <p className="font-semibold text-[#212529] dark:text-white">
             {copy?.question || 'Proceed with this action?'}
           </p>
 
-          <p className="text-[10px] text-[#6c757d]">
+          {/* Deliberately not the app's usual #6c757d small-print grey: that is
+              2.8:1 on this panel, and the fact that nothing moves until someone
+              answers is the whole reason the modal is interrupting anyone. */}
+          <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
             This action stays paused until it is answered — it will not continue on its own.
           </p>
 
           {outstanding.length > 1 && (
-            <p className="text-[10px] text-[#6c757d]">
+            <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
               {outstanding.length - 1} other action{outstanding.length > 2 ? 's are' : ' is'} also waiting.
             </p>
           )}
