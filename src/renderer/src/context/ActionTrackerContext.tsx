@@ -199,20 +199,11 @@ export function ActionTrackerProvider({
     }
   }, [])
 
-  /**
-   * Switching profile (or unmounting) must not leave polls running against the
-   * old token — and must not leave their toasts on screen either. An aborted
-   * poll deliberately stops updating state, so a "still running" toast left
-   * behind here could never resolve or auto-clear: it would sit there claiming
-   * an operation is in progress on an account the user has already left.
-   */
+  // Switching profile (or unmounting) must not leave polls running against the old token.
   useEffect(() => {
     return () => {
       controllers.current.forEach((c) => c.abort())
       controllers.current.clear()
-      dismissTimers.current.forEach(clearTimeout)
-      dismissTimers.current.clear()
-      setTracked([])
     }
   }, [client])
 

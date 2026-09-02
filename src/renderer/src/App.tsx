@@ -312,15 +312,8 @@ function MainDashboard() {
 
         {/* Actions BinaryLane has paused pending an answer. Mounted at the shell so
             the question still reaches the user after they navigate away from the
-            view that started it. Keyed by profile: which questions have been
-            answered or deferred is per-account state and must not carry over to
-            the next account on a profile switch. */}
-        <ActionInteractionPrompt
-          key={activeProfile?.id}
-          client={client}
-          profileId={activeProfile?.id}
-          servers={servers}
-        />
+            view that started it. */}
+        <ActionInteractionPrompt client={client} profileId={activeProfile?.id} servers={servers} />
 
         {/* Outcomes of actions still running in the background, for the same reason. */}
         <ActionToasts />
