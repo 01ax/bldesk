@@ -40,9 +40,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   const handleClose = () => window.bldeskApi?.closeWindow?.()
 
   return (
-    <div className="titlebar-drag-region h-11 w-full bg-[#343a40] text-[#f8f9fa] border-b border-black/20 flex items-center justify-between px-3 select-none z-50 flex-shrink-0">
+    <div className="titlebar-drag-region min-h-[44px] w-full bg-[#343a40] text-[#f8f9fa] border-b border-black/20 flex items-center justify-between px-2.5 sm:px-3 pt-[env(safe-area-inset-top,0px)] select-none z-50 flex-shrink-0 gap-2">
       {/* Brand & Mobile Drawer Toggle */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
         {onToggleMobileDrawer && (
           <button
             onClick={onToggleMobileDrawer}
@@ -53,13 +53,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           </button>
         )}
 
-        <div className="flex items-center gap-2 font-bold tracking-wide text-sm">
-          <img src={iconLogo} alt="BinaryLane" className="h-5 w-auto object-contain" />
-          <span>
-            <span className="text-[#f1ca00]">binary</span>
-            <span className="text-white">lane</span>{' '}
-            <span className="text-xs font-normal text-slate-300/90 bg-black/30 px-1.5 py-0.5 rounded border border-white/10 font-mono">
-              BLDesk v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.28'}
+        <div className="flex items-center gap-1.5 sm:gap-2 font-bold tracking-wide text-sm">
+          <img src={iconLogo} alt="BinaryLane" className="h-5 w-auto object-contain flex-shrink-0" />
+          <span className="hidden xs:inline-flex items-center gap-1.5">
+            <span>
+              <span className="text-[#f1ca00]">binary</span>
+              <span className="text-white">lane</span>
+            </span>
+            <span className="hidden sm:inline-block text-[10px] font-normal text-slate-300/90 bg-black/30 px-1.5 py-0.5 rounded border border-white/10 font-mono">
+              BLDesk v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.35'}
             </span>
           </span>
         </div>
@@ -90,7 +92,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       </div>
 
       {/* Profile & Window Controls */}
-      <div className="titlebar-no-drag flex items-center gap-2">
+      <div className="titlebar-no-drag flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
         {/* Version / Auto-update */}
         <div className="flex items-center">
           <UpdateMenu />
@@ -98,12 +100,12 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         {/* Profile Switcher / Auth Button */}
         {activeProfile ? (
-          <div className="flex items-center gap-1.5 bg-black/30 border border-white/10 rounded-md px-2 py-0.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="flex items-center gap-1 sm:gap-1.5 bg-black/30 border border-white/10 rounded-md px-1.5 sm:px-2 py-0.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
             <select
               value={activeProfile.id}
               onChange={(e) => onSwitchProfile(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 font-medium outline-none cursor-pointer pr-1 max-w-[130px] truncate"
+              className="bg-transparent text-[11px] sm:text-xs text-slate-200 font-medium outline-none cursor-pointer pr-1 max-w-[85px] xs:max-w-[110px] sm:max-w-[130px] truncate"
             >
               {profiles.map((p) => (
                 <option key={p.id} value={p.id} className="bg-[#343a40] text-slate-100">
@@ -114,7 +116,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             <button
               onClick={onOpenAuth}
               title="Add or Manage Profiles"
-              className="text-slate-400 hover:text-[#f1ca00] p-0.5 transition"
+              className="text-slate-400 hover:text-[#f1ca00] p-0.5 transition flex-shrink-0"
             >
               <Key className="w-3 h-3" />
             </button>
