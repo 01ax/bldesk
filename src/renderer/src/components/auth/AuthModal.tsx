@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Key, ShieldCheck, ExternalLink, Trash2, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { X, Key, ShieldCheck, ExternalLink, Trash2, CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { AccountProfile } from '@shared/ipc-types'
 import { createBinaryLaneClient } from '../../api/client'
 
@@ -24,11 +24,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [isValidating, setIsValidating] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  /**
+   * Replacing a key on an existing profile, rather than adding a new account.
+   * Previously the only entry point was "add", so repairing a profile whose token
+   * had been revoked meant retyping its name and hoping — which silently created
+   * a duplicate instead of fixing the original.
+   */
+  const [updating, setUpdating] = useState<{ id: string; name: string } | null>(null)
 
   if (!isOpen) return null
 
   const handleOpenTokenPage = () => {
-    window.bldeskApi?.openExternal?.('https://home.binarylane.com.au/api-tokens')
+    window.bldeskApi?.openExternal?.('https://home.binarylane.com.au/api-info')
   }
 
   const handleSaveToken = async (e: React.FormEvent) => {
@@ -40,6 +47,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (!cleanToken) {
       setErrorMsg('Please enter a valid BinaryLane API token.')
       return
+    }
+
+    // Catch the collision before spending a token validation round-trip on it.
+    if (!updating) {
+      const wanted = profileName.trim().toLowerCase()
+      const clash = wanted && profiles.find((p) => (p.name || '').trim().toLowerCase() === wanted)
+      if (clash) {
+        setErrorMsg(
+          `A profile named "${clash.name}" already exists. Use the update action on that profile to replace its API key.`
+        )
+        return
+      }
     }
 
     setIsValidating(true)
@@ -54,10 +73,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       const verifiedEmail = data.account.email
-      const name = profileName.trim() || verifiedEmail || 'BinaryLane Account'
+      const name = updating?.name || profileName.trim() || verifiedEmail || 'BinaryLane Account'
 
       // Save encrypted into SafeStorage Vault
       const result = await window.bldeskApi?.saveProfile?.({
+        profileId: updating?.id,
         name,
         token: cleanToken,
         isDefault
@@ -70,6 +90,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setSuccessMsg(`Account "${name}" connected successfully!`)
       setProfileName('')
       setTokenInput('')
+      setUpdating(null)
       onProfileAddedOrUpdated()
 
       setTimeout(() => {
@@ -150,6 +171,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           </span>
                         )}
                         <button
+                          onClick={() => {
+                            setUpdating({ id: p.id, name: p.name })
+                            setTokenInput('')
+                            setErrorMsg(null)
+                            setSuccessMsg(null)
+                          }}
+                          title={`Replace the API key for ${p.name}`}
+                          className="text-[#6c757d] hover:text-[#017cb6] p-1 rounded"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleDeleteProfile(p.id, p.name)}
                           className="text-[#6c757d] hover:text-rose-500 p-1 rounded"
                           title="Delete profile"
@@ -165,9 +198,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* Add New Profile Form */}
+          {updating && (
+          <div className="mb-3 flex items-center justify-between gap-2 p-2.5 rounded border border-[#017cb6] bg-[#017cb6]/10 text-[#017cb6] dark:text-[#4db2e0] text-xs">
+            <span>
+              Replacing the API key for <span className="font-semibold">{updating.name}</span>. The
+              profile keeps its name and stays in place.
+            </span>
+            <button
+              type="button"
+              onClick={() => setUpdating(null)}
+              className="underline font-medium hover:no-underline flex-shrink-0"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
           <form onSubmit={handleSaveToken} className="space-y-3 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[#495057] dark:text-[#ced4da]">Add BinaryLane API Token</span>
+              <span className="font-semibold text-[#495057] dark:text-[#ced4da]">{updating ? 'Replace API Token' : 'Add BinaryLane API Token'}</span>
               <button
                 type="button"
                 onClick={handleOpenTokenPage}
@@ -183,8 +231,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <input
                 type="text"
                 placeholder="e.g. Production / Personal"
-                value={profileName}
+                value={updating ? updating.name : profileName}
                 onChange={(e) => setProfileName(e.target.value)}
+                disabled={!!updating}
                 className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] px-3 py-1.5 rounded text-[#212529] dark:text-white focus:outline-none focus:border-[#017cb6]"
               />
             </div>

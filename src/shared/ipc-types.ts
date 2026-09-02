@@ -83,7 +83,7 @@ export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
   getActiveProfile: () => Promise<AccountProfile | null>
-  saveProfile: (profile: { name: string; token: string; isDefault?: boolean }) => Promise<{ success: boolean; profileId: string; error?: string }>
+  saveProfile: (profile: { name: string; token: string; isDefault?: boolean; profileId?: string }) => Promise<{ success: boolean; profileId: string; updated?: boolean; error?: string }>
   deleteProfile: (profileId: string) => Promise<{ success: boolean }>
   setActiveProfile: (profileId: string) => Promise<{ success: boolean }>
   
