@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, CheckCircle2, Loader2, RefreshCw, AlertTriangle, RotateCw, ChevronDown } from 'lucide-react'
+import { ArrowDownToLine, CheckCircle2, CloudOff, Loader2, RefreshCw, AlertTriangle, RotateCw, ChevronDown } from 'lucide-react'
 import { UpdateChannel, UpdaterState } from '@shared/ipc-types'
 
 /**
@@ -77,6 +77,7 @@ export const UpdateMenu: React.FC = () => {
           <ChevronDown className="w-3 h-3 opacity-60" />
           {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#343a40]" />}
           {state.status === 'up-to-date' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+          {state.status === 'check-failed' && <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />}
         </button>
       )}
 
@@ -90,6 +91,15 @@ export const UpdateMenu: React.FC = () => {
             </div>
             <StatusPill state={state} />
           </div>
+
+          {state.status === 'check-failed' && (
+            <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd] space-y-1">
+              <div>Couldn't reach the update feed, so this build can't be confirmed as current.</div>
+              {state.error && (
+                <div className="font-mono text-[10px] opacity-70 break-words max-h-16 overflow-y-auto">{state.error}</div>
+              )}
+            </div>
+          )}
 
           {state.status === 'error' && state.error && (
             <div className="text-[11px] text-rose-600 dark:text-rose-400 break-words max-h-16 overflow-y-auto">{state.error}</div>
@@ -171,6 +181,12 @@ const StatusPill: React.FC<{ state: UpdaterState }> = ({ state }) => {
       return (
         <span className={`${base} bg-emerald-500/15 text-emerald-600 dark:text-emerald-400`}>
           <CheckCircle2 className="w-3 h-3" /> Up to date
+        </span>
+      )
+    case 'check-failed':
+      return (
+        <span className={`${base} bg-black/5 dark:bg-white/10 text-[#6c757d] dark:text-[#adb5bd]`}>
+          <CloudOff className="w-3 h-3" /> Couldn't check
         </span>
       )
     case 'error':
