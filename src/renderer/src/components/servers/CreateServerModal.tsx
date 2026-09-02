@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import {
@@ -225,10 +226,24 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   const loading = sizesQuery.isLoading || imagesQuery.isLoading || regionsQuery.isLoading
 
-  return (
-    /* The dialog owns a fixed frame and only its body scrolls. A sticky header
-       inside a scrolling wrapper leaves a gap above itself — the wrapper own
-       padding — that content slides through on the way past. */
+  /*
+   * Rendered into document.body rather than in place.
+   *
+   * Mounted inside the server list, `fixed inset-0` did not resolve to the
+   * viewport: the backdrop measured [0, 16, 1264, 785] against a viewport of
+   * 1264x801, leaving the title bar undimmed. Computed top/right/bottom/left
+   * were all 0px and no ancestor carried transform, filter, backdrop-filter,
+   * will-change, contain, container-type or zoom, so the offset was never
+   * identified. A portal removes the question: the backdrop becomes a child of
+   * body with nothing above it to interfere. It is also the right place for a
+   * modal regardless of this bug — AuthModal works precisely because it is
+   * mounted at App level.
+   *
+   * The dialog owns a fixed frame and only its body scrolls; a sticky header
+   * inside a scrolling wrapper leaves a strip above itself for content to pass
+   * through.
+   */
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4">
       <form
         onSubmit={handleSubmit}
@@ -560,7 +575,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           }}
         />
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
 
