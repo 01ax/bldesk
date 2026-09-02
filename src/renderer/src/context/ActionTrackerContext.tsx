@@ -24,6 +24,12 @@ export interface TrackedAction {
   /** Populated once settled, for the failure case. */
   detail?: string
   percentComplete?: number
+  /**
+   * BinaryLane's own description of the current step, e.g. "Backup of SYSTEM:
+   * 38.5GB of 40.0 GB (310MB/s) - less than 1 minute remaining". Preferred over
+   * `current_step`, which is only ever the bare step name.
+   */
+  stepDetail?: string
   startedAt: number
 }
 
@@ -113,7 +119,10 @@ export function ActionTrackerProvider({
             intervalMs: () => backgroundInterval(Date.now() - trackingStartedAt),
             signal: controller.signal,
             onProgress: (fresh: ServerAction) =>
-              update(action.id, { percentComplete: fresh.progress?.percent_complete })
+              update(action.id, {
+                percentComplete: fresh.progress?.percent_complete,
+                stepDetail: fresh.progress?.current_step_detail ?? undefined
+              })
           }
 
           let settled = await pollActionToSettled(client, action.id, { ...pollOptions, initial: action })
