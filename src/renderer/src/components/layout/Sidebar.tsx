@@ -42,6 +42,8 @@ export type ServerSubTab =
   | 'firewall'
   | 'settings'
   | 'recovery'
+  | 'change-plan'
+  | 'cancel'
 
 interface SidebarProps {
   activeTab: ActiveTab
@@ -91,7 +93,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'backups', label: 'Backups' },
     { id: 'firewall', label: 'Firewall Rules' },
     { id: 'settings', label: 'Settings' },
-    { id: 'recovery', label: 'Recovery & Rescue' }
+    { id: 'recovery', label: 'Recovery & Rescue' },
+    { id: 'change-plan', label: 'Change Plan' },
+    { id: 'cancel', label: 'Cancel Server' }
   ]
 
   const handleOpenMpanel = () => {
