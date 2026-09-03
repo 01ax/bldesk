@@ -165,6 +165,17 @@ function MainDashboard() {
   const { observations: powerObservations, confirmPowerState } = usePowerState(client, apiServers, activeProfile?.id)
   const servers = React.useMemo(() => annotateServers(apiServers, powerObservations), [apiServers, powerObservations])
 
+  /*
+   * Tell the main process which addresses may be probed (FEATURES.md #11).
+   * reachability.ts refuses anything not on this list. Since the renderer sets
+   * the list, this guards against bugs rather than a hostile renderer; the rate
+   * limit in main covers the rest. Kept in step with the server list.
+   */
+  React.useEffect(() => {
+    const ips = apiServers.flatMap((s) => (s.networks?.v4 ?? []).map((n) => n.ip_address).filter(Boolean))
+    void window.bldeskApi?.setProbeTargets?.(ips as string[])
+  }, [apiServers])
+
   // `selectedServer` is the object clicked in the list — a snapshot. The
   // details header reads status from it, so without this a server shut down
   // from the details view said "Running" until you went back and re-opened it.
@@ -291,6 +302,7 @@ function MainDashboard() {
                   servers={servers}
                   client={client}
                   activeSubTab={activeServerSubTab}
+                  onSelectSubTab={setActiveServerSubTab}
                   onBack={() => setSelectedServer(null)}
                   onOpenTerminal={handleOpenTerminalForIp}
                 />
