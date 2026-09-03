@@ -22,8 +22,9 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const SRC = join(ROOT, 'src/renderer/src')
 
 // Files allowed to mutate without going through the confirm dialog, with why.
@@ -56,7 +57,7 @@ const failures = []
 const warnings = []
 
 for (const file of walk(SRC)) {
-  const rel = relative(SRC, file)
+  const rel = relative(SRC, file).replace(/\\/g, '/')
   const src = readFileSync(file, 'utf8')
   // Blank out comments but keep line numbers: block comments may span lines.
   const lines = src.split('\n')
