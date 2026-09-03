@@ -93,7 +93,7 @@ export const ChangePlanPanel: React.FC<{
    */
   const ipOpts = selected?.options ?? server.size?.options
   const mustRelease = Math.max(0, publicIps.length - ipCount)
-  const releaseSatisfied = ipsToRemove.length === mustRelease
+  const releaseSatisfied = ipsToRemove.length === mustRelease && mustRelease <= Math.max(0, publicIps.length - 1)
 
   // A different plan brings its own limits, so the adjustable options reset to
   // that plan's included amounts rather than carrying invalid values across.
@@ -355,7 +355,17 @@ export const ChangePlanPanel: React.FC<{
                 Select {mustRelease} address{mustRelease === 1 ? '' : 'es'} to release. They are given up permanently
                 and cannot be reclaimed.
               </p>
-              {publicIps.map((ip) => (
+              {/* The original address is tied to the server for the life of the
+                  lease — BinaryLane will not release it — so it is shown but
+                  cannot be ticked. Only secondary addresses can go. */}
+              {publicIps[0] && (
+                <div className="flex items-center gap-2 text-[11px] font-mono text-[#6c757d] dark:text-slate-500">
+                  <input type="checkbox" disabled checked={false} className="shrink-0 rounded border-[#ced4da]" />
+                  <span>{publicIps[0]}</span>
+                  <span className="font-sans text-[10px]">primary — stays with the server</span>
+                </div>
+              )}
+              {publicIps.slice(1).map((ip) => (
                 <label key={ip} className="flex items-center gap-2 text-[11px] font-mono">
                   <input
                     type="checkbox"
