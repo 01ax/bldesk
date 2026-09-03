@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
-## [1.0.60] - 2026-09-04
+## [1.0.60-beta.1] - 2026-09-04
+
+### Added
+- **Change Plan: licences, reinstall, pre-action backup, and billing summary** (*PR #35 by @01ax and @termau*):
+  - Change, add, or remove licences during plan resizing with OS compatibility validation.
+  - Reinstall OS option directly within the Change Plan panel.
+  - Optional pre-action backup slot selection.
+  - Real-time billing calculation and changes summary before confirmation.
 
 ### Fixed
 - **Template saves rejected on desktop** (#34, *PR #36 by @termau*): Saving any template through the Electron bridge failed with `Template YAML requires string fields "name" and "user_data"`, including **Save server as template** and **Save this form as a template instead**. The main-process store still validated the first-cut `name` + `user_data` shape while the app has written `kind: bldesk/server-template@1` documents with a `spec` block since full server templates landed; the validator now accepts the current schema (and still the old one), with the kind constant shared between main and renderer. The template editor also swallowed the rejection into the page banner behind the open dialog, so Save appeared to do nothing; store errors now show inside the dialog.
+- **Templates page margins** (#33, *PR #38 by @termau*): Fixed layout margins so the Templates tab has the same padding as every other tab (`p-4 md:p-6`).
+
+### Chore
+- **Enforce LF line endings in repository via `.gitattributes`** (*PR #37 by @termau*): Repository-level line ending enforcement ensuring LF text storage, proper platform script endings (`.sh`/`gradlew` LF, `.bat`/`.cmd`/`.ps1`/`.nsh` CRLF), and binary asset protections.
+- **Features roadmap update** (*PR #39 by @termau*): Scorecard and documentation update reflecting features shipped through v1.0.59.
 
 ---
 
