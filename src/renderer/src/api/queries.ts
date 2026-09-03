@@ -294,6 +294,34 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
   })
 }
 
+/**
+ * Members of every VPC, for the network map: the authoritative answer to
+ * "what is in this VPC" (servers and load balancers), rather than reading each
+ * server's own vpc_id. One GET per VPC, four at a time.
+ */
+export function useVpcMembers(client: BinaryLaneClient | null, vpcIds: number[]) {
+  const key = vpcIds.join(',')
+  return useQuery({
+    queryKey: ['vpc-members', key],
+    queryFn: async () => {
+      const map = new Map<number, Array<{ resource_type: string; resource_id: string; name: string }> | null>()
+      if (!client) return map
+      const results = await mapLimitNullable(vpcIds, 4, async (id) => {
+        const { data, error } = await client.GET('/v2/vpcs/{vpc_id}/members', {
+          params: { path: { vpc_id: id }, query: { per_page: 200 } as any },
+          signal: AbortSignal.timeout(20_000)
+        })
+        if (error) throw new Error(describeApiError(error))
+        return (data?.members || []) as Array<{ resource_type: string; resource_id: string; name: string }>
+      })
+      vpcIds.forEach((id, i) => map.set(id, results[i]))
+      return map
+    },
+    enabled: !!client && vpcIds.length > 0,
+    staleTime: 60_000
+  })
+}
+
 export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation({

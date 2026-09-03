@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, ExternalLink, Globe, Loader2, Maximize2, Minus, Plus, Search, Terminal, Waypoints, X } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useFleetFirewalls, useLoadBalancers, useVpcs } from '../../api/queries'
+import { useFleetFirewalls, useLoadBalancers, useVpcMembers, useVpcs } from '../../api/queries'
 import { auditServer, worstLevel, type AuditLevel, type FwRule } from '../../lib/firewallMatrix'
 import { launchSsh } from '../../lib/launchSsh'
 import {
@@ -52,6 +52,8 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
   const lbsQuery = useLoadBalancers(client)
   const serverIds = useMemo(() => servers.map((s) => s.id), [servers])
   const fleet = useFleetFirewalls(client, serverIds)
+  const vpcIds = useMemo(() => ((vpcsQuery.data ?? []) as any[]).map((v) => v.id as number), [vpcsQuery.data])
+  const membersQuery = useVpcMembers(client, vpcIds)
   const rulesByServer = fleet.data ?? new Map<number, FwRule[] | null>()
 
   const accountAddresses = useMemo(() => {
@@ -60,8 +62,22 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     return set
   }, [servers])
 
-  // --- Model
+  // --- Model. Tiered: load balancers → VPCs (from the VPC list and their
+  // member lists) → servers. A server's own vpc_id is only the fallback while
+  // the member lists load.
   const model = useMemo(() => {
+    const serverVpc = new Map<number, number>()
+    const lbVpc = new Map<number, number>()
+    const members = membersQuery.data
+    if (members) {
+      for (const [vpcId, list] of members) {
+        for (const m of list ?? []) {
+          const rid = Number(m.resource_id)
+          if (m.resource_type === 'server') serverVpc.set(rid, vpcId)
+          else if (m.resource_type === 'load-balancer') lbVpc.set(rid, vpcId)
+        }
+      }
+    }
     const mapServers: MapServer[] = servers.map((s) => {
       const rules = rulesByServer.has(s.id) ? (rulesByServer.get(s.id) ?? null) : null
       const flags = rulesByServer.has(s.id) ? auditServer(rules, accountAddresses) : []
@@ -73,7 +89,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
         power: power ?? (s.status === 'active' ? 'on' : s.status === 'off' ? 'off' : 'unknown'),
         region: s.region?.name || s.region?.slug || 'Unknown region',
         regionSlug: s.region?.slug || '',
-        vpcId: s.vpc_id ?? null,
+        vpcId: members ? (serverVpc.get(s.id) ?? null) : (s.vpc_id ?? null),
         publicIp: s.networks?.v4?.find((n) => n.type === 'public')?.ip_address,
         privateIp: s.networks?.v4?.find((n) => n.type === 'private')?.ip_address,
         exposure: rulesByServer.has(s.id) ? exposureLabel(rules) : '…',
@@ -89,10 +105,11 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
       status: lb.status,
       protocols: (lb.forwarding_rules ?? []).map((r: any) => r.entry_protocol).filter(Boolean),
       serverIds: lb.server_ids ?? [],
-      region: lb.region?.name || ''
+      region: lb.region?.name || '',
+      vpcId: lbVpc.get(lb.id) ?? null
     }))
     return { mapServers, mapVpcs, mapLbs }
-  }, [servers, rulesByServer, accountAddresses, vpcsQuery.data, lbsQuery.data])
+  }, [servers, rulesByServer, accountAddresses, vpcsQuery.data, lbsQuery.data, membersQuery.data])
 
   const layout = useMemo(() => layoutTopology(model.mapServers, model.mapVpcs, model.mapLbs), [model])
 
@@ -235,7 +252,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     img.src = url
   }
 
-  const loading = vpcsQuery.isLoading || lbsQuery.isLoading
+  const loading = vpcsQuery.isLoading || lbsQuery.isLoading || membersQuery.isLoading
   const counts = {
     servers: model.mapServers.length,
     vpcs: model.mapVpcs.length,
@@ -338,41 +355,37 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
             <rect width="100%" height="100%" fill="url(#map-grid)" pointerEvents="none" />
 
             <g data-world transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-              {/* Region bands and VPC boxes */}
-              {layout.groups
-                .filter((g) => g.kind === 'region')
-                .map((g) => (
-                  <g key={g.id}>
-                    <text x={g.x} y={g.y + 14} className="fill-[#6c757d] dark:fill-slate-400" fontSize={10} fontWeight={700} letterSpacing={1.6}>
-                      {g.label.toUpperCase()}
+              {/* VPC boxes with a region column header inside each */}
+              {layout.groups.map((g) => (
+                <g key={g.id}>
+                  <rect
+                    x={g.x}
+                    y={g.y}
+                    width={g.w}
+                    height={g.h}
+                    rx={10}
+                    className={g.kind === 'vpc' ? 'fill-[#017cb6]/[0.04] dark:fill-[#017cb6]/[0.08] stroke-[#017cb6]/40' : 'fill-transparent stroke-[#adb5bd] dark:stroke-[#495057]'}
+                    strokeWidth={1.25}
+                    strokeDasharray={g.kind === 'vpc' ? undefined : '5 4'}
+                  />
+                  <text x={g.x + 14} y={g.y + 18} className={g.kind === 'vpc' ? 'fill-[#015f8c] dark:fill-[#5fc3f0]' : 'fill-[#6c757d] dark:fill-slate-400'} fontSize={11} fontWeight={700}>
+                    {g.label}
+                  </text>
+                  {g.sub && (
+                    <text x={g.x + 14 + g.label.length * 6.6 + 8} y={g.y + 18} className="fill-[#6c757d] dark:fill-slate-500" fontSize={10} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace">
+                      {g.sub}
                     </text>
-                    <line x1={g.x} y1={g.y + 22} x2={g.x + 32} y2={g.y + 22} stroke={C.gold} strokeWidth={2} />
-                  </g>
-                ))}
-              {layout.groups
-                .filter((g) => g.kind !== 'region')
-                .map((g) => (
-                  <g key={g.id}>
-                    <rect
-                      x={g.x}
-                      y={g.y}
-                      width={g.w}
-                      height={g.h}
-                      rx={10}
-                      className={g.kind === 'vpc' ? 'fill-[#017cb6]/[0.04] dark:fill-[#017cb6]/[0.08] stroke-[#017cb6]/40' : 'fill-transparent stroke-[#adb5bd] dark:stroke-[#495057]'}
-                      strokeWidth={1.25}
-                      strokeDasharray={g.kind === 'vpc' ? undefined : '5 4'}
-                    />
-                    <text x={g.x + 14} y={g.y + 18} className={g.kind === 'vpc' ? 'fill-[#015f8c] dark:fill-[#5fc3f0]' : 'fill-[#6c757d] dark:fill-slate-400'} fontSize={11} fontWeight={700}>
-                      {g.label}
-                    </text>
-                    {g.sub && (
-                      <text x={g.x + 14 + g.label.length * 6.6 + 8} y={g.y + 18} className="fill-[#6c757d] dark:fill-slate-500" fontSize={10} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace">
-                        {g.sub}
+                  )}
+                  {g.columns.map((c) => (
+                    <g key={c.region}>
+                      <text x={c.x} y={g.y + 28 + 12} className="fill-[#6c757d] dark:fill-slate-400" fontSize={9.5} fontWeight={700} letterSpacing={1.4}>
+                        {c.region.toUpperCase()}
                       </text>
-                    )}
-                  </g>
-                ))}
+                      <line x1={c.x} y1={g.y + 28 + 17} x2={c.x + 24} y2={g.y + 28 + 17} stroke={C.gold} strokeWidth={2} />
+                    </g>
+                  ))}
+                </g>
+              ))}
 
               {/* Edges (under nodes) */}
               {visibleEdges.map((e) => {
@@ -500,7 +513,14 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
 
           {/* Detail panel */}
           {selectedNode && (
-            <div className="absolute right-3 top-3 w-72 max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-lg bg-white/95 dark:bg-[#2b3035]/95 backdrop-blur border border-[#ced4da] dark:border-[#373b3e] shadow-xl text-xs">
+            <div
+              className="absolute right-3 top-3 w-72 max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-lg bg-white/95 dark:bg-[#2b3035]/95 backdrop-blur border border-[#ced4da] dark:border-[#373b3e] shadow-xl text-xs cursor-default"
+              // The pan container clears the selection on a plain click, which
+              // would unmount this panel before its buttons' click fires.
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+            >
               <div className="flex items-start justify-between gap-2 p-3 border-b border-[#ced4da] dark:border-[#373b3e]">
                 <div className="min-w-0">
                   <div className="font-bold text-sm truncate">{selectedNode.kind === 'lb' ? selectedNode.lb!.name : selectedNode.kind === 'server' ? selectedNode.server!.name : 'Internet'}</div>
