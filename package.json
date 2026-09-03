@@ -1,6 +1,6 @@
 {
   "name": "bldesk",
-  "version": "1.0.50",
+  "version": "1.0.51",
   "type": "module",
   "description": "BinaryLane Cloud Desktop Client",
   "main": "./out/main/index.js",
@@ -28,6 +28,7 @@
   },
   "build": {
     "appId": "com.termau.bldesk",
+    "afterPack": "scripts/after-pack.cjs",
     "productName": "BLDesk",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
