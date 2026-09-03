@@ -1,6 +1,105 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownToLine, CheckCircle2, CloudOff, Loader2, RefreshCw, AlertTriangle, RotateCw, ChevronDown } from 'lucide-react'
 import { UpdateChannel, UpdaterState } from '@shared/ipc-types'
+
+/**
+ * Renders release notes safely. GitHub releases feed provides HTML (or markdown from mobile).
+ * We sanitize tags and attributes, wire links to open via shell.openExternal, and apply clean prose styling.
+ */
+function sanitizeAndFormatReleaseNotes(raw: string): string {
+  if (!raw) return ''
+
+  const isHtml = /<(?:h[1-6]|p|div|ul|ol|li|table|blockquote|a|strong|em|code)\b/i.test(raw)
+  let html = raw
+
+  if (!isHtml) {
+    // Basic Markdown converter if notes are provided in raw Markdown
+    html = raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      .replace(/\*\*\*(.*?)\*\*\*/gim, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+      .replace(/`([^`]+)`/gim, '<code>$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>(\n|$)(\s*))+/gim, (match) => `<ul>${match}</ul>`)
+
+    const blocks = html.split(/\n{2,}/)
+    html = blocks
+      .map((block) => {
+        const trimmed = block.trim()
+        if (!trimmed) return ''
+        if (/^<(h[1-6]|ul|ol|li|hr|blockquote)/i.test(trimmed)) return trimmed
+        return `<p>${trimmed.replace(/\n/g, '<br/>')}</p>`
+      })
+      .join('\n')
+  }
+
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+
+    // Strip unsafe elements
+    const dangerous = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'link', 'meta']
+    dangerous.forEach((tag) => doc.querySelectorAll(tag).forEach((el) => el.remove()))
+
+    // Sanitize attributes and configure links
+    doc.querySelectorAll('*').forEach((el) => {
+      for (let i = el.attributes.length - 1; i >= 0; i--) {
+        const attr = el.attributes[i]
+        const name = attr.name.toLowerCase()
+        const val = attr.value.trim().toLowerCase()
+        if (name.startsWith('on') || val.startsWith('javascript:') || val.startsWith('data:')) {
+          el.removeAttribute(attr.name)
+        }
+      }
+
+      if (el.tagName.toLowerCase() === 'a') {
+        el.setAttribute('target', '_blank')
+        el.setAttribute('rel', 'noopener noreferrer')
+      }
+    })
+
+    return doc.body.innerHTML
+  } catch {
+    return raw
+  }
+}
+
+const ReleaseNotesView: React.FC<{ notes: string }> = ({ notes }) => {
+  const html = useMemo(() => sanitizeAndFormatReleaseNotes(notes), [notes])
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const link = (e.target as HTMLElement).closest('a')
+    if (link && link.href) {
+      e.preventDefault()
+      window.bldeskApi?.openExternal?.(link.href)
+    }
+  }
+
+  return (
+    <div
+      onClick={handleClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+      className="text-[11px] leading-relaxed text-[#495057] dark:text-[#adb5bd] max-h-36 overflow-y-auto border-l-2 border-[#017cb6]/40 pl-2.5 my-1 space-y-1 select-text
+        [&_h2]:text-xs [&_h2]:font-bold [&_h2]:text-[#212529] dark:[&_h2]:text-white [&_h2]:mt-2 [&_h2]:mb-0.5
+        [&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:text-[#212529] dark:[&_h3]:text-gray-200 [&_h3]:mt-1.5 [&_h3]:mb-0.5
+        [&_p]:my-0.5
+        [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1 [&_ul]:space-y-0.5
+        [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1 [&_ol]:space-y-0.5
+        [&_li]:my-0.5
+        [&_a]:text-[#017cb6] dark:[&_a]:text-[#38bdf8] [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:opacity-80
+        [&_code]:font-mono [&_code]:text-[10px] [&_code]:bg-black/5 dark:[&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded
+        [&_hr]:my-1.5 [&_hr]:border-black/10 dark:[&_hr]:border-white/10
+        [&_strong]:font-semibold [&_strong]:text-[#212529] dark:[&_strong]:text-gray-100"
+    />
+  )
+}
 
 /**
  * Title-bar update indicator + popover. Quiet when nothing is happening; shows a
@@ -93,7 +192,7 @@ export const UpdateMenu: React.FC = () => {
 
       {/* Popover */}
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-xl z-50 p-3 text-xs space-y-3 select-text">
+        <div className="absolute right-0 top-full mt-1.5 w-80 bg-white dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-xl z-50 p-3 text-xs space-y-3 select-text">
           <div className="flex items-center justify-between">
             <div>
               <div className="font-bold">BLDesk</div>
@@ -132,9 +231,7 @@ export const UpdateMenu: React.FC = () => {
           )}
 
           {state.releaseNotes && (state.status === 'available' || state.status === 'downloading' || ready) && (
-            <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd] max-h-24 overflow-y-auto whitespace-pre-wrap border-l-2 border-[#017cb6]/40 pl-2">
-              {state.releaseNotes}
-            </div>
+            <ReleaseNotesView notes={state.releaseNotes} />
           )}
 
           <div className="flex items-center justify-between gap-2">
