@@ -67,6 +67,8 @@ interface CommandPaletteProps {
   onSelectServer: (server: ServerResponse) => void
   onSelectServerSubTab: (tab: ServerSubTab) => void
   onNavigateTab: (tab: ActiveTab) => void
+  /** `create <hostname> from <template>` — the Templates tab prompts for variables and opens the create form. */
+  onCreateFromTemplate?: (template: string, hostname: string) => void
 }
 
 type Tone = 'default' | 'ok' | 'skip' | 'bad' | 'muted'
@@ -132,7 +134,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   profileId,
   onSelectServer,
   onSelectServerSubTab,
-  onNavigateTab
+  onNavigateTab,
+  onCreateFromTemplate
 }) => {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -374,6 +377,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
         if (rows.length === 0) header = { icon: AlertTriangle, text: `Usage: ${parsed.usage}. ${TARGET_HELP}`, tone: 'muted' }
       }
+      return { rows, header, primary, plan }
+    }
+
+    // --- Create from template: the Templates tab does the asking; nothing is built from here.
+    if (parsed.kind === 'create') {
+      header = { icon: ExternalLink, text: `New server ${parsed.hostname} from “${parsed.template}”` }
+      primary = () => {
+        rememberCommand(query)
+        onCreateFromTemplate?.(parsed.template, parsed.hostname)
+        close()
+      }
+      rows.push({ id: 'create', title: `Fill in the template's variables, then review the create form`, category: 'Create', icon: ExternalLink, onEnter: primary })
       return { rows, header, primary, plan }
     }
 

@@ -31,7 +31,6 @@ import { describeStatus, compareByBuildingFirst } from '../../lib/serverStatus'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
-import { CloudInitTemplates } from './CloudInitTemplates'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -41,6 +40,10 @@ interface ServerListProps {
   client: BinaryLaneClient | null
   onSelectServer: (server: ServerResponse) => void
   onOpenTerminal: (ip: string) => void
+  /** Jump to the Templates tab. */
+  onOpenTemplates?: () => void
+  /** Called once a create is accepted (the Templates tab applies firewall rules and tags after this). */
+  onCreated?: (created: { id?: number; name: string }) => void
 }
 
 export const ServerList: React.FC<ServerListProps> = ({
@@ -48,7 +51,9 @@ export const ServerList: React.FC<ServerListProps> = ({
   isLoading,
   client,
   onSelectServer,
-  onOpenTerminal: _onOpenTerminal
+  onOpenTerminal: _onOpenTerminal,
+  onOpenTemplates,
+  onCreated
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
@@ -56,7 +61,6 @@ export const ServerList: React.FC<ServerListProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [actionInProgressServerId, setActionInProgressServerId] = useState<number | null>(null)
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -175,7 +179,7 @@ export const ServerList: React.FC<ServerListProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => setIsTemplatesOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded border border-[#ced4da] dark:border-[#495057] hover:border-[#017cb6]">
+          <button onClick={() => onOpenTemplates?.()} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded border border-[#ced4da] dark:border-[#495057] hover:border-[#017cb6]">
             <FileCode2 className="w-4 h-4" /> Templates
           </button>
           {/* View Toggle */}
@@ -566,11 +570,11 @@ export const ServerList: React.FC<ServerListProps> = ({
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         client={client}
-        onCreated={() => {
+        onCreated={(created) => {
+          onCreated?.(created)
           setIsCreateOpen(false)
         }}
       />
-      {isTemplatesOpen && <CloudInitTemplates client={client} servers={servers} onClose={() => setIsTemplatesOpen(false)} />}
     </div>
   )
 }

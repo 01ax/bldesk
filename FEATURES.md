@@ -121,18 +121,18 @@ tag add prod wp-*
 
 ## 8. Cloud-init and server templates
 
-**Status: built** (unreleased at time of writing). `main/templates.ts` stores one device-wide YAML document per template under `<userData>/templates`; the `templates:*` preload bridge and `lib/templates.ts` provide the same library through one localStorage key on Android. `CreateServerModal.tsx` gates user data by image support and can load or save templates. `ServerDetails.tsx` shows the user data last used to initialise a server and can save it as a template. `CloudInitTemplates.tsx` provides create, view, rename, delete, copy/paste import/export, desktop file reveal, and an on-demand four-at-a-time fleet coverage table. Templates are plain text on the device and capped at 256 KiB per YAML document.
+**Status: built (v1.0.57)** — reworked from the first cut, which stored bare cloud-init snippets. A template is now a *whole server*: region, plan and its options (memory, disk, IPv4 count, backup retention, offsite), image, VPC and SSH keys (by **name**, so a template moves between accounts), a firewall rule set, local tags, and cloud-init with `{{variables}}`.
 
-Desktop YAML files placed into the templates directory by hand must use canonical lowercase slug filenames containing only letters, numbers, and hyphens (for example, `wordpress-host.yaml`). Non-canonical filenames are ignored.
+- `lib/serverTemplates.ts` — versioned document (`kind: bldesk/server-template@1`), variable extraction/rendering (`{{hostname}}` built in; secrets are prompted for and never written to disk), single-file and bundle import/export, capture from a live server, migration of the first-cut `name` + `user_data` documents. Store is unchanged: one YAML per template under `<userData>/templates` on desktop (the `templates:*` bridge), one localStorage key on Android.
+- `lib/starterTemplates.ts` — seven read-only starters with real cloud-init: **Ubuntu baseline**, **CIS-hardened Ubuntu 24.04** (Level 1 Server controls: admin user from the injected key, root locked out of SSH, hardened sshd, module/sysctl lockdown, auditd, AIDE, PAM policy, banners, ufw), **Docker host**, **WordPress**, **WireGuard bastion**, **k3s node**, **PostgreSQL 16**. Every starter's firewall ends in an explicit drop (BinaryLane's firewall is first-match with no implicit deny). "Make mine" duplicates one into an editable template.
+- `components/templates/TemplatesView.tsx` — its own **Templates** tab: library (mine + starters, search), spec cards, rules table, variables, cloud-init; editor with rule and variable rows and a one-click "declare the variables this cloud-init uses"; import from file or paste; export one or all.
+- **New server from this** → variables prompt (secrets get a generate button) → `CreateServerModal` opens prefilled via its `initial` prop (names resolved on the account as the lists load) → the form is still the review → after BinaryLane accepts, `lib/templateJobs.ts` waits for the build and applies the firewall rules (History entry) and local tags. The job lives outside React so leaving the tab does not abandon it.
+- **Save server as template** on a server's Cloud-init tab captures plan/region/image/VPC/firewall rules/user data; **Save this form as a template instead** on the create form captures a form you have filled in.
+- Palette: `create web-01 from CIS-hardened Ubuntu` (or `from @starter-docker-host`).
 
-**Not yet:** variables, secrets handling, whole-server capture (size, network, keys, firewall and backups), or Android file import/export.
+**Not yet:** secrets in a vault (they are typed per apply on purpose), template versioning/diff, sharing over anything but a file.
 
-**Proposed:**
-- A local template library in `userData` (YAML): Docker host, WordPress, WireGuard bastion, k3s node, etc., with variables the modal prompts for.
-- "Save this server as a template" — captures size, region, image, VPC, SSH keys, firewall rules, backup schedule, user-data.
-- Import/export templates so teams can share them.
-
-**Why it matters:** users accumulate their own templates and stop wanting to leave.
+**Why it matters:** users accumulate their own templates and stop wanting to leave. Anything Ansible would do on a fresh box is a first-boot cloud-init here, with the fill-in-the-blanks handled by the client.
 
 ---
 

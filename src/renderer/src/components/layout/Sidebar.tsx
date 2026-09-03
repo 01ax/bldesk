@@ -14,13 +14,14 @@ import {
   History,
   Waypoints,
   ChevronLeft,
-  X, UserCircle} from 'lucide-react'
+  X, UserCircle, LayoutTemplate} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
 import logoFull from '../../assets/logo-binarylane.png'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
 
 export type ActiveTab =
   | 'servers'
+  | 'templates'
   | 'vpcs'
   | 'firewall'
   | 'loadbalancers'
@@ -73,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const menuItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }>; badge?: number | string }[] = [
     { id: 'servers', label: 'Servers', icon: Server, badge: serverCount > 0 ? serverCount : undefined },
+    { id: 'templates', label: 'Templates', icon: LayoutTemplate },
     { id: 'vpcs', label: 'VPCs', icon: Network },
     { id: 'firewall', label: 'Firewall', icon: Shield },
     { id: 'loadbalancers', label: 'Load Balancers', icon: Layers },

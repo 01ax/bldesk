@@ -22,6 +22,8 @@ import { ActionTrackerProvider } from './context/ActionTrackerContext'
 import { ConfirmProvider } from './context/ConfirmContext'
 import { HistoryView } from './components/history/HistoryView'
 import { NetworkMap } from './components/map/NetworkMap'
+import { TemplatesView } from './components/templates/TemplatesView'
+import type { ServerTemplate } from './lib/serverTemplates'
 import { setChangeLogProfile } from './lib/changelog'
 import { useServers, useBalance, useActionsAwaitingInteraction, useUnpaidInvoices } from './api/queries'
 import { useFleetWatch } from './lib/fleetWatch'
@@ -86,6 +88,14 @@ function FleetWatch({
 
 function MainDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
+  // Templates tab hand-offs: a capture to edit, or a palette "create X from Y".
+  const [templateDraft, setTemplateDraft] = useState<ServerTemplate | null>(null)
+  const [templateApply, setTemplateApply] = useState<{ template: string; hostname: string } | null>(null)
+  const openTemplateDraft = (draft: ServerTemplate) => {
+    setTemplateDraft(draft)
+    setSelectedServer(null)
+    setActiveTab('templates')
+  }
   const [selectedServer, setSelectedServer] = useState<any | null>(null)
   const [activeServerSubTab, setActiveServerSubTab] = useState<ServerSubTab>('overview')
   const [isAuthOpen, setIsAuthOpen] = useState(false)
@@ -305,6 +315,7 @@ function MainDashboard() {
                   onSelectSubTab={setActiveServerSubTab}
                   onBack={() => setSelectedServer(null)}
                   onOpenTerminal={handleOpenTerminalForIp}
+                  onSaveAsTemplate={openTemplateDraft}
                 />
               ) : (
                 <ServerList
@@ -313,6 +324,7 @@ function MainDashboard() {
                   client={client}
                   onSelectServer={handleSelectServer}
                   onOpenTerminal={handleOpenTerminalForIp}
+                  onOpenTemplates={() => setActiveTab('templates')}
                 />
               )
             )}
@@ -381,6 +393,18 @@ function MainDashboard() {
               />
             )}
 
+            {activeTab === 'templates' && (
+              <TemplatesView
+                client={client}
+                servers={servers}
+                profileId={activeProfile?.id}
+                draft={templateDraft}
+                onDraftConsumed={() => setTemplateDraft(null)}
+                applyRequest={templateApply}
+                onApplyConsumed={() => setTemplateApply(null)}
+              />
+            )}
+
             {activeTab === 'history' && (
               <HistoryView profileId={activeProfile?.id} profileName={activeProfile?.name} />
             )}
@@ -410,6 +434,11 @@ function MainDashboard() {
           onSelectServer={handleSelectServer}
           onSelectServerSubTab={setActiveServerSubTab}
           onNavigateTab={setActiveTab}
+          onCreateFromTemplate={(template, hostname) => {
+            setTemplateApply({ template, hostname })
+            setSelectedServer(null)
+            setActiveTab('templates')
+          }}
         />
 
         {/* Actions BinaryLane has paused pending an answer. Mounted at the shell so
