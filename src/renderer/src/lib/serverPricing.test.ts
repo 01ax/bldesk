@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { configuredCost, preservedTransfer, type SizeLike } from './serverPricing'
+import { configuredCost, preservedTransfer, retentionOptionLabel, type SizeLike } from './serverPricing'
 
 /**
  * Pricing regressions are expensive and invisible: every figure here was wrong
@@ -169,5 +169,36 @@ describe('preservedTransfer', () => {
   it('falls back to the plan allowance when the server has none recorded', () => {
     expect(preservedTransfer(size(), null)).toBe(3)
     expect(preservedTransfer(size(), undefined)).toBe(3)
+  })
+})
+
+describe('retentionOptionLabel', () => {
+  it('matches the web panel for none', () => {
+    expect(retentionOptionLabel('daily', 0, 40, size())).toBe('Do not take a daily backup')
+    expect(retentionOptionLabel('weekly', 0, 40, size())).toBe('Do not take a weekly backup')
+  })
+
+  it('matches the web panel for one, singular unit and price', () => {
+    // 1 x 40 GB x $0.05 = $2.00, as mPanel shows.
+    expect(retentionOptionLabel('daily', 1, 40, size())).toBe(
+      'Take daily backups, stored for 1 day (+$2.00 per month)'
+    )
+  })
+
+  it('pluralises each frequency in its own unit, not "periods"', () => {
+    expect(retentionOptionLabel('daily', 3, 40, size())).toBe(
+      'Take daily backups, stored for 3 days (+$6.00 per month)'
+    )
+    expect(retentionOptionLabel('weekly', 2, 40, size())).toBe(
+      'Take weekly backups, stored for 2 weeks (+$4.00 per month)'
+    )
+    expect(retentionOptionLabel('monthly', 10, 40, size())).toBe(
+      'Take monthly backups, stored for 10 months (+$20.00 per month)'
+    )
+  })
+
+  it('does not price retention the plan already includes', () => {
+    const s = size({ options: { ...size().options, daily_backups: 2 } })
+    expect(retentionOptionLabel('daily', 3, 40, s)).toBe('Take daily backups, stored for 3 days (+$2.00 per month)')
   })
 })

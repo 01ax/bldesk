@@ -19,6 +19,7 @@ import { listServerTemplates, imageSupportsUserData, TEMPLATES_EVENT, TEMPLATE_K
 import {
   planMonthlyPrice,
   configuredCost,
+  retentionOptionLabel,
   planUnavailableReason,
   isCapacityBlock,
   memoryChoices,
@@ -619,10 +620,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                             onChange={setter as (v: number) => void}
                             options={Array.from({ length: 11 }, (_, n) => ({
                               value: n,
-                              label:
-                                n === 0
-                                  ? `Do not take a ${word} backup`
-                                  : `Take ${word} backups, stored for ${n} ${word === 'daily' ? (n === 1 ? 'day' : 'days') : n === 1 ? 'period' : 'periods'} (+$${(n * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)} per month)`
+                              // Shared with Change Plan so the two cannot drift
+                              // from the web panel's wording independently -
+                              // this said "periods" for weekly and monthly.
+                              label: retentionOptionLabel(word, n, disk, selectedSize)
                             }))}
                           />
                         </div>

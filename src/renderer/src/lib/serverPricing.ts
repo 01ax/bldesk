@@ -285,6 +285,41 @@ export function preservedTransfer(size: SizeLike, currentTransferTb: number | nu
   return Math.min(Math.max(wanted, size.transfer), max)
 }
 
+/**
+ * Backup retention wording, matching the web panel exactly.
+ *
+ *   0  "Do not take a daily backup"
+ *   1  "Take daily backups, stored for 1 day (+$2.00 per month)"
+ *   3  "Take daily backups, stored for 3 days (+$6.00 per month)"
+ *
+ * Weekly and monthly use their own units ("2 weeks", "10 months"). Change Plan
+ * previously said "Keep 3" with no unit and no price, and the create form said
+ * "periods" for weekly and monthly - two different drifts from the panel
+ * customers already know, which is why this is shared rather than inlined.
+ *
+ * The price subtracts retention the plan already includes, so the label cannot
+ * disagree with the billing summary beneath it.
+ */
+const RETENTION_UNIT: Record<'daily' | 'weekly' | 'monthly', string> = {
+  daily: 'day',
+  weekly: 'week',
+  monthly: 'month'
+}
+
+export function retentionOptionLabel(
+  frequency: 'daily' | 'weekly' | 'monthly',
+  count: number,
+  diskGb: number,
+  size: SizeLike | undefined
+): string {
+  if (count === 0) return `Do not take a ${frequency} backup`
+  const o = size?.options || {}
+  const included = (o[`${frequency}_backups`] as number) || 0
+  const cost = Math.max(0, count - included) * diskGb * (o.backups_cost_per_backup_per_gigabyte || 0)
+  const unit = RETENTION_UNIT[frequency] + (count === 1 ? '' : 's')
+  return `Take ${frequency} backups, stored for ${count} ${unit} (+$${cost.toFixed(2)} per month)`
+}
+
 export const GST_RATE = 0.1
 
 /** Monthly total shown in the billing summary, inclusive of GST. */

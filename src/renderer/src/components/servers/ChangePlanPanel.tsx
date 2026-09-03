@@ -22,6 +22,7 @@ import {
   planMonthlyPrice,
   configuredCost,
   preservedTransfer,
+  retentionOptionLabel,
   memoryChoices,
   diskChoices,
   billingTotal,
@@ -162,6 +163,12 @@ export const ChangePlanPanel: React.FC<{
     [keepImage, newImageSlug, distroQuery.data]
   )
   const effectiveImage = pickedImage ?? currentImage
+  /*
+   * `cpanel-plus-whm` ships an empty `name`, so the confirm text read
+   * "reinstall onto cpanel-plus-whm" while the change table said "cPanel+WHM".
+   * One label for both.
+   */
+  const pickedImageLabel = pickedImage?.full_name || pickedImage?.name || newImageSlug
   const osSlug = (keepImage ? server.image?.slug : newImageSlug) || null
 
   const softwareQuery = useOsSoftware(client, osSlug)
@@ -434,7 +441,7 @@ export const ChangePlanPanel: React.FC<{
       rows.push({
         label: 'Operating system',
         from: server.image?.full_name || server.image?.name || server.image?.slug || undefined,
-        to: pickedImage?.full_name || pickedImage?.name || newImageSlug
+        to: pickedImageLabel
       })
     }
 
@@ -549,7 +556,7 @@ export const ChangePlanPanel: React.FC<{
           notes: [
             ...(reinstalling
               ? [
-                  `Reinstalling onto ${pickedImage?.name || newImageSlug} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
+                  `Reinstalling onto ${pickedImageLabel} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
                 ]
               : []),
             ...(mustRelease > 0
@@ -899,7 +906,12 @@ export const ChangePlanPanel: React.FC<{
               >
                 {Array.from({ length: 11 }, (_, n) => (
                   <option key={n} value={n}>
-                    {n === 0 ? `No ${label.toLowerCase()} backup` : `Keep ${n}`}
+                    {retentionOptionLabel(
+                      label.toLowerCase() as 'daily' | 'weekly' | 'monthly',
+                      n,
+                      disk,
+                      selected ?? (server.size as any)
+                    )}
                   </option>
                 ))}
               </select>
@@ -1238,8 +1250,15 @@ export const ChangePlanPanel: React.FC<{
                 ...(licencesChanged ? { change_licenses: { licenses: toLicencePayload(licences, offered) } } : {}),
                 ...(!keepImage && newImageSlug ? { change_image: { image: newImageSlug } } : {}),
                 /*
-                 * `backup_type` is required unless the strategy is `specified`,
-                 * where the named backup already determines the slot.
+                 * `backup_type` accompanies `specified` too, even though the
+                 * schema says it is only needed "if replacement_strategy is
+                 * anything other than 'specified'". Omitting it is rejected:
+                 *
+                 *   pre_action_backup.backup_type: "Backup N is not a  backup."
+                 *
+                 * - the blank being where the expected type would be. The API
+                 * validates that the named backup is of the given type, so the
+                 * type is read back off the chosen backup.
                  */
                 ...(preBackup === 'free'
                   ? {
@@ -1253,6 +1272,7 @@ export const ChangePlanPanel: React.FC<{
                     ? {
                         pre_action_backup: {
                           type: 'take_backup',
+                          backup_type: existingBackups.find((b) => b.id === replaceBackupId)?.backup_info?.type,
                           replacement_strategy: 'specified',
                           backup_id_to_replace: replaceBackupId
                         }
@@ -1260,7 +1280,7 @@ export const ChangePlanPanel: React.FC<{
                     : {})
               },
               reinstalling
-                ? `Change plan to ${selected.slug} and reinstall onto ${pickedImage?.name || newImageSlug}, erasing the disks`
+                ? `Change plan to ${selected.slug} and reinstall onto ${pickedImageLabel}, erasing the disks`
                 : `Change plan to ${selected.slug} (${memory / 1024} GB memory, ${disk} GB storage)`,
               changes,
               confirmExtra
