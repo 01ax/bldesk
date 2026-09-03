@@ -186,6 +186,25 @@ export const ChangePlanPanel: React.FC<{
    * re-provisions the extras with new addresses, which is the only way to move
    * off a blocklisted address without rebuilding somewhere else.
    */
+  /*
+   * Which slots a pre-action backup can use.
+   *
+   * The API rejects a slot the server has no retention for -
+   * "Validation of pre_action_backup.backup_type,
+   * pre_action_backup.replacement_strategy failed" - and it is the server's
+   * *current* retention that counts, not whatever this form is about to set:
+   * the backup is taken before the new options apply. Offering all four slots
+   * unconditionally therefore produced a 400 at submit time. Temporary is
+   * on-demand and always available.
+   */
+  const backupSlots = useMemo(() => {
+    const out: Array<'temporary' | 'daily' | 'weekly' | 'monthly'> = ['temporary']
+    if (((current.daily_backups as number) ?? 0) > 0) out.push('daily')
+    if (((current.weekly_backups as number) ?? 0) > 0) out.push('weekly')
+    if (((current.monthly_backups as number) ?? 0) > 0) out.push('monthly')
+    return out
+  }, [current.daily_backups, current.weekly_backups, current.monthly_backups])
+
   const ipOpts = selected?.options ?? server.size?.options
   const mustRelease = Math.max(0, publicIps.length - ipCount)
   /*
@@ -206,6 +225,10 @@ export const ChangePlanPanel: React.FC<{
   useEffect(() => {
     if (offsiteBackups && dailyBackups + weeklyBackups + monthlyBackups === 0) setOffsiteBackups(false)
   }, [offsiteBackups, dailyBackups, weeklyBackups, monthlyBackups])
+
+  useEffect(() => {
+    if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
+  }, [backupSlots, preBackupSlot])
 
   const pick = (slug: string): void => {
     const p = plans.find((x) => x.slug === slug)
@@ -943,11 +966,19 @@ export const ChangePlanPanel: React.FC<{
               disabled={busy}
               className={selectClass}
             >
-              <option value="temporary">Temporary (kept up to 7 days)</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              {backupSlots.map((slot) => (
+                <option key={slot} value={slot}>
+                  {slot === 'temporary'
+                    ? 'Temporary (kept up to 7 days)'
+                    : slot.charAt(0).toUpperCase() + slot.slice(1)}
+                </option>
+              ))}
             </select>
+            {backupSlots.length === 1 && (
+              <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
+                Only a temporary slot is available: this server keeps no scheduled backups yet.
+              </p>
+            )}
           </div>
         )}
       </div>
