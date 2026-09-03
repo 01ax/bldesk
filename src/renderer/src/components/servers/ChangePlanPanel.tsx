@@ -830,7 +830,7 @@ export const ChangePlanPanel: React.FC<{
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 [&>*]:min-w-0">
         <div>
           <label className={labelClass}>IP Addresses</label>
           <select
@@ -914,7 +914,10 @@ export const ChangePlanPanel: React.FC<{
                 value={value}
                 onChange={(e) => (setter as (v: number) => void)(Number(e.target.value))}
                 disabled={busy}
-                className="flex-1 px-2 py-1 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529]"
+                /* min-w-0: a flex item will not shrink below its content's
+                   intrinsic width without it, and these option labels are long
+                   enough to push the select out of the column. */
+                className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529]"
               >
                 {Array.from({ length: 11 }, (_, n) => (
                   <option key={n} value={n}>
@@ -1094,7 +1097,7 @@ export const ChangePlanPanel: React.FC<{
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 border-t border-[#ced4da] dark:border-[#373b3e] pt-3">
+      <div className="grid gap-4 sm:grid-cols-2 [&>*]:min-w-0 border-t border-[#ced4da] dark:border-[#373b3e] pt-3">
         <div>
           <label className={labelClass}>Backup will</label>
           <select
