@@ -36,6 +36,8 @@ export interface MapLb {
   protocols: string[]
   serverIds: number[]
   region: string
+  /** The VPC this load balancer is a member of, when the members list says so. */
+  vpcId?: number | null
 }
 
 export interface MapVpc {
@@ -57,9 +59,15 @@ export interface LayoutNode {
   lb?: MapLb
 }
 
+export interface LayoutColumn {
+  region: string
+  x: number
+  w: number
+}
+
 export interface LayoutGroup {
   id: string
-  kind: 'region' | 'vpc' | 'novpc'
+  kind: 'vpc' | 'novpc'
   label: string
   sub?: string
   x: number
@@ -67,6 +75,8 @@ export interface LayoutGroup {
   w: number
   h: number
   vpcId?: number | null
+  /** One column per region the box's members live in, left to right. */
+  columns: LayoutColumn[]
 }
 
 export interface LayoutEdge {
@@ -100,9 +110,12 @@ const NODE_GAP = 10
 const ROWS_PER_COLUMN = 6
 const VPC_PAD = 16
 const VPC_HEADER = 28
+/** Region label row inside a box, above that region's column of servers. */
+const COLUMN_HEADER = 22
 const VPC_GAP = 24
-const REGION_HEADER = 30
-const REGION_GAP = 36
+const ROW_GAP = 32
+/** Boxes wrap to a new row past this width, so a big account stays roughly landscape. */
+const MAX_ROW_W = 1500
 const RAIL_X = 32
 const RAIL_W = 44
 const LB_X = 132
@@ -158,62 +171,96 @@ export function layoutTopology(servers: MapServer[], vpcs: MapVpc[], lbs: MapLb[
   const nodeById = new Map<string, LayoutNode>()
   const vpcById = new Map(vpcs.map((v) => [v.id, v]))
 
-  // --- Group: region → vpc (null last) → servers, all in stable name order.
-  const byRegion = new Map<string, MapServer[]>()
+  // --- Group: VPC (a network, which may span regions) → region columns →
+  //     servers, all in stable name order. Servers with no VPC share one box.
+  // Tier 2: every VPC the account has gets a box, members or not. Servers
+  // whose vpc_id names a VPC we were not given still get a box, labelled by id.
+  const byVpc = new Map<number | null, MapServer[]>()
+  for (const v of vpcs) byVpc.set(v.id, [])
   for (const s of [...servers].sort((a, b) => a.name.localeCompare(b.name))) {
-    const list = byRegion.get(s.region) ?? []
+    const list = byVpc.get(s.vpcId) ?? []
     list.push(s)
-    byRegion.set(s.region, list)
+    byVpc.set(s.vpcId, list)
   }
-  const regions = [...byRegion.keys()].sort()
-
-  let y = MARGIN
-  let maxRight = VPC_X
-  for (const region of regions) {
-    const regionServers = byRegion.get(region)!
-    const byVpc = new Map<number | null, MapServer[]>()
-    for (const s of regionServers) {
-      const list = byVpc.get(s.vpcId) ?? []
-      list.push(s)
-      byVpc.set(s.vpcId, list)
+  // Tier 1: a load balancer is where traffic starts, so the VPC it belongs to
+  // (or, failing that, the VPC its backends are in) comes first, in load-
+  // balancer name order. Then the rest by name, No VPC last.
+  const frontedRank = new Map<number | null, number>()
+  ;[...lbs].sort((a, b) => a.name.localeCompare(b.name)).forEach((lb, i) => {
+    if (lb.vpcId != null && !frontedRank.has(lb.vpcId)) frontedRank.set(lb.vpcId, i)
+    for (const sid of lb.serverIds) {
+      const s = servers.find((x) => x.id === sid)
+      if (s && !frontedRank.has(s.vpcId)) frontedRank.set(s.vpcId, i)
     }
-    const vpcKeys = [...byVpc.keys()].sort((a, b) => {
-      if (a === null) return 1
-      if (b === null) return -1
-      return (vpcById.get(a)?.name ?? '').localeCompare(vpcById.get(b)?.name ?? '')
+  })
+  const vpcKeys = [...byVpc.keys()].sort((a, b) => {
+    if (a === null) return 1
+    if (b === null) return -1
+    const ra = frontedRank.get(a) ?? Number.POSITIVE_INFINITY
+    const rb = frontedRank.get(b) ?? Number.POSITIVE_INFINITY
+    if (ra !== rb) return ra - rb
+    return (vpcById.get(a)?.name ?? '').localeCompare(vpcById.get(b)?.name ?? '')
+  })
+
+  let x = VPC_X
+  let y = MARGIN
+  let rowBottom = y
+  let maxRight = VPC_X
+  for (const key of vpcKeys) {
+    const members = byVpc.get(key)!
+    const byRegion = new Map<string, MapServer[]>()
+    for (const s of members) {
+      const list = byRegion.get(s.region) ?? []
+      list.push(s)
+      byRegion.set(s.region, list)
+    }
+    const regions = [...byRegion.keys()].sort()
+
+    // Box width: the sum of each region's columns; height: the tallest region.
+    const columns: LayoutColumn[] = []
+    let cx = VPC_PAD
+    let maxRows = 0
+    for (const region of regions) {
+      const n = byRegion.get(region)!.length
+      const cols = Math.ceil(n / ROWS_PER_COLUMN)
+      const w = cols * NODE_W + (cols - 1) * NODE_GAP
+      columns.push({ region, x: cx, w })
+      cx += w + VPC_GAP
+      maxRows = Math.max(maxRows, Math.min(n, ROWS_PER_COLUMN))
+    }
+    const empty = members.length === 0
+    const boxW = empty ? NODE_W + VPC_PAD * 2 : cx - VPC_GAP + VPC_PAD
+    const boxH = empty ? VPC_HEADER + VPC_PAD + 18 + VPC_PAD : VPC_HEADER + COLUMN_HEADER + VPC_PAD + maxRows * NODE_H + (maxRows - 1) * NODE_GAP + VPC_PAD
+
+    // Wrap to a new row of boxes when this one would run past the width budget.
+    if (x > VPC_X && x + boxW > VPC_X + MAX_ROW_W) {
+      x = VPC_X
+      y = rowBottom + ROW_GAP
+    }
+
+    const vpc = key === null ? null : vpcById.get(key)
+    groups.push({
+      id: key === null ? 'novpc' : `vpc-${key}`,
+      kind: key === null ? 'novpc' : 'vpc',
+      label: key === null ? 'No VPC' : (vpc?.name ?? `VPC #${key}`),
+      sub: key === null ? 'public network only' : [vpc?.cidr, empty ? 'no members' : undefined].filter(Boolean).join(' · ') || undefined,
+      x,
+      y,
+      w: boxW,
+      h: boxH,
+      vpcId: key,
+      columns: columns.map((c) => ({ ...c, x: x + c.x }))
     })
-
-    const regionTop = y
-    y += REGION_HEADER
-    let x = VPC_X
-    let rowBottom = y
-
-    for (const key of vpcKeys) {
-      const members = byVpc.get(key)!
-      const cols = Math.ceil(members.length / ROWS_PER_COLUMN)
-      const rows = Math.min(members.length, ROWS_PER_COLUMN)
-      const boxW = VPC_PAD * 2 + cols * NODE_W + (cols - 1) * NODE_GAP
-      const boxH = VPC_HEADER + VPC_PAD + rows * NODE_H + (rows - 1) * NODE_GAP + VPC_PAD
-      const vpc = key === null ? null : vpcById.get(key)
-      groups.push({
-        id: key === null ? `novpc-${region}` : `vpc-${key}`,
-        kind: key === null ? 'novpc' : 'vpc',
-        label: key === null ? 'No VPC' : (vpc?.name ?? `VPC #${key}`),
-        sub: key === null ? 'public network only' : (vpc?.cidr ?? undefined),
-        x,
-        y,
-        w: boxW,
-        h: boxH,
-        vpcId: key
-      })
-      members.forEach((s, i) => {
-        const col = Math.floor(i / ROWS_PER_COLUMN)
-        const row = i % ROWS_PER_COLUMN
+    regions.forEach((region, ri) => {
+      const col = columns[ri]
+      byRegion.get(region)!.forEach((s, i) => {
+        const c = Math.floor(i / ROWS_PER_COLUMN)
+        const r = i % ROWS_PER_COLUMN
         const node: LayoutNode = {
           id: serverNodeId(s.id),
           kind: 'server',
-          x: x + VPC_PAD + col * (NODE_W + NODE_GAP),
-          y: y + VPC_HEADER + VPC_PAD + row * (NODE_H + NODE_GAP),
+          x: x + col.x + c * (NODE_W + NODE_GAP),
+          y: y + VPC_HEADER + COLUMN_HEADER + VPC_PAD + r * (NODE_H + NODE_GAP),
           w: NODE_W,
           h: NODE_H,
           server: s
@@ -221,21 +268,19 @@ export function layoutTopology(servers: MapServer[], vpcs: MapVpc[], lbs: MapLb[
         nodes.push(node)
         nodeById.set(node.id, node)
       })
-      x += boxW + VPC_GAP
-      rowBottom = Math.max(rowBottom, y + boxH)
-    }
+    })
+    x += boxW + VPC_GAP
+    rowBottom = Math.max(rowBottom, y + boxH)
     maxRight = Math.max(maxRight, x - VPC_GAP)
-    groups.push({ id: `region-${region}`, kind: 'region', label: region, x: VPC_X - 12, y: regionTop, w: 0, h: rowBottom - regionTop })
-    y = rowBottom + REGION_GAP
   }
 
-  const height = Math.max(y - REGION_GAP + MARGIN, 320)
+  const height = Math.max(rowBottom + MARGIN, 320)
 
   // --- Load balancers: at the mean y of their members, pushed apart to avoid overlap.
   const placed: LayoutNode[] = []
   for (const lb of [...lbs].sort((a, b) => a.name.localeCompare(b.name))) {
     const ys = lb.serverIds.map((id) => nodeById.get(serverNodeId(id))).filter(Boolean).map((n) => n!.y + n!.h / 2)
-    let cy = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : MARGIN + REGION_HEADER + LB_H / 2
+    let cy = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : MARGIN + VPC_HEADER + LB_H / 2
     const node: LayoutNode = { id: lbNodeId(lb.id), kind: 'lb', x: LB_X, y: cy - LB_H / 2, w: LB_W, h: LB_H, lb }
     placed.push(node)
   }
