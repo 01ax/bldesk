@@ -130,6 +130,10 @@ export interface ChangeLogRecord {
   profileId: string
 }
 
+export type TemplateGetResult =
+  | { ok: true; document: string }
+  | { ok: false; code: 'missing' | 'too_large' | 'unreadable'; message: string; bytes?: number }
+
 export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
@@ -153,6 +157,13 @@ export interface IpcApi {
   changelogUpdate: (profileId: string, id: string, patch: Record<string, unknown>) => Promise<void>
   changelogList: (profileId: string, limit?: number) => Promise<any[]>
   changelogClear: (profileId: string) => Promise<void>
+
+  // Device-wide cloud-init templates, stored as YAML documents.
+  templatesList: () => Promise<string[]>
+  templatesGet: (slug: string) => Promise<TemplateGetResult>
+  templatesSave: (document: string, oldSlug?: string) => Promise<string>
+  templatesRemove: (slug: string) => Promise<void>
+  templatesReveal: (slug: string) => Promise<void>
 
   // Tray / menu bar — see main/tray.ts
   /** Push the current fleet picture; main rebuilds the tray tooltip and menu from it. */

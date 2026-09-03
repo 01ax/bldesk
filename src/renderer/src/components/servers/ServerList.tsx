@@ -14,7 +14,8 @@ import {
   LayoutGrid,
   List,
   ShieldAlert,
-  Link2
+  Link2,
+  FileCode2
 } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -30,6 +31,7 @@ import { describeStatus, compareByBuildingFirst } from '../../lib/serverStatus'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
+import { CloudInitTemplates } from './CloudInitTemplates'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -54,6 +56,7 @@ export const ServerList: React.FC<ServerListProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [actionInProgressServerId, setActionInProgressServerId] = useState<number | null>(null)
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -172,6 +175,9 @@ export const ServerList: React.FC<ServerListProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => setIsTemplatesOpen(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded border border-[#ced4da] dark:border-[#495057] hover:border-[#017cb6]">
+            <FileCode2 className="w-4 h-4" /> Templates
+          </button>
           {/* View Toggle */}
           <div className="flex items-center bg-[#e9ecef] dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded p-0.5">
             <button
@@ -564,6 +570,7 @@ export const ServerList: React.FC<ServerListProps> = ({
           setIsCreateOpen(false)
         }}
       />
+      {isTemplatesOpen && <CloudInitTemplates client={client} servers={servers} onClose={() => setIsTemplatesOpen(false)} />}
     </div>
   )
 }
