@@ -574,12 +574,11 @@ const TemplateEditor: React.FC<{
       icon={LayoutTemplate}
       onClose={onCancel}
       size="xl"
-      align="top"
       as="form"
       onSubmit={submit}
       busy={busy}
       footer={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 p-4">
           <span className="text-xs text-rose-600">{err}</span>
           <div className="flex gap-2">
             <button type="button" className={btn} onClick={onCancel}>Cancel</button>
@@ -588,7 +587,7 @@ const TemplateEditor: React.FC<{
         </div>
       }
     >
-      <div className="space-y-5">
+      <div className="p-4 space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3">
           <div>
             <label className={label}>Name</label>
@@ -663,10 +662,11 @@ const TemplateEditor: React.FC<{
                 <input className={input} inputMode="numeric" value={t.spec.options?.monthly_backups ?? ''} onChange={(e) => opt({ monthly_backups: num(e.target.value) })} placeholder="0" />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-xs text-[#212529] dark:text-white col-span-2">
+            <label className="col-span-2 md:col-span-4 flex items-center gap-2 text-xs text-[#212529] dark:text-white">
               <input type="checkbox" checked={!!t.spec.options?.offsite_backups} onChange={(e) => opt({ offsite_backups: e.target.checked })} />Offsite backups
+              <span className="text-[#6c757d] dark:text-slate-400">(needs at least one daily, weekly or monthly slot)</span>
             </label>
-            <div className="col-span-2">
+            <div className="col-span-2 md:col-span-4">
               <label className={label}>SSH keys (by name)</label>
               <div className="flex flex-wrap gap-2">
                 {keys.map((k) => (
@@ -733,7 +733,7 @@ const TemplateEditor: React.FC<{
           <textarea
             value={t.spec.cloudInit ?? ''}
             onChange={(e) => spec({ cloudInit: e.target.value })}
-            rows={18}
+            rows={12}
             spellCheck={false}
             placeholder={'#cloud-config\npackages:\n  - nginx\nruncmd:\n  - echo "{{hostname}} ready"'}
             className="w-full px-3 py-2 text-[11px] font-mono leading-relaxed bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
@@ -777,7 +777,7 @@ const ApplyTemplateModal: React.FC<{
       as="form"
       onSubmit={submit}
       footer={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 p-4">
           <span className="text-xs text-rose-600">{err}</span>
           <div className="flex gap-2">
             <button type="button" className={btn} onClick={onClose}>Cancel</button>
@@ -786,7 +786,7 @@ const ApplyTemplateModal: React.FC<{
         </div>
       }
     >
-      <div className="space-y-3">
+      <div className="p-4 space-y-3">
         <p className="text-xs text-[#6c757d] dark:text-slate-400">{describeTemplate(template)}. The create form opens next with everything filled in, so you can still change your mind before anything is built.</p>
         <div>
           <label className={label}>Hostname</label>
@@ -833,9 +833,11 @@ const PasteImportModal: React.FC<{ onClose: () => void; onImport: (text: string)
   }
   return (
     <Modal title="Paste a template" icon={ClipboardPaste} onClose={onClose} size="lg" as="form" onSubmit={submit} busy={busy}
-      footer={<div className="flex items-center justify-between gap-3"><span className="text-xs text-rose-600">{err}</span><div className="flex gap-2"><button type="button" className={btn} onClick={onClose}>Cancel</button><button type="submit" className={btnPrimary} disabled={busy || !text.trim()}>Import</button></div></div>}>
+      footer={<div className="flex items-center justify-between gap-3 p-4"><span className="text-xs text-rose-600">{err}</span><div className="flex gap-2"><button type="button" className={btn} onClick={onClose}>Cancel</button><button type="submit" className={btnPrimary} disabled={busy || !text.trim()}>Import</button></div></div>}>
+      <div className="p-4">
       <p className="text-xs text-[#6c757d] dark:text-slate-400 mb-2">A template or bundle exported from BLDesk, or plain cloud-init starting with <span className="font-mono">#cloud-config</span> (it becomes a cloud-init-only template you can flesh out).</p>
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={16} spellCheck={false} className="w-full px-3 py-2 text-[11px] font-mono bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white" autoFocus />
+      </div>
     </Modal>
   )
 }
