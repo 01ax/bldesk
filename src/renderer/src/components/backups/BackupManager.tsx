@@ -129,14 +129,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       if (queued) track(queued, 'Take Backup', activeServer?.name, changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Snapshot Initiated',
-        body: `Snapshot creation started for server #${activeServerId}.`
+        body: `Backup started for server #${activeServerId}.`
       })
       setIsTakingSnapshot(false)
       setSnapshotLabel('')
       setSelectedSlot('temporary')
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Snapshot failed: ${err.message}`)
+      alert(`Backup failed: ${err.message}`)
     }
   }
 
@@ -396,22 +396,22 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         {(backupsQuery.isLoading || snapshotsQuery.isLoading) && (
           <div className="p-12 text-center text-xs text-[#6c757d]">
             <Loader2 className="w-6 h-6 animate-spin text-[#017cb6] mx-auto mb-2" />
-            <span>Querying disk snapshots from storage array...</span>
+            <span>Querying disk images...</span>
           </div>
         )}
 
         {!backupsQuery.isLoading && !snapshotsQuery.isLoading && allImages.length === 0 && (
           <div className="p-12 text-center text-xs text-[#6c757d] space-y-2">
             <Disc className="w-8 h-8 text-[#6c757d]/50 mx-auto" />
-            <div className="font-semibold text-[#212529] dark:text-white">No Snapshots Found</div>
+            <div className="font-semibold text-[#212529] dark:text-white">No Backups Found</div>
             <p className="text-[#6c757d] max-w-sm mx-auto text-[11px]">
-              Take an instant snapshot before making configuration updates to ensure full rollback capabilities.
+              Take a backup before making configuration changes, so there is something to roll back to.
             </p>
             <button
               onClick={() => setIsTakingSnapshot(true)}
               className="mt-2 px-3.5 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"
             >
-              Take First Snapshot
+              Take First Backup
             </button>
           </div>
         )}
@@ -433,7 +433,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 return (
                   <tr key={img.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
                     <td className="py-3 px-4">
-                      <div className="font-bold text-[#017cb6]">{img.name || `Snapshot #${img.id}`}</div>
+                      <div className="font-bold text-[#017cb6]">{img.name || `Image #${img.id}`}</div>
                       <div className="text-[11px] text-[#6c757d] dark:text-slate-400 font-mono">#{img.id}</div>
                     </td>
                     <td className="py-3 px-4 text-[#6c757d] dark:text-slate-300">
@@ -491,7 +491,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">Create Disk Snapshot</h2>
+              <h2 className="text-base font-bold text-[#212529] dark:text-white">Take Backup</h2>
               <button onClick={() => setIsTakingSnapshot(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -555,7 +555,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                   className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
                 >
                   {takeBackupMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Start Snapshot</span>
+                  <span>Take Backup</span>
                 </button>
               </div>
             </form>
