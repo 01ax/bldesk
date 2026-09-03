@@ -10,8 +10,8 @@
  *
  * Rules:
  *  1. No window.confirm / confirm( / alert-as-confirm outside ConfirmContext.
- *  2. No new "type X to confirm" dialogs: a `createPortal(` in a component
- *     other than the shared dialog that also contains "to confirm" text.
+ *  2. One dialog shell: `createPortal(` only inside components/ui/Modal.tsx.
+ *     Every dialog is a <Modal>; confirmations are useConfirm() on top.
  *  3. Every mutation call (client.POST/PUT/DELETE/PATCH, .mutate, .mutateAsync)
  *     must have confirmAction()/recordChange() earlier in the same handler, or
  *     `// history: n/a — <reason>` on the line above. Transport/shim files are
@@ -46,6 +46,7 @@ const MUTATION_EXCEPTIONS = {
 }
 
 const SHARED_DIALOG = 'context/ConfirmContext.tsx'
+const MODAL_SHELL = 'components/ui/Modal.tsx'
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -78,9 +79,15 @@ for (const file of walk(SRC)) {
     })
   }
 
-  // 2. Bespoke type-to-confirm dialogs
-  if (!isSharedDialog && /createPortal\s*\(/.test(src) && /to confirm/i.test(src) && !/useConfirm\(/.test(src)) {
-    failures.push(`${rel}: looks like a bespoke confirmation dialog (createPortal + "to confirm"). Do not add dialogs — extend ConfirmRequest (notes, changes, diff, reason, extraAction) and call useConfirm().`)
+  // 2. One dialog shell. Every dialog is a <Modal> (components/ui/Modal.tsx),
+  //    so they all look and behave the same; anything that changes something
+  //    goes through useConfirm() on top of it. A createPortal anywhere else is
+  //    a new kind of dialog.
+  if (rel !== MODAL_SHELL && /createPortal\s*\(/.test(codeOnly.join('\n'))) {
+    failures.push(`${rel}: createPortal outside the shared shell — render a <Modal> from components/ui/Modal.tsx instead (title, icon, footer, size, as="form"). Mutations still go through useConfirm().`)
+  }
+  if (rel !== MODAL_SHELL && rel !== SHARED_DIALOG && /fixed inset-0[^"'`]*(bg-black\/|backdrop)/.test(src) && /role="dialog"|aria-modal/.test(src)) {
+    failures.push(`${rel}: hand-rolled modal overlay — use <Modal> from components/ui/Modal.tsx.`)
   }
 
   // 3. Every mutation call must be confirmed or recorded in the handler that
