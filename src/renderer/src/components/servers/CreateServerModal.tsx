@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { recordChange } from '../../lib/changelog'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
+import { components } from '@shared/api/schema'
 import {
   useSizes,
   useRegions,
@@ -13,6 +14,8 @@ import {
   useAddSshKeyMutation
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
+import { listTemplates } from '../../lib/templates'
+import { CloudInitTemplates, imageSupportsUserData } from './CloudInitTemplates'
 import {
   planMonthlyPrice,
   planUnavailableReason,
@@ -21,8 +24,7 @@ import {
   diskChoices,
   billingTotal,
   compareVersionNames,
-  type SizeLike,
-  type ImageLike
+  type SizeLike
 } from '../../lib/serverPricing'
 
 /**
@@ -64,7 +66,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   const sizes = (sizesQuery.data || []) as SizeLike[]
   const regions = (regionsQuery.data || []) as any[]
-  const images = (imagesQuery.data || []) as ImageLike[]
+  const images = (imagesQuery.data || []) as components['schemas']['Image'][]
   const sshKeys = (sshKeysQuery.data || []) as any[]
   const vpcs = (vpcsQuery.data || []) as any[]
 
@@ -93,6 +95,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [agreed, setAgreed] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [addKeyOpen, setAddKeyOpen] = useState(false)
+  const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listTemplates>>>([])
+  const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
 
   // Distributions present, in web-panel order, with anything unexpected appended
   // rather than dropped.
@@ -114,6 +118,23 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     () => versions.find((v) => v.slug === imageSlug) || versions[0],
     [versions, imageSlug]
   )
+  const acceptsUserData = imageSupportsUserData(image)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const refresh = () => {
+      void listTemplates()
+        .then(setTemplates)
+        .catch((err) => setErrorMsg(err.message || 'Could not load cloud-init templates.'))
+    }
+    refresh()
+    window.addEventListener('bldesk:templates-changed', refresh)
+    return () => window.removeEventListener('bldesk:templates-changed', refresh)
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!acceptsUserData) setCloudInitOn(false)
+  }, [acceptsUserData])
 
   const planTypes = useMemo(() => {
     const seen = new Map<string, string>()
@@ -243,7 +264,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           monthly_backups: showAll ? monthlyBackups : 0,
           offsite_backups: offsite
         },
-        user_data: cloudInitOn && cloudInit.trim() ? cloudInit : undefined
+        user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
       } as any)
       onCreated?.()
       onClose()
@@ -551,19 +572,29 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                   </Field>
 
                   <Field label="Cloud-init User Data" hint="Cloud-init user data can work with cloud-init on the operating system to provide automated setup of new software, configuration of preferred defaults, and general customization of the Cloud Server after install.">
+                    {image && !acceptsUserData && <p className="text-xs text-amber-600 dark:text-amber-400">This image does not accept cloud-init user data.</p>}
                     <label className="flex items-center gap-2 text-xs cursor-pointer">
-                      <input type="checkbox" checked={cloudInitOn} onChange={(e) => setCloudInitOn(e.target.checked)} />
+                      <input type="checkbox" checked={cloudInitOn} disabled={!image || !acceptsUserData} onChange={(e) => setCloudInitOn(e.target.checked)} />
                       <span className="text-[#212529] dark:text-white">Enable Cloud-init User Data</span>
                     </label>
                     {cloudInitOn && (
-                      <textarea
-                        value={cloudInit}
-                        onChange={(e) => setCloudInit(e.target.value)}
-                        rows={8}
-                        spellCheck={false}
-                        placeholder={'#cloud-config\npackages:\n  - nginx'}
-                        className="mt-2 w-full px-2.5 py-2 text-[11px] font-mono bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
-                      />
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <select defaultValue="" onChange={(e) => { const item = templates.find((t) => t.slug === e.target.value); if (item?.template) setCloudInit(item.template.user_data); e.currentTarget.value = '' }} className="px-2.5 py-1.5 text-xs rounded border bg-white dark:bg-[#212529] border-[#ced4da] dark:border-[#373b3e]">
+                            <option value="">Load template…</option>
+                            {templates.filter((item) => item.template).map((item) => <option key={item.slug} value={item.slug}>{item.template?.name}</option>)}
+                          </select>
+                          <button type="button" onClick={() => setTemplateDraftOpen(true)} disabled={!cloudInit.trim()} className="px-2.5 py-1.5 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] disabled:opacity-40">Save as template</button>
+                        </div>
+                        <textarea
+                          value={cloudInit}
+                          onChange={(e) => setCloudInit(e.target.value)}
+                          rows={8}
+                          spellCheck={false}
+                          placeholder={'#cloud-config\npackages:\n  - nginx'}
+                          className="mt-2 w-full px-2.5 py-2 text-[11px] font-mono bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+                        />
+                      </>
                     )}
                   </Field>
                 </>
@@ -621,6 +652,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           }}
         />
       )}
+      {templateDraftOpen && <CloudInitTemplates client={client} servers={[]} initialDraft={{ userData: cloudInit }} onClose={() => setTemplateDraftOpen(false)} />}
     </div>,
     document.body
   )
