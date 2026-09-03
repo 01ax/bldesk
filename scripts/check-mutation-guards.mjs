@@ -21,6 +21,8 @@
  *     unconfirmed flows legitimately omit it.
  *  5. `useServers()` is called only from App.tsx; everything else takes
  *     `servers` as a prop.
+ *  6. An id from recordChange() must reach updateChange() or track() and must
+ *     not be `void`ed — otherwise the entry never leaves "Submitted".
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -112,6 +114,26 @@ for (const file of walk(SRC)) {
       }
     })
   }
+
+  // 6. A recorded change must be resolved: the id from recordChange() has to
+  //    reach updateChange() or track() somewhere below, and must not be thrown
+  //    away with `void`. Otherwise History shows "Submitted" forever (#23).
+  codeOnly.forEach((l, i) => {
+    const m = /(?:const|let)\s+(\w+)\s*=\s*await\s+recordChange\s*\(/.exec(l)
+    if (!m) return
+    const id = m[1]
+    const rest = codeOnly.slice(i + 1, i + 160).join('\n')
+    if (new RegExp(`\\bvoid\\s+${id}\\b`).test(rest)) {
+      failures.push(`${rel}:${i + 1}: the change id \`${id}\` is discarded with \`void\` — resolve it with updateChange(${id}, { outcome }) or pass it to track() so History gets the outcome.`)
+      return
+    }
+    // Passed into any call downstream counts — updateChange, track, or a local
+    // helper that resolves it (e.g. finishFirewall). Never used at all fails.
+    const resolved = new RegExp(`\\w+\\([^)]*\\b${id}\\b`).test(rest)
+    if (!resolved) {
+      failures.push(`${rel}:${i + 1}: \`${id}\` from recordChange() is never passed anywhere — the History entry will sit at "Submitted" forever. Resolve it with updateChange()/track() on success and on failure.`)
+    }
+  })
 
   // 5. Only App.tsx may call useServers(): a second observer on the same cache
   //    key replaces the shared query's function (AGENTS.md rule 8).
