@@ -264,7 +264,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
   // --- render
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2"><LayoutTemplate className="w-5 h-5 text-[#017cb6]" />Templates</h2>
