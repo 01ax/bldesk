@@ -36,7 +36,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
-import { ReachabilityBadge } from './ReachabilityBadge'
+import { useReachability, ReachabilityChip, ReachabilityNotice } from './ReachabilityBadge'
 import { ChangePlanPanel } from './ChangePlanPanel'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
@@ -184,6 +184,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const primaryV6 = server.networks?.v6?.[0]?.ip_address
   const isRunning = server.status === 'active'
   const state = describeStatus(server.status)
+  const reach = useReachability(primaryV4, 22, client, server.id)
   const distroIcon = logoForDistribution(server.image?.distribution)
   const ramGB = (server.memory / 1024).toFixed(0)
 
@@ -382,6 +383,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
           {/* Quick Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Leads the cluster: the buttons beside it are only worth
+                clicking if the port answers from here. */}
+            <ReachabilityChip r={reach} ip={primaryV4} />
             {/* SSH Key Selector */}
             <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] px-2 py-1 border border-[#ced4da] dark:border-[#373b3e] rounded">
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
@@ -459,17 +463,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             )}
           </div>
 
-          {/* Its own line: the message needs room to wrap without squeezing the
-              buttons, and keeping it out of that row stops them reflowing. */}
-          <div className="mt-2">
-            <ReachabilityBadge
-              ip={primaryV4}
-              port={22}
-              client={client}
-              serverId={server.id}
-              onOpenFirewall={() => onSelectSubTab?.('firewall')}
-            />
-          </div>
+          <ReachabilityNotice r={reach} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
         </div>
       </div>
 
