@@ -11,27 +11,10 @@ import { ChangeLogStore } from './changelog'
 import { TemplateStore } from './templates'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
-/**
- * Ubuntu 23.10+ (AppArmor `kernel.apparmor_restrict_unprivileged_userns=1`)
- * stops Chromium using user namespaces for its sandbox, so it falls back to
- * the setuid helper — which can never be root-owned 4755 inside an AppImage's
- * FUSE mount, and the app aborts before our code runs. The .deb is fine: its
- * post-install script sets the helper up. So only for the AppImage, and only
- * where the kernel actually has the restriction on, run without the Chromium
- * sandbox. Must happen before app is ready.
- */
-if (process.platform === 'linux' && process.env['APPIMAGE']) {
-  let restricted = false
-  try {
-    restricted = readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8').trim() === '1'
-  } catch {
-    // knob absent → older kernel / no AppArmor restriction → sandbox works
-  }
-  if (restricted) {
-    app.commandLine.appendSwitch('no-sandbox')
-    console.warn('[Main] AppImage on a kernel with apparmor_restrict_unprivileged_userns=1: running with --no-sandbox. Install the .deb to keep the Chromium sandbox.')
-  }
-}
+// Linux sandbox note: Chromium decides how to sandbox before this file runs,
+// so `--no-sandbox` cannot be added from here. The AppImage launcher
+// (scripts/after-pack.cjs) adds it on kernels that leave no alternative; the
+// .deb installs an AppArmor profile instead (linux/after-install.sh).
 
 let mainWindow: BrowserWindow | null = null
 /** Set on before-quit so a window close from Quit is not turned into a hide. */
