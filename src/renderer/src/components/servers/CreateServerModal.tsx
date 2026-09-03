@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../ui/Modal'
+import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
 import { recordChange, updateChange } from '../../lib/changelog'
-import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
+import { X, Loader2, AlertTriangle, Check, ChevronDown, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { components } from '@shared/api/schema'
 import {
@@ -17,6 +18,7 @@ import { logoForDistribution } from '../../lib/distroHelper'
 import { listServerTemplates, imageSupportsUserData, TEMPLATES_EVENT, TEMPLATE_KIND, type ServerTemplate, type CreateServerPrefill } from '../../lib/serverTemplates'
 import {
   planMonthlyPrice,
+  configuredCost,
   planUnavailableReason,
   isCapacityBlock,
   memoryChoices,
@@ -39,8 +41,6 @@ import {
  *   lib/serverPricing.ts — omitting it understates Windows by about half.
  */
 
-const TOS_URL = 'https://www.binarylane.com.au/terms-of-service'
-const REFUND_URL = 'https://www.binarylane.com.au/refund-policy'
 
 /** Web-panel ordering, so the tiles don't reshuffle as the API's order changes. */
 const DISTRO_ORDER = ['Ubuntu', 'Debian', 'cPanel+WHM', 'Windows', 'BYO', 'AlmaLinux', 'KDE', 'Rocky']
@@ -277,13 +277,17 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   const monthly = useMemo(() => {
     if (!selectedSize) return 0
-    let total = planMonthlyPrice(selectedSize, image, memory, disk)
-    const o = selectedSize.options || {}
-    total += Math.max(0, ipCount - 1) * (o.ipv4_addresses_cost_per_address || 0)
-    const backupCount = dailyBackups + weeklyBackups + monthlyBackups
-    total += backupCount * disk * (o.backups_cost_per_backup_per_gigabyte || 0)
-    if (offsiteBackups) total += backupCount * disk * (o.offsite_backups_cost_per_gigabyte || 0)
-    return total
+    return configuredCost({
+      size: selectedSize,
+      image,
+      memoryMb: memory,
+      diskGb: disk,
+      ipCount,
+      dailyBackups,
+      weeklyBackups,
+      monthlyBackups,
+      offsiteBackups
+    }).total
   }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
 
   const { total: monthlyIncGst, gst } = billingTotal(monthly)
@@ -838,17 +842,6 @@ const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode 
     <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd]">{label}</div>
     {children}
   </div>
-)
-
-const LinkOut: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
-  <button
-    type="button"
-    onClick={() => window.bldeskApi?.openExternal?.(href)}
-    className="text-[#017cb6] dark:text-[#4db2e0] hover:underline inline-flex items-center gap-0.5"
-  >
-    {children}
-    <ExternalLink className="w-2.5 h-2.5" />
-  </button>
 )
 
 const AddSshKeyDialog: React.FC<{
