@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.46] - 2026-09-03
+
+### Changed
+- **One confirm dialog, everywhere.** Cancel Server and Remove DNS Hosting no longer have their own dialogs: both use the shared confirm, which gained a **reason picker** (select + detail, forwarded to BinaryLane and recorded) and an **in-dialog side action** ("Copy the zone file first"). Both are `irreversible`, so the target's name must be typed, and both now land in History with their outcome — Cancel Server previously left no entry at all.
+- **Change Plan shows a before → after table** (plan, memory, storage, monthly cost ex-GST on both sides) instead of a sentence, and says the server restarts.
+- **Guard rails for contributors and agents.** `npm run typecheck` now also runs `scripts/check-mutation-guards.mjs`, which fails CI on a native `confirm()`, a new bespoke confirmation dialog, or any API mutation call whose handler neither confirms nor records to History (per call, not per file; a genuine non-change carries `// history: n/a — reason`). The rules and the fixes are written up in `AGENTS.md` under "Mutations, confirmation and History".
+- **Every create and attach now lands in History too.** The guard found ten silent mutations: take snapshot, add DNS record, add / import SSH key, create load balancer, add a backend, create VPC, attach a server to a VPC, attach / detach a backup drive. Each is recorded before it is submitted and settles to completed or failed.
+
+---
+
 ## [1.0.45] - 2026-09-03
 
 ### Added

@@ -28,7 +28,8 @@ This guide documents essential commands, build instructions, and release protoco
 
 ### 1. Verification (Always run before committing)
 ```bash
-# Typecheck both Node (main/preload) and Web (renderer) TypeScript projects:
+# Typecheck both Node (main/preload) and Web (renderer) TypeScript projects,
+# then run the mutation-guard check (see "Mutations, confirmation and History"):
 npm run typecheck
 
 # Full bundle build:
@@ -61,6 +62,47 @@ npm run build:linux
 # Sync web assets to Android Capacitor:
 npm run cap:sync
 ```
+
+---
+
+## 🛡️ Mutations, confirmation and History (read before adding any action)
+
+Every change to a BinaryLane resource goes through **one** confirm dialog and
+lands in the **History** tab. This is enforced by `scripts/check-mutation-guards.mjs`,
+which runs inside `npm run typecheck` and fails CI. The rules, and what to do
+instead:
+
+1. **Never call `window.confirm()` / `confirm()` / `alert()` as a guard.** Use
+   `const c = await useConfirm()({...})` from `src/renderer/src/context/ConfirmContext.tsx`.
+2. **Never create a new dialog component for a confirmation.** If the shared
+   dialog lacks something, extend `ConfirmRequest` — it already has `summary`,
+   `notes`, a `changes` before → after table, a line `diff`, `typeToConfirm`,
+   a `reason` picker (select + detail), and `extraAction` (a side button such
+   as "Copy the zone file first"). Cancel Server and Remove DNS Hosting both
+   use it; they are the pattern for anything irreversible.
+3. **Pick the severity honestly.** `normal` (blue), `destructive` (red button:
+   power off, migrations, deletes that can be redone), `irreversible` (red +
+   the user must type the target's name: rebuild, restore, delete disk / VPC /
+   load balancer, cancel server, remove zone, disable firewall).
+4. **Show what will change.** A `changes` table for field edits (rename, resize,
+   plan, region, partner), a `diff` for whole-list writes (firewall rules —
+   `diffLines(before.map(describeFirewallRule), after.map(...))`). Fetch the
+   current state first if you don't have it; a diff of `[]` → new is a lie.
+5. **Close the loop in History.** `confirm()` records the entry and returns
+   `changeId`. Pass it to `track(action, label, name, changeId)` for anything
+   that returns an action, or call `updateChange(changeId, { outcome, detail })`
+   yourself for immediate DELETE/PUT results and for failures.
+6. **Diagnostics (ping, uptime, is_running) do not confirm.** They change
+   nothing. Don't add a dialog to them.
+7. **Local-only changes** (tags, groups, profiles) confirm with `log: false`
+   when destructive and don't write History — History is for BinaryLane.
+8. **Don't add another `useServers()`.** Only `App.tsx` calls it; tabs receive
+   `servers` as a prop. A second observer on the same key replaces the shared
+   query's function, and one with a null client blanked every view.
+
+The check reports the file and line and the fix. A genuine exception (a file
+that must mutate without the dialog) is added to `MUTATION_EXCEPTIONS` in the
+script **with a reason** — not by working around the check.
 
 ---
 

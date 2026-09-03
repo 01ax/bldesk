@@ -95,6 +95,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       replacementStrategy = 'oldest'
     }
 
+    const changeId = await recordChange({
+      label: 'Take Backup',
+      target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+      severity: 'normal',
+      summary: snapshotLabel.trim() ? `Label "${snapshotLabel.trim()}"` : undefined,
+      source: 'ui'
+    })
     try {
       const queued = await takeBackupMutation.mutateAsync({
         label: snapshotLabel.trim() || undefined,
@@ -105,13 +112,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       // A backup of a 40 GB disk runs for minutes and reports rich progress
       // while it does. Tracking it means the user learns whether it landed,
       // instead of only that it started.
-      const changeId = await recordChange({
-        label: 'Take Backup',
-        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
-        severity: 'normal',
-        summary: snapshotLabel.trim() ? `Label "${snapshotLabel.trim()}"` : undefined,
-        source: 'ui'
-      })
       if (queued) track(queued, 'Take Backup', activeServer?.name, changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Snapshot Initiated',
@@ -121,6 +121,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       setSnapshotLabel('')
       setSelectedSlot('temporary')
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Snapshot failed: ${err.message}`)
     }
   }
@@ -163,8 +164,15 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
     setActionProcessingId(imageId)
     try {
+      const changeId = await recordChange({
+        label: `Attach "${name}"`,
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        severity: 'normal',
+        summary: 'Mount the image as a read-only secondary drive.',
+        source: 'ui'
+      })
       const queued = await attachBackupMutation.mutateAsync(imageId)
-      if (queued) track(queued, `Attach "${name}"`, activeServer?.name)
+      if (queued) track(queued, `Attach "${name}"`, activeServer?.name, changeId)
       // Was "Backup Attached" / "mounted as secondary drive" at queue time,
       // which is a claim about something that had not happened yet. The toast
       // reports the mount when BinaryLane actually confirms it.
@@ -184,6 +192,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
     setActionProcessingId(imageId)
     try {
+      // history: n/a — generates a download link; nothing on BinaryLane changes
       const link = await downloadMutation.mutateAsync(imageId)
       const downloadUrl = link?.disks?.[0]?.compressed_url || link?.disks?.[0]?.raw_url
       if (!downloadUrl) {
@@ -201,8 +210,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const handleDetach = async () => {
     if (!activeServerId) return
     try {
+      const changeId = await recordChange({
+        label: 'Detach Secondary Drive',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        severity: 'normal',
+        source: 'ui'
+      })
       const queued = await detachBackupMutation.mutateAsync()
-      if (queued) track(queued, 'Detach Secondary Drive', activeServer?.name)
+      if (queued) track(queued, 'Detach Secondary Drive', activeServer?.name, changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Detach Requested',
         body: `Unmounting the secondary backup drive.`
