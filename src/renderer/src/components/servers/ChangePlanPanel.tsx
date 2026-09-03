@@ -26,7 +26,13 @@ export const ChangePlanPanel: React.FC<{
   client: BinaryLaneClient | null
   server: Server
   busy?: boolean
-  onApply: (payload: Record<string, unknown>, summary: string, changes: Array<{ label: string; from?: string; to?: string }>) => void
+  onApply: (
+    payload: Record<string, unknown>,
+    summary: string,
+    changes: Array<{ label: string; from?: string; to?: string }>,
+    /** Extra confirm settings for the dangerous shapes of a resize (releasing addresses). */
+    confirm?: { severity?: 'normal' | 'destructive' | 'irreversible'; notes?: string[]; typeToConfirm?: string }
+  ) => void
 }> = ({ client, server, busy, onApply }) => {
   const sizesQuery = useSizes(client)
   const imagesQuery = useImages(client)
@@ -453,7 +459,20 @@ export const ChangePlanPanel: React.FC<{
                 { label: 'Monthly backups', from: String((current as any).monthly_backups ?? 0), to: String(monthlyBackups) },
                 { label: 'Offsite backups', from: (current as any).offsite_backups ? 'on' : 'off', to: offsiteBackups ? 'on' : 'off' },
                 ...(server.size ? [{ label: 'Monthly (ex-GST)', from: `$${planMonthlyPrice(server.size, image, server.memory ?? 0, server.disk ?? 0).toFixed(2)}`, to: `$${monthly.toFixed(2)}` }] : [])
-              ].filter((c) => c.from !== c.to)
+              ].filter((c) => c.from !== c.to),
+              // Giving an address back is not undoable: it returns to the pool
+              // and may be reassigned to another customer, and anything that
+              // pointed at it (DNS, allow-lists) breaks. So a resize that
+              // releases addresses is confirmed like a rebuild — type the name.
+              ipsToRemove.length
+                ? {
+                    severity: 'irreversible',
+                    typeToConfirm: server.name,
+                    notes: [
+                      `Releasing ${ipsToRemove.join(', ')}. Released addresses go back to the pool and may be assigned to someone else; update DNS and any allow-lists first.`
+                    ]
+                  }
+                : undefined
             )
           }
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] text-white disabled:opacity-40 disabled:cursor-not-allowed"
