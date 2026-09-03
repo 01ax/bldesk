@@ -85,29 +85,72 @@ describe('configuredCost', () => {
     expect(c.backups).toBe(0)
   })
 
-  it('adds the rate of the highest enabled frequency, not the largest enabled rate', () => {
-    // Rates deliberately not ordered by frequency, so "largest rate" and
-    // "highest frequency" disagree and the test can tell them apart.
+  it('picks the offsite frequency rate by priority, not by which rate is largest', () => {
+    // The case that tells the two rules apart: daily is enabled but publishes a
+    // LOWER rate than weekly. The panel takes daily because it comes first;
+    // Math.max would take weekly. Every offered size publishes 0.0 for all
+    // three today, so only a test can hold this down.
     const s = size({
       options: {
         ...size().options,
         offsite_backup_frequency_cost: {
-          daily_per_gigabyte: 0.02,
+          daily_per_gigabyte: 0.01,
           weekly_per_gigabyte: 0.05,
-          monthly_per_gigabyte: 0.1
+          monthly_per_gigabyte: 0.0
         }
       }
     })
-    // Weekly and monthly on: weekly is the higher frequency, so its 0.05 applies
-    // even though monthly's 0.1 is larger. 3 backups x 60 x 0.05 = 9, plus 0.05 x 60 = 3.
-    const wm = configuredCost({ size: s, ...base, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
-    expect(wm.offsite).toBeCloseTo(9 + 3, 5)
-    // Daily on as well: daily wins outright. 4 x 60 x 0.05 = 12, plus 0.02 x 60 = 1.2.
-    const dwm = configuredCost({ size: s, ...base, dailyBackups: 1, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
-    expect(dwm.offsite).toBeCloseTo(12 + 1.2, 5)
-    // Only monthly: its own rate, however large. 1 x 60 x 0.05 = 3, plus 0.1 x 60 = 6.
-    const m = configuredCost({ size: s, ...base, monthlyBackups: 1, offsiteBackups: true })
-    expect(m.offsite).toBeCloseTo(3 + 6, 5)
+    // 3 backups x 60 x 0.05 = 9, plus the DAILY rate 0.01 x 60 = 0.6
+    const c = configuredCost({ size: s, ...base, dailyBackups: 1, weeklyBackups: 2, offsiteBackups: true })
+    expect(c.offsite).toBeCloseTo(9 + 0.6, 5)
+  })
+
+  it('falls to weekly, then monthly, when the higher frequencies are off', () => {
+    const s = size({
+      options: {
+        ...size().options,
+        offsite_backup_frequency_cost: {
+          daily_per_gigabyte: 0.1,
+          weekly_per_gigabyte: 0.02,
+          monthly_per_gigabyte: 0.01
+        }
+      }
+    })
+    // Daily off, weekly on -> the weekly rate, never the larger daily one.
+    expect(
+      configuredCost({ size: s, ...base, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true }).offsite
+    ).toBeCloseTo(3 * 60 * 0.05 + 0.02 * 60, 5)
+    // Daily and weekly off -> monthly.
+    expect(configuredCost({ size: s, ...base, monthlyBackups: 1, offsiteBackups: true }).offsite).toBeCloseTo(
+      1 * 60 * 0.05 + 0.01 * 60,
+      5
+    )
+  })
+
+  it('does not deduct plan inclusions from the offsite storage term, unlike on-site', () => {
+    // The panel's `numberOfBackups` sums the raw selected counts. On-site
+    // subtracts inclusions; offsite does not. Deliberately asymmetric.
+    const s = size({ options: { ...size().options, daily_backups: 2 } })
+    const c = configuredCost({ size: s, ...base, dailyBackups: 3, offsiteBackups: true })
+    expect(c.backups).toBeCloseTo(1 * 60 * 0.05, 5) // 3 - 2 included
+    expect(c.offsite).toBeCloseTo(3 * 60 * 0.05, 5) // all 3
+  })
+
+  it('adds the enabled offsite frequency rate on top of the per-GB storage', () => {
+    const s = size({
+      options: {
+        ...size().options,
+        offsite_backup_frequency_cost: {
+          daily_per_gigabyte: 0.1,
+          weekly_per_gigabyte: 0.02,
+          monthly_per_gigabyte: 0.01
+        }
+      }
+    })
+    // Only weekly and monthly are on, so the daily rate must not apply:
+    // 3 backups x 60 x 0.05 = 9, plus max(0.02, 0.01) x 60 = 1.2
+    const c = configuredCost({ size: s, ...base, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
+    expect(c.offsite).toBeCloseTo(9 + 1.2, 5)
   })
 
   it('charges no offsite when offsite is off, however the rates are set', () => {
