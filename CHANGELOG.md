@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Two sets of window chrome.** The app drew its own minimise / maximise / close buttons in its title bar *and* sat inside the OS title bar, so every window had two. Now, like Chrome: on Windows and Linux the OS frame is gone and the app's bar is the title bar (drag to move, double-click to maximise, edges still resize); on macOS the native traffic lights are kept, overlaid at the left of the app's bar, and the app's own controls are hidden. The maximise icon also now tracks the real window state whatever changed it.
+
+---
+
 ## [1.0.51] - 2026-09-03
 
 ### Fixed

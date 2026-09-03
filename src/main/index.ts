@@ -125,7 +125,14 @@ function createWindow(): void {
     show: false,
     title: 'BLDesk - BinaryLane Desktop',
     icon: appIcon,
-    frame: true, // Native window frame for guaranteed desktop rendering
+    // One set of window chrome, not two. The app draws its own title bar with
+    // window controls, so on Windows and Linux the OS frame is dropped (like
+    // Chrome); on macOS the native traffic lights are kept and overlaid on the
+    // app bar, and the app hides its own controls there. Resizing still works
+    // on a frameless window; the bar is the drag region (see TitleBar.tsx).
+    ...(process.platform === 'darwin'
+      ? { frame: true, titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 14 } }
+      : { frame: false }),
     backgroundColor: '#212529', // PanelSite dark
     autoHideMenuBar: true,
     webPreferences: {
@@ -175,6 +182,12 @@ function createWindow(): void {
   mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
     console.error(`[Main] Page failed to load (${errorCode}): ${errorDescription} at ${validatedURL}`)
   })
+
+  // Keep the renderer's maximise/restore icon honest whatever caused the change
+  // (double-click on the bar, OS shortcut, our own button).
+  const pushMaximized = () => mainWindow?.webContents.send('window:maximized', mainWindow.isMaximized())
+  mainWindow.on('maximize', pushMaximized)
+  mainWindow.on('unmaximize', pushMaximized)
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)

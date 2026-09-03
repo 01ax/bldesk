@@ -274,6 +274,7 @@ export async function initMobileBridge(): Promise<void> {
       notifyActions: true,
       notifyBalance: true
     }),
+    platform: (window as any).Capacitor?.isNativePlatform?.() ? 'android' : 'web',
     minimizeWindow: async () => {},
     maximizeWindow: async () => {},
     closeWindow: async () => {},
