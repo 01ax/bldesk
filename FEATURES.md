@@ -138,12 +138,13 @@ tag add prod wp-*
 
 ## 9. Metrics with memory
 
-**Today:** `useServerMetrics` polls `/v2/samplesets/{id}/latest` every 5 s; gauges show the current sample only.
+**Status: done.** All three parts are covered, two of them by BinaryLane itself:
 
-**Proposed:**
-- Keep a local ring buffer (SQLite via `better-sqlite3`, or a compact JSON log) so the client shows 24 h / 7 d history the API doesn't retain.
-- Fleet heatmap tab: CPU / RAM / disk / network across all servers as a grid, hot cells glowing.
-- Simple local alert thresholds ("notify me if CPU > 90 % for 10 min") delivered via the tray (#3).
+- **Fleet heatmap** — `lib/heatmap.ts` turns live sample sets into capacity ratios (CPU against 100 × vCPUs: `cpu_usage_percent` is the sum across cores, measured at 399% on a pinned 4-vCPU server), fleet-relative rate intensity, and explicit stale, unavailable and inactive states; `api/queries.ts` fetches once per 5-minute sample period, timed to land just after BinaryLane publishes (about 90 s after the period ends), four requests at a time; `components/heatmap/FleetHeatmap.tsx` renders the sortable grid and opens a row's Usage tab.
+- **History** — the API already retains sample sets at day resolution for at least a year, and the Usage tab reads day, week, month and year windows from it. A local ring buffer was proposed on the assumption the API discarded history; it does not, so none is kept client-side.
+- **Alerts** — BinaryLane's own threshold alerts are exposed per server. They are evaluated server-side and fire whether or not BLDesk is running, which local tray rules could not match.
+
+**Not yet:** per-cell sparklines in the heatmap.
 
 **Why it matters:** spot a runaway box across the fleet at a glance.
 

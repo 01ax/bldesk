@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BinaryLaneClient } from './client'
 import { components } from '@shared/api/schema'
+import type { FleetMetricResult } from '../lib/heatmap'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -330,6 +331,77 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
     },
     enabled: !!client && serverIds.length > 0,
     staleTime: 60_000
+  })
+}
+
+/** BinaryLane publishes one sample set per 5-minute period; polling faster returns the same sample. */
+export const SAMPLE_PERIOD_MS = 5 * 60 * 1000
+/**
+ * How long after a period ends its sample set appears on /latest. Measured
+ * 2026-09-03 on a 4-vCPU server: the 07:20–07:25 sample was absent at
+ * 07:26:27 and present at 07:26:41, so publish lag is roughly 80–100 s.
+ * Two minutes keeps the first fetch after the lag rather than before it.
+ */
+const SAMPLE_PUBLISH_SLACK_MS = 120_000
+
+/**
+ * When the next sample set can exist: 5 minutes after the newest period end we
+ * have seen, plus a little slack for it to be published. Falls back to a plain
+ * 5-minute interval when nothing has been fetched yet, and never sooner than
+ * 30 s so a clock skew cannot turn this into a tight loop.
+ */
+function nextSampleDelay(samples: Map<number, FleetMetricResult> | undefined, now = Date.now()): number {
+  let newest = 0
+  for (const result of samples?.values() ?? []) {
+    const end = result.sample ? Date.parse(result.sample.period.end) : NaN
+    if (Number.isFinite(end) && end > newest) newest = end
+  }
+  if (!newest) return SAMPLE_PERIOD_MS
+  const due = newest + SAMPLE_PERIOD_MS + SAMPLE_PUBLISH_SLACK_MS - now
+  return Math.min(SAMPLE_PERIOD_MS, Math.max(30_000, due))
+}
+
+/** Latest metrics for the active fleet, four requests at a time, once per sample period. */
+function combineAbortSignals(querySignal: AbortSignal, timeoutSignal: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([querySignal, timeoutSignal])
+  const controller = new AbortController()
+  const forward = (source: AbortSignal) => {
+    if (!controller.signal.aborted) controller.abort(source.reason)
+  }
+  for (const source of [querySignal, timeoutSignal]) {
+    if (source.aborted) forward(source)
+    else source.addEventListener('abort', () => forward(source), { once: true })
+  }
+  return controller.signal
+}
+
+export function useFleetMetrics(client: BinaryLaneClient | null, serverIds: number[]) {
+  const key = serverIds.join(',')
+  return useQuery({
+    queryKey: ['fleet-metrics', key],
+    queryFn: async ({ signal }) => {
+      const map = new Map<number, FleetMetricResult>()
+      if (!client) return map
+      const results = await mapLimitNullable(serverIds, 4, async (id) => {
+        try {
+          const timeout = AbortSignal.timeout(20_000)
+          const requestSignal = combineAbortSignals(signal, timeout)
+          const { data, error } = await client.GET('/v2/samplesets/{server_id}/latest', {
+            params: { path: { server_id: id } },
+            signal: requestSignal
+          })
+          if (error) return { sample: null, error: describeApiError(error) }
+          return { sample: data?.sample_set ?? null, error: null }
+        } catch (error) {
+          return { sample: null, error: error instanceof Error ? error.message : 'Metrics request failed.' }
+        }
+      })
+      serverIds.forEach((id, index) => map.set(id, results[index] ?? { sample: null, error: 'Metrics request failed.' }))
+      return map
+    },
+    enabled: !!client && serverIds.length > 0,
+    refetchInterval: (query) => nextSampleDelay(query.state.data),
+    placeholderData: keepPreviousData
   })
 }
 
