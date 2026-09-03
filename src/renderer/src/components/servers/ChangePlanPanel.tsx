@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowRightLeft, Info } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useSizes, useDistributionImages, useOsSoftware, useServerSoftware } from '../../api/queries'
-import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
+import { LinkOut, TOS_URL, REFUND_URL, MPANEL_URL } from '../ui/LinkOut'
+import { availableBackupSlots, BACKUP_SLOT_LABELS, type BackupSlot } from '../../lib/backupSlots'
 import {
   planUnavailableReason,
   isCapacityBlock,
@@ -34,7 +35,8 @@ type Server = components['schemas']['Server']
 /** What happens to an existing backup when the pre-action backup is taken. */
 type PreBackup = 'off' | 'none' | 'oldest' | 'newest'
 
-const MPANEL_URL = 'https://home.binarylane.com.au'
+/** A stable empty list, so "no data yet" does not invalidate every memo each render. */
+const EMPTY: any[] = []
 
 /**
  * Change the server's plan - the `resize` action.
@@ -69,8 +71,8 @@ export const ChangePlanPanel: React.FC<{
    * The reinstall picker asks the API for distributions rather than filtering
    * `useImages`, because `type` is only ever custom/snapshot/backup - a
    * distribution image leaves it null, so filtering on `type === 'distribution'`
-   * matches nothing. `useImages` stays for looking up the server's *current*
-   * image, which may itself be a snapshot or a backup.
+   * matches nothing. The server's *current* image comes off the server itself
+   * (see `currentImage` below).
    */
   const distroQuery = useDistributionImages(client)
 
@@ -87,7 +89,7 @@ export const ChangePlanPanel: React.FC<{
    */
   const currentImage = (server.image ?? undefined) as any
 
-  const allSizes = sizesQuery.data ?? []
+  const allSizes = sizesQuery.data ?? EMPTY
   const typeSlugs = useMemo(
     () => Array.from(new Set(allSizes.map((s) => s.size_type?.slug).filter(Boolean))) as string[],
     [allSizes]
@@ -109,14 +111,14 @@ export const ChangePlanPanel: React.FC<{
    * Prefilled from `selected_size_options`, which is the server's current
    * selection rather than the plan's defaults.
    */
-  const current = (server.selected_size_options ?? {}) as Record<string, any>
+  const current = useMemo(() => (server.selected_size_options ?? {}) as Record<string, any>, [server.selected_size_options])
   const publicIps = useMemo(
     () => (server.networks?.v4 ?? []).filter((n) => n.type === 'public').map((n) => n.ip_address as string),
     [server.networks?.v4]
   )
-  const currentIpCount = (current.ipv4_addresses as number) ?? publicIps.length ?? 1
+  const currentIpCount = (current.ipv4_addresses as number) ?? publicIps.length
 
-  const [ipCount, setIpCount] = useState<number>(currentIpCount || 1)
+  const [ipCount, setIpCount] = useState<number>(currentIpCount)
   const [ipsToRemove, setIpsToRemove] = useState<string[]>([])
   const [dailyBackups, setDailyBackups] = useState<number>((current.daily_backups as number) ?? 0)
   const [weeklyBackups, setWeeklyBackups] = useState<number>((current.weekly_backups as number) ?? 0)
@@ -125,7 +127,7 @@ export const ChangePlanPanel: React.FC<{
   const [keepImage, setKeepImage] = useState(true)
   const [newImageSlug, setNewImageSlug] = useState<string>('')
   const [preBackup, setPreBackup] = useState<PreBackup>('off')
-  const [preBackupSlot, setPreBackupSlot] = useState<'temporary' | 'daily' | 'weekly' | 'monthly'>('temporary')
+  const [preBackupSlot, setPreBackupSlot] = useState<BackupSlot>('temporary')
   const [agreed, setAgreed] = useState(false)
 
   /*
@@ -133,7 +135,7 @@ export const ChangePlanPanel: React.FC<{
    * pending choice rather than what the server runs today.
    */
   const pickedImage = useMemo(
-    () => (keepImage ? undefined : ((distroQuery.data ?? []) as any[]).find((i) => i.slug === newImageSlug)),
+    () => (keepImage ? undefined : ((distroQuery.data ?? EMPTY) as any[]).find((i) => i.slug === newImageSlug)),
     [keepImage, newImageSlug, distroQuery.data]
   )
   const effectiveImage = pickedImage ?? currentImage
@@ -141,25 +143,53 @@ export const ChangePlanPanel: React.FC<{
 
   const softwareQuery = useOsSoftware(client, osSlug)
   const serverSoftwareQuery = useServerSoftware(client, server.id)
-  const onOffer = (softwareQuery.data ?? []) as any[]
-  const licensed = (serverSoftwareQuery.data ?? []) as any[]
+  const onOffer = (softwareQuery.data ?? EMPTY) as any[]
+  const licensed = (serverSoftwareQuery.data ?? EMPTY) as any[]
+
+  /*
+   * Licences can only be reasoned about once both lists have actually arrived.
+   * `change_licenses` removes any licence it does not list, so a payload built
+   * while either query is still loading - or after one failed - would read as
+   * "drop everything". Until then the controls are disabled and no licence
+   * change is sent. A catalogue with no OS to ask about (custom image) counts
+   * as loaded: there is nothing to fetch.
+   */
+  const catalogueReady = !osSlug || softwareQuery.status === 'success'
+  const heldReady = serverSoftwareQuery.status === 'success'
+  const licencesReady = catalogueReady && heldReady
+  const licenceError = softwareQuery.error ?? serverSoftwareQuery.error
 
   /*
    * What the OS sells today plus what the server already holds. The second half
    * is not cosmetic: `change_licenses` removes any licence it does not list, and
    * the catalogue omits disabled products, so building the payload from the
    * catalogue alone would strip a Windows server's Remote Desktop SAL the first
-   * time anyone changed its memory. Held licences that the *new* image cannot
-   * carry are excluded, because switching image really does drop them.
+   * time anyone changed its memory. On a reinstall, held licences the *new*
+   * image says it cannot carry are excluded, because switching image really
+   * does drop them - but one that is silent about its supported images is kept,
+   * so the API rejects the request rather than this form quietly dropping it.
    */
   const offered = useMemo(
-    () => (keepImage ? offerableSoftware(onOffer, licensed) : onOffer),
-    [onOffer, licensed, keepImage]
+    () => offerableSoftware(onOffer, licensed, keepImage ? null : newImageSlug),
+    [onOffer, licensed, keepImage, newImageSlug]
   )
 
   const { groups, addons } = useMemo(() => splitSoftware(offered), [offered])
   const licenceBaseline = useMemo(() => currentSelection(licensed), [licensed])
   const [licenceEdit, setLicenceEdit] = useState<LicenceSelection | null>(null)
+
+  /*
+   * The panel stays mounted across a resize, and the held licences refetch once
+   * it completes. An edit made against the old baseline would otherwise keep
+   * reporting a change that has already happened - and resend it with the next
+   * unrelated resize. So when what the server holds changes, the edit is
+   * discarded and the controls fall back to showing the new baseline.
+   */
+  const previousBaseline = useRef(licenceBaseline)
+  useEffect(() => {
+    if (!selectionsEqual(previousBaseline.current, licenceBaseline)) setLicenceEdit(null)
+    previousBaseline.current = licenceBaseline
+  }, [licenceBaseline])
 
   /*
    * Untouched, the controls show what the server holds; touched, they show the
@@ -178,34 +208,22 @@ export const ChangePlanPanel: React.FC<{
 
   const incompatible = licensed.filter((l) => l.incompatible)
   const licencesMonthly = licenceCost(offered as any, licences)
-  const licencesChanged = !selectionsEqual(licences, licenceBaseline)
+  const licencesChanged = licencesReady && !selectionsEqual(licences, licenceBaseline)
 
+  /*
+   * Which slots a pre-action backup can use: the server's *current* retention,
+   * not what this form is about to set, because the backup is taken before the
+   * new options apply. See `availableBackupSlots`.
+   */
+  const backupSlots = useMemo(() => availableBackupSlots(current), [current])
+
+  const ipOpts = selected?.options ?? server.size?.options
   /*
    * Reducing the address count requires naming which addresses go. Ticking more
    * than are being removed is how a *replacement* is requested: the API
    * re-provisions the extras with new addresses, which is the only way to move
    * off a blocklisted address without rebuilding somewhere else.
    */
-  /*
-   * Which slots a pre-action backup can use.
-   *
-   * The API rejects a slot the server has no retention for -
-   * "Validation of pre_action_backup.backup_type,
-   * pre_action_backup.replacement_strategy failed" - and it is the server's
-   * *current* retention that counts, not whatever this form is about to set:
-   * the backup is taken before the new options apply. Offering all four slots
-   * unconditionally therefore produced a 400 at submit time. Temporary is
-   * on-demand and always available.
-   */
-  const backupSlots = useMemo(() => {
-    const out: Array<'temporary' | 'daily' | 'weekly' | 'monthly'> = ['temporary']
-    if (((current.daily_backups as number) ?? 0) > 0) out.push('daily')
-    if (((current.weekly_backups as number) ?? 0) > 0) out.push('weekly')
-    if (((current.monthly_backups as number) ?? 0) > 0) out.push('monthly')
-    return out
-  }, [current.daily_backups, current.weekly_backups, current.monthly_backups])
-
-  const ipOpts = selected?.options ?? server.size?.options
   const mustRelease = Math.max(0, publicIps.length - ipCount)
   /*
    * The original address is tied to the server for the life of the lease and
@@ -221,10 +239,32 @@ export const ChangePlanPanel: React.FC<{
     setIpsToRemove((prev) => prev.filter((ip) => secondaryIps.includes(ip)))
   }, [publicIps])
 
-  // Offsite copies need something on-site to copy.
+  /*
+   * A tick made to satisfy a count reduction is about *releasing*. If the count
+   * is then put back, leaving the tick would silently turn it into a
+   * replacement - the address re-provisioned with a new one - which nobody
+   * asked for. So ticks are cleared when a release stops being required. Ticks
+   * made while no release was required are deliberate swaps and stay.
+   */
+  const previousMustRelease = useRef(mustRelease)
   useEffect(() => {
-    if (offsiteBackups && dailyBackups + weeklyBackups + monthlyBackups === 0) setOffsiteBackups(false)
-  }, [offsiteBackups, dailyBackups, weeklyBackups, monthlyBackups])
+    if (previousMustRelease.current > 0 && mustRelease === 0) setIpsToRemove([])
+    previousMustRelease.current = mustRelease
+  }, [mustRelease])
+
+  /*
+   * Offsite copies need something on-site to copy, so clearing the last
+   * retention slot clears offsite with it. Done from the setters rather than an
+   * effect on the values: an effect would also fire on mount against what the
+   * server already has, and a server holding `offsite_backups: true` with no
+   * retention would come up showing an "on -> off" change nobody made.
+   */
+  const setRetention =
+    (setter: (v: number) => void, others: () => number) =>
+    (value: number): void => {
+      setter(value)
+      if (value + others() === 0) setOffsiteBackups(false)
+    }
 
   useEffect(() => {
     if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
@@ -311,9 +351,15 @@ export const ChangePlanPanel: React.FC<{
    * One list, used for the summary on the page and for the confirm dialog. Built
    * once so the two cannot disagree - the table you approve is the table you
    * were shown.
+   *
+   * Computed on every render, not memoised: it reads the server (which refetches
+   * every few seconds and changes under the panel once a resize lands), the
+   * queries and a dozen pieces of state, and a stale copy is worse than the
+   * cost of rebuilding a few rows. A memo here once kept offering a reinstall
+   * onto the image the server was already running.
    */
-  const changes = useMemo(() => {
-    if (!selected) return [] as Array<{ label: string; from?: string; to?: string }>
+  const changes = ((): Array<{ label: string; from?: string; to?: string }> => {
+    if (!selected) return []
     const rows: Array<{ label: string; from?: string; to?: string }> = [
       { label: 'Plan', from: server.size_slug ?? undefined, to: selected.slug },
       { label: 'Memory', from: `${(server.memory ?? 0) / 1024} GB`, to: `${memory / 1024} GB` },
@@ -365,16 +411,18 @@ export const ChangePlanPanel: React.FC<{
 
     const changed = rows.filter((r) => r.from !== r.to)
 
-    // Released addresses, the pre-action backup and the cost are consequences of
-    // the rows above, so they only belong here once something else has changed.
+    // Swapping a secondary address for a new one is a change in its own right,
+    // and the only one the address list can ask for on its own.
+    if (ipsToRemove.length) {
+      changed.push({
+        label: mustRelease ? 'Releasing' : 'Replacing',
+        from: ipsToRemove.join(', '),
+        to: replacing ? `${replacing} replaced with new` : undefined
+      })
+    }
+    // The pre-action backup and the cost are consequences of the rows above, so
+    // they only belong here once something else has changed.
     if (changed.length) {
-      if (ipsToRemove.length) {
-        changed.push({
-          label: mustRelease ? 'Releasing' : 'Replacing',
-          from: ipsToRemove.join(', '),
-          to: replacing ? `${replacing} replaced with new` : undefined
-        })
-      }
       if (preBackup !== 'off') {
         changed.push({ label: 'Backup first', to: `${preBackupSlot} slot` })
       }
@@ -387,29 +435,11 @@ export const ChangePlanPanel: React.FC<{
       }
     }
     return changed
-  }, [
-    selected?.slug,
-    memory,
-    disk,
-    ipCount,
-    ipsToRemove,
-    dailyBackups,
-    weeklyBackups,
-    monthlyBackups,
-    offsiteBackups,
-    keepImage,
-    newImageSlug,
-    licences,
-    licenceBaseline,
-    groups,
-    addons,
-    preBackup,
-    preBackupSlot,
-    oldCost?.total,
-    newCost?.total
-  ])
+  })()
 
-  if (sizesQuery.isLoading || distroQuery.isLoading) {
+  // Distributions are only needed once "Continue using <OS>" is unticked, so
+  // they load behind the picker rather than holding up the whole panel.
+  if (sizesQuery.isLoading) {
     return <p className="text-xs text-[#6c757d] dark:text-slate-400">Loading plans...</p>
   }
 
@@ -441,11 +471,15 @@ export const ChangePlanPanel: React.FC<{
                   `Reinstalling onto ${pickedImage?.name || newImageSlug} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
                 ]
               : []),
-            ...(ipsToRemove.length
+            ...(mustRelease > 0
               ? [
                   `Releasing ${ipsToRemove.join(', ')}. Released addresses go back to the pool and may be assigned to someone else; update DNS and any allow-lists first.`
                 ]
-              : [])
+              : ipsToRemove.length
+                ? [
+                    `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
+                  ]
+                : [])
           ]
         }
       : undefined
@@ -534,6 +568,7 @@ export const ChangePlanPanel: React.FC<{
                 className={selectClass}
               >
                 <option value="">Choose an operating system...</option>
+                {distroQuery.isLoading && <option value="" disabled>Loading operating systems...</option>}
                 {imageChoices.map((d) => (
                   <optgroup key={d.distribution} label={d.distribution}>
                     {d.images.map((i) => (
@@ -707,6 +742,9 @@ export const ChangePlanPanel: React.FC<{
             {/* Falls back to the server's own size while no plan is selected:
                 reading only from `selected` showed "+$0.00" for an address that
                 costs money, which is the wrong way round to be wrong. */}
+            {/* A server with no public address today keeps that as a choice,
+                or the form would report "0 -> 1" before anything was touched. */}
+            {currentIpCount === 0 && <option value={0}>No IP address</option>}
             {Array.from({ length: (ipOpts?.ipv4_addresses_max ?? publicIps.length) || 1 }, (_, i) => {
               const extra = i * (ipOpts?.ipv4_addresses_cost_per_address ?? 0)
               return (
@@ -765,9 +803,9 @@ export const ChangePlanPanel: React.FC<{
           <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300">Backups</label>
           {(
             [
-              ['Daily', dailyBackups, setDailyBackups],
-              ['Weekly', weeklyBackups, setWeeklyBackups],
-              ['Monthly', monthlyBackups, setMonthlyBackups]
+              ['Daily', dailyBackups, setRetention(setDailyBackups, () => weeklyBackups + monthlyBackups)],
+              ['Weekly', weeklyBackups, setRetention(setWeeklyBackups, () => dailyBackups + monthlyBackups)],
+              ['Monthly', monthlyBackups, setRetention(setMonthlyBackups, () => dailyBackups + weeklyBackups)]
             ] as const
           ).map(([label, value, setter]) => (
             <div key={label} className="flex items-center gap-2">
@@ -805,8 +843,17 @@ export const ChangePlanPanel: React.FC<{
             Licensed software
           </label>
 
-          {softwareQuery.isLoading && (
+          {!licencesReady && !licenceError && (
             <p className="text-[11px] text-[#6c757d] dark:text-slate-400">Loading licences...</p>
+          )}
+          {licenceError && (
+            <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900 rounded p-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Could not load the server's licences ({licenceError.message}). They are left exactly as they are by this
+                change; reload to edit them.
+              </span>
+            </div>
           )}
 
           {groups.map((g) => {
@@ -823,7 +870,7 @@ export const ChangePlanPanel: React.FC<{
                 <select
                   value={shown}
                   onChange={(e) => setGroup(g, e.target.value ? Number(e.target.value) : null)}
-                  disabled={busy}
+                  disabled={busy || !licencesReady}
                   className={selectClass}
                 >
                   {/*
@@ -865,7 +912,7 @@ export const ChangePlanPanel: React.FC<{
                   <input
                     type="checkbox"
                     checked={on}
-                    disabled={busy}
+                    disabled={busy || !licencesReady}
                     onChange={(e) =>
                       setLicenceEdit(() => {
                         const next = { ...licences }
@@ -897,7 +944,7 @@ export const ChangePlanPanel: React.FC<{
                   <select
                     value={licences[a.id] ?? counts[0]}
                     onChange={(e) => setLicenceEdit(() => ({ ...licences, [a.id]: Number(e.target.value) }))}
-                    disabled={busy}
+                    disabled={busy || !licencesReady}
                     className={`ml-6 max-w-[14rem] ${selectClass}`}
                   >
                     {counts.map((n) => (
@@ -919,7 +966,7 @@ export const ChangePlanPanel: React.FC<{
             * change the count; one that does not cannot buy it here. Saying so
             * beats an empty space that reads as a missing feature.
             */}
-          {windowsish && offered.length === 0 && !softwareQuery.isLoading && (
+          {windowsish && offered.length === 0 && licencesReady && (
             <div className="flex items-start gap-2 text-[11px] text-[#6c757d] dark:text-[#adb5bd] bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-2.5">
               <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
               <span>
@@ -968,9 +1015,7 @@ export const ChangePlanPanel: React.FC<{
             >
               {backupSlots.map((slot) => (
                 <option key={slot} value={slot}>
-                  {slot === 'temporary'
-                    ? 'Temporary (kept up to 7 days)'
-                    : slot.charAt(0).toUpperCase() + slot.slice(1)}
+                  {BACKUP_SLOT_LABELS[slot]}
                 </option>
               ))}
             </select>
