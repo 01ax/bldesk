@@ -1,6 +1,6 @@
 import { parse, stringify } from 'yaml'
 import type { components } from '@shared/api/schema'
-import { MAX_TEMPLATE_BYTES, templateSlug } from '@shared/templates'
+import { MAX_TEMPLATE_BYTES, TEMPLATE_KIND, templateSlug } from '@shared/templates'
 import type { FwRule } from './firewallMatrix'
 
 type ServerResponse = components['schemas']['Server']
@@ -20,7 +20,7 @@ type ServerResponse = components['schemas']['Server']
  * exported from one account applies on another.
  */
 
-export const TEMPLATE_KIND = 'bldesk/server-template@1'
+export { TEMPLATE_KIND }
 
 export interface TemplateVariable {
   name: string

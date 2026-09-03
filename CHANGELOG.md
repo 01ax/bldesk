@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
+## [1.0.60] - 2026-09-04
+
+### Fixed
+- **Template saves rejected on desktop** (#34, *PR #36 by @termau*): Saving any template through the Electron bridge failed with `Template YAML requires string fields "name" and "user_data"`, including **Save server as template** and **Save this form as a template instead**. The main-process store still validated the first-cut `name` + `user_data` shape while the app has written `kind: bldesk/server-template@1` documents with a `spec` block since full server templates landed; the validator now accepts the current schema (and still the old one), with the kind constant shared between main and renderer. The template editor also swallowed the rejection into the page banner behind the open dialog, so Save appeared to do nothing; store errors now show inside the dialog.
+
+---
+
 ## [1.0.59] - 2026-09-03
 
 ### Fixed
