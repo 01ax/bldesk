@@ -156,7 +156,7 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
 
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#6c757d] dark:text-slate-400">
           <span>Under 50%</span>{BUCKET_CLASS.map((className, index) => <span key={index} className={`h-4 w-8 rounded ${className}`} title={['under 50%', '50–70%', '70–85%', '85–95%', '95% and above'][index]} />)}<span>95%+</span>
-          <span className="ml-2">Rate colours are relative to the fleet's current maximum.</span>
+          <span className="ml-2">Rate colours are relative to the fleet's current maximum, once it is above about 40 Mbit/s of network or 10 MB/s of disk; below that a quiet fleet stays neutral.</span>
           <button onClick={() => window.bldeskApi?.openExternal?.(MEMORY_GRAPH_KB)} className="inline-flex items-center gap-1 text-[#017cb6] hover:underline">Memory reporting help <ExternalLink className="h-3 w-3" /></button>
         </div>
       </div>
