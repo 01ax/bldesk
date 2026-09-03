@@ -2,14 +2,27 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowRightLeft, Info } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useSizes, useDistributionImages, useOsSoftware, useServerSoftware } from '../../api/queries'
-import { LinkOut, TOS_URL, REFUND_URL, MPANEL_URL } from '../ui/LinkOut'
-import { availableBackupSlots, BACKUP_SLOT_LABELS, type BackupSlot } from '../../lib/backupSlots'
+import {
+  useSizes,
+  useDistributionImages,
+  useOsSoftware,
+  useServerSoftware,
+  useServerBackups
+} from '../../api/queries'
+import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
+import {
+  freeBackupSlots,
+  describeBackup,
+  BACKUP_SLOT_LABELS,
+  type BackupSlot
+} from '../../lib/backupSlots'
 import {
   planUnavailableReason,
   isCapacityBlock,
   planMonthlyPrice,
   configuredCost,
+  preservedTransfer,
+  retentionOptionLabel,
   memoryChoices,
   diskChoices,
   billingTotal,
@@ -17,6 +30,8 @@ import {
 } from '../../lib/serverPricing'
 import {
   splitSoftware,
+  withRequiredDefaults,
+  unsatisfiedGroups,
   licenceCost,
   currentSelection,
   currentLicenceCost,
@@ -33,7 +48,15 @@ import {
 type Server = components['schemas']['Server']
 
 /** What happens to an existing backup when the pre-action backup is taken. */
-type PreBackup = 'off' | 'none' | 'oldest' | 'newest'
+/**
+ * What a pre-action backup does with the slots.
+ *
+ * `oldest`/`newest` are valid API strategies but are not offered: they only
+ * matter when no slot is free, and then they silently delete a backup the user
+ * never named. The web panel instead offers genuinely free slots, or asks which
+ * dated backup to replace - `specified` - which makes the deletion explicit.
+ */
+type PreBackup = 'off' | 'free' | 'specified'
 
 /** A stable empty list, so "no data yet" does not invalidate every memo each render. */
 const EMPTY: any[] = []
@@ -127,6 +150,7 @@ export const ChangePlanPanel: React.FC<{
   const [keepImage, setKeepImage] = useState(true)
   const [newImageSlug, setNewImageSlug] = useState<string>('')
   const [preBackup, setPreBackup] = useState<PreBackup>('off')
+  const [replaceBackupId, setReplaceBackupId] = useState<number | null>(null)
   const [preBackupSlot, setPreBackupSlot] = useState<BackupSlot>('temporary')
   const [agreed, setAgreed] = useState(false)
 
@@ -139,6 +163,12 @@ export const ChangePlanPanel: React.FC<{
     [keepImage, newImageSlug, distroQuery.data]
   )
   const effectiveImage = pickedImage ?? currentImage
+  /*
+   * `cpanel-plus-whm` ships an empty `name`, so the confirm text read
+   * "reinstall onto cpanel-plus-whm" while the change table said "cPanel+WHM".
+   * One label for both.
+   */
+  const pickedImageLabel = pickedImage?.full_name || pickedImage?.name || newImageSlug
   const osSlug = (keepImage ? server.image?.slug : newImageSlug) || null
 
   const softwareQuery = useOsSoftware(client, osSlug)
@@ -203,8 +233,26 @@ export const ChangePlanPanel: React.FC<{
     for (const [id, count] of Object.entries(base)) {
       if (offered.some((o) => o.id === Number(id))) out[Number(id)] = count
     }
-    return out
-  }, [licenceEdit, licenceBaseline, offered])
+    /*
+     * A group with no opt-out member is one the API insists on: it rejects the
+     * whole resize with "One item from the software group 'cPanel' must be
+     * selected", and moving an unlicensed server onto a cPanel image lands
+     * exactly there. So the cheapest option is filled in, as the web panel does
+     * - on those images it is $0. Only once the lists are in, or this would
+     * "default" against an empty catalogue.
+     */
+    return licencesReady ? withRequiredDefaults(groups, out) : out
+  }, [licenceEdit, licenceBaseline, offered, groups, licencesReady])
+
+  /*
+   * Transfer is not editable here, but it has to be *sent*: `resize` resets any
+   * resource option the payload omits to the target plan's default, so leaving
+   * it out silently moves the server off whatever allowance it had. It cannot
+   * be sent raw either - a retired plan can carry more than its replacement
+   * permits (4 TB onto a plan capped at 3), which is a 400 - so it is clamped
+   * into the target's range. See `preservedTransfer`.
+   */
+  const transferTb = preservedTransfer((selected ?? server.size) as any, current.transfer as number)
 
   const incompatible = licensed.filter((l) => l.incompatible)
   const licencesMonthly = licenceCost(offered as any, licences)
@@ -215,7 +263,15 @@ export const ChangePlanPanel: React.FC<{
    * not what this form is about to set, because the backup is taken before the
    * new options apply. See `availableBackupSlots`.
    */
-  const backupSlots = useMemo(() => availableBackupSlots(current), [current])
+  const backupsQuery = useServerBackups(client, server.id)
+  const existingBackups = useMemo(() => (backupsQuery.data ?? []) as any[], [backupsQuery.data])
+  /*
+   * Retention says how many backups of a type may be kept; a free slot is one
+   * of those actually unused. `replacement_strategy: 'none'` needs a free one,
+   * so offering a permitted-but-full slot is a predictable 400 - which is why
+   * this uses `freeBackupSlots` rather than `availableBackupSlots`.
+   */
+  const backupSlots = useMemo(() => freeBackupSlots(current, existingBackups), [current, existingBackups])
 
   const ipOpts = selected?.options ?? server.size?.options
   /*
@@ -270,6 +326,14 @@ export const ChangePlanPanel: React.FC<{
     if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
   }, [backupSlots, preBackupSlot])
 
+  // A named backup that has since gone (or a list that arrived later) must not
+  // stay selected, or the payload would reference an id the API will reject.
+  useEffect(() => {
+    if (replaceBackupId !== null && !existingBackups.some((b) => b.id === replaceBackupId)) {
+      setReplaceBackupId(null)
+    }
+  }, [existingBackups, replaceBackupId])
+
   const pick = (slug: string): void => {
     const p = plans.find((x) => x.slug === slug)
     if (!p) return
@@ -316,6 +380,7 @@ export const ChangePlanPanel: React.FC<{
         weeklyBackups,
         monthlyBackups,
         offsiteBackups,
+        transferTb,
         licencesMonthly
       })
     : null
@@ -335,6 +400,7 @@ export const ChangePlanPanel: React.FC<{
         weeklyBackups: (current.weekly_backups as number) ?? 0,
         monthlyBackups: (current.monthly_backups as number) ?? 0,
         offsiteBackups: !!current.offsite_backups,
+        transferTb: (current.transfer as number) ?? server.size?.transfer,
         licencesMonthly: currentLicenceCost(licensed as any)
       })
     : null
@@ -375,7 +441,7 @@ export const ChangePlanPanel: React.FC<{
       rows.push({
         label: 'Operating system',
         from: server.image?.full_name || server.image?.name || server.image?.slug || undefined,
-        to: pickedImage?.full_name || pickedImage?.name || newImageSlug
+        to: pickedImageLabel
       })
     }
 
@@ -423,8 +489,14 @@ export const ChangePlanPanel: React.FC<{
     // The pre-action backup and the cost are consequences of the rows above, so
     // they only belong here once something else has changed.
     if (changed.length) {
-      if (preBackup !== 'off') {
-        changed.push({ label: 'Backup first', to: `${preBackupSlot} slot` })
+      if (preBackup === 'free' || (preBackup === 'specified' && replaceBackupId !== null)) {
+        changed.push({
+          label: 'Backup first',
+          to:
+            preBackup === 'specified'
+              ? `replacing ${describeBackup(existingBackups.find((b) => b.id === replaceBackupId) ?? { id: 0 })}`
+              : `${preBackupSlot} slot`
+        })
       }
       if (oldCost && newCost) {
         changed.push({
@@ -449,7 +521,23 @@ export const ChangePlanPanel: React.FC<{
   const isShrink = !!selected && (memory < (server.memory ?? 0) || disk < (server.disk ?? 0))
   const imageMissing = !keepImage && !newImageSlug
   const unchanged = changes.length === 0
-  const canApply = !!selected && !unchanged && releaseSatisfied && !imageMissing && agreed
+  /*
+   * A required group with nothing selected, or licences that have not arrived,
+   * both mean the payload would be wrong rather than merely incomplete - so the
+   * submit is held rather than the 400 discovered after the confirmation.
+   */
+  const missingGroups = licencesReady ? unsatisfiedGroups(groups, licences) : []
+  const canApply =
+    !!selected &&
+    !unchanged &&
+    releaseSatisfied &&
+    !imageMissing &&
+    agreed &&
+    licencesReady &&
+    !licenceError &&
+    missingGroups.length === 0 &&
+    // "Replace an existing backup" without saying which one would 400.
+    !(preBackup === 'specified' && replaceBackupId === null)
 
   /*
    * Two shapes of resize are not undoable, so both confirm like a rebuild -
@@ -468,7 +556,7 @@ export const ChangePlanPanel: React.FC<{
           notes: [
             ...(reinstalling
               ? [
-                  `Reinstalling onto ${pickedImage?.name || newImageSlug} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
+                  `Reinstalling onto ${pickedImageLabel} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
                 ]
               : []),
             ...(mustRelease > 0
@@ -818,7 +906,12 @@ export const ChangePlanPanel: React.FC<{
               >
                 {Array.from({ length: 11 }, (_, n) => (
                   <option key={n} value={n}>
-                    {n === 0 ? `No ${label.toLowerCase()} backup` : `Keep ${n}`}
+                    {retentionOptionLabel(
+                      label.toLowerCase() as 'daily' | 'weekly' | 'monthly',
+                      n,
+                      disk,
+                      selected ?? (server.size as any)
+                    )}
                   </option>
                 ))}
               </select>
@@ -970,9 +1063,9 @@ export const ChangePlanPanel: React.FC<{
             <div className="flex items-start gap-2 text-[11px] text-[#6c757d] dark:text-[#adb5bd] bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-2.5">
               <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
               <span>
-                Windows licences are not sold through the BinaryLane API - Remote Desktop SAL is closed to new orders
-                there - so none can be added here. Use <LinkOut href={MPANEL_URL}>the BinaryLane control panel</LinkOut>{' '}
-                to add one.
+                Windows licences cannot be added here: Remote Desktop SAL is closed to new orders, so it is offered
+                only to servers already holding one. The web panel builds its list the same way and cannot add one
+                either - a server that needs one has to go through BinaryLane support.
               </span>
             </div>
           )}
@@ -999,12 +1092,32 @@ export const ChangePlanPanel: React.FC<{
             className={selectClass}
           >
             <option value="off">Not be taken before the change</option>
-            <option value="none">Use a free slot, or fail if there is none</option>
-            <option value="oldest">Replace the oldest backup if no slot is free</option>
-            <option value="newest">Replace the newest backup if no slot is free</option>
+            <option value="free">Use a free slot</option>
+            {existingBackups.length > 0 && <option value="specified">Replace an existing backup</option>}
           </select>
         </div>
-        {preBackup !== 'off' && (
+        {preBackup === 'specified' && (
+          <div>
+            <label className={labelClass}>Backup to replace</label>
+            <select
+              value={replaceBackupId ?? ''}
+              onChange={(e) => setReplaceBackupId(e.target.value ? Number(e.target.value) : null)}
+              disabled={busy}
+              className={selectClass}
+            >
+              <option value="">Choose a backup...</option>
+              {existingBackups.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {describeBackup(b)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+              The chosen backup is deleted to make room. That cannot be undone.
+            </p>
+          </div>
+        )}
+        {preBackup === 'free' && (
           <div>
             <label className={labelClass}>Backup slot</label>
             <select
@@ -1013,7 +1126,7 @@ export const ChangePlanPanel: React.FC<{
               disabled={busy}
               className={selectClass}
             >
-              {backupSlots.map((slot) => (
+              {backupSlots.map((slot: BackupSlot) => (
                 <option key={slot} value={slot}>
                   {BACKUP_SLOT_LABELS[slot]}
                 </option>
@@ -1021,7 +1134,8 @@ export const ChangePlanPanel: React.FC<{
             </select>
             {backupSlots.length === 1 && (
               <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
-                Only a temporary slot is available: this server keeps no scheduled backups yet.
+                Only a temporary slot is free. Scheduled slots are either not kept by this server or already full -
+                replace a named backup instead.
               </p>
             )}
           </div>
@@ -1125,6 +1239,7 @@ export const ChangePlanPanel: React.FC<{
                   weekly_backups: weeklyBackups,
                   monthly_backups: monthlyBackups,
                   offsite_backups: offsiteBackups,
+                  transfer: transferTb,
                   // Naming more addresses than are being removed is how the API
                   // is told to re-provision the extras with new ones.
                   ...(ipsToRemove.length ? { ipv4_addresses_to_remove: ipsToRemove } : {})
@@ -1132,20 +1247,40 @@ export const ChangePlanPanel: React.FC<{
                 // Omitted rather than sent unchanged: any licence *not* included
                 // in `change_licenses` is removed, so sending it on every resize
                 // is a standing chance to drop one.
-                ...(licencesChanged ? { change_licenses: { licenses: toLicencePayload(licences) } } : {}),
+                ...(licencesChanged ? { change_licenses: { licenses: toLicencePayload(licences, offered) } } : {}),
                 ...(!keepImage && newImageSlug ? { change_image: { image: newImageSlug } } : {}),
-                ...(preBackup !== 'off'
+                /*
+                 * `backup_type` accompanies `specified` too, even though the
+                 * schema says it is only needed "if replacement_strategy is
+                 * anything other than 'specified'". Omitting it is rejected:
+                 *
+                 *   pre_action_backup.backup_type: "Backup N is not a  backup."
+                 *
+                 * - the blank being where the expected type would be. The API
+                 * validates that the named backup is of the given type, so the
+                 * type is read back off the chosen backup.
+                 */
+                ...(preBackup === 'free'
                   ? {
                       pre_action_backup: {
                         type: 'take_backup',
                         backup_type: preBackupSlot,
-                        replacement_strategy: preBackup
+                        replacement_strategy: 'none'
                       }
                     }
-                  : {})
+                  : preBackup === 'specified' && replaceBackupId !== null
+                    ? {
+                        pre_action_backup: {
+                          type: 'take_backup',
+                          backup_type: existingBackups.find((b) => b.id === replaceBackupId)?.backup_info?.type,
+                          replacement_strategy: 'specified',
+                          backup_id_to_replace: replaceBackupId
+                        }
+                      }
+                    : {})
               },
               reinstalling
-                ? `Change plan to ${selected.slug} and reinstall onto ${pickedImage?.name || newImageSlug}, erasing the disks`
+                ? `Change plan to ${selected.slug} and reinstall onto ${pickedImageLabel}, erasing the disks`
                 : `Change plan to ${selected.slug} (${memory / 1024} GB memory, ${disk} GB storage)`,
               changes,
               confirmExtra
@@ -1155,9 +1290,15 @@ export const ChangePlanPanel: React.FC<{
         >
           <ArrowRightLeft className="w-3.5 h-3.5" />
           <span>
-            {imageMissing
-              ? 'Choose an operating system'
-              : !releaseSatisfied
+            {licenceError
+              ? 'Licences failed to load'
+              : !licencesReady
+                ? 'Loading licences...'
+                : missingGroups.length
+                  ? `Choose a ${missingGroups[0].name} option`
+                  : imageMissing
+                    ? 'Choose an operating system'
+                    : !releaseSatisfied
                 ? `Select ${mustRelease - ipsToRemove.length} more address${mustRelease - ipsToRemove.length === 1 ? '' : 'es'}`
                 : unchanged
                   ? 'No change selected'
