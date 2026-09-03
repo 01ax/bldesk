@@ -36,7 +36,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
-import { useReachability, ReachabilityChip, ReachabilityNotice } from './ReachabilityBadge'
+import { useReachability, ReachabilityChip } from './ReachabilityBadge'
 import { ChangePlanPanel } from './ChangePlanPanel'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
@@ -385,7 +385,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {/* Leads the cluster: the buttons beside it are only worth
                 clicking if the port answers from here. */}
-            <ReachabilityChip r={reach} ip={primaryV4} />
+            <ReachabilityChip r={reach} ip={primaryV4} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
             {/* SSH Key Selector */}
             <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] px-2 py-1 border border-[#ced4da] dark:border-[#373b3e] rounded">
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
@@ -463,7 +463,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             )}
           </div>
 
-          <ReachabilityNotice r={reach} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
         </div>
       </div>
 
