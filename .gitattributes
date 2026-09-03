@@ -1,0 +1,20 @@
+# Store text as LF in the repository; each checkout converts to the platform
+# ending (or not) according to the local core.autocrlf / core.eol setting.
+* text=auto
+
+# Scripts that a specific platform executes get a fixed ending.
+*.sh      text eol=lf
+gradlew   text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ps1     text eol=crlf
+*.nsh     text eol=crlf
+
+# Binaries: never convert.
+*.png      binary
+*.ico      binary
+*.jar      binary
+*.keystore binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
