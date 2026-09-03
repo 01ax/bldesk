@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
 import { launchNativeTerminal } from './terminal'
 import { UpdaterManager } from './updater'
+import { probeTcp, probePing, traceroute, setAllowedTargets } from './reachability'
 import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
 import { ChangeLogStore } from './changelog'
@@ -286,6 +287,19 @@ function registerIpcHandlers(): void {
   })
 
   // Local change log
+  /*
+   * Reachability probes (FEATURES.md #11). The renderer declares which addresses
+   * it may probe via net:setTargets, and reachability.ts refuses anything else -
+   * otherwise these handlers are a general-purpose scanner reachable from page
+   * script.
+   */
+  ipcMain.handle('net:setTargets', (_, ips: string[]) => setAllowedTargets(Array.isArray(ips) ? ips : []))
+  ipcMain.handle('net:probeTcp', (_, host: string, port: number, timeoutMs?: number) =>
+    probeTcp(String(host), Number(port), timeoutMs)
+  )
+  ipcMain.handle('net:probePing', (_, host: string, timeoutMs?: number) => probePing(String(host), timeoutMs))
+  ipcMain.handle('net:traceroute', (_, host: string, maxHops?: number) => traceroute(String(host), maxHops))
+
   ipcMain.handle('changelog:append', (_, entry) => ChangeLogStore.append(entry))
   ipcMain.handle('changelog:update', (_, profileId: string, id: string, patch) => ChangeLogStore.update(profileId, id, patch))
   ipcMain.handle('changelog:list', (_, profileId: string, limit?: number) => ChangeLogStore.list(profileId, limit))

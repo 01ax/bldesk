@@ -36,6 +36,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
+import { useReachability, ReachabilityChip, ReachabilityNotice } from './ReachabilityBadge'
 import { ChangePlanPanel } from './ChangePlanPanel'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
@@ -52,6 +53,8 @@ interface ServerDetailsProps {
   server: ServerResponse
   client: BinaryLaneClient | null
   activeSubTab?: ServerSubTab
+  /** Change sub-tab from inside the view, e.g. "check firewall rules". */
+  onSelectSubTab?: (tab: ServerSubTab) => void
   onBack: () => void
   onOpenTerminal?: (ip: string) => void
   /** The app's server list, forwarded to the Firewall sub-tab (see FirewallManagerProps.servers). */
@@ -129,6 +132,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   server,
   client,
   activeSubTab = 'overview',
+  onSelectSubTab,
   onBack,
   servers: allServers
 }) => {
@@ -180,6 +184,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const primaryV6 = server.networks?.v6?.[0]?.ip_address
   const isRunning = server.status === 'active'
   const state = describeStatus(server.status)
+  const reach = useReachability(primaryV4, 22, client, server.id)
   const distroIcon = logoForDistribution(server.image?.distribution)
   const ramGB = (server.memory / 1024).toFixed(0)
 
@@ -321,7 +326,14 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text pb-bottom-nav">
       {/* 1. Authentic PanelSite ServerHeader */}
       <div className="p-4 bg-white dark:bg-[#2b3035] border-b border-[#ced4da] dark:border-[#373b3e] shadow-sm sticky top-0 z-20">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/*
+          * Top-aligned, not centred: the reachability message under the action
+          * buttons can wrap to two or three lines, and with `items-center` the
+          * whole left column - the server name included - slid downwards as soon
+          * as a probe reported a problem. Nothing in the header should move
+          * because something beside it grew.
+          */}
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
           {/* Header Info */}
           <div>
             <div className="flex items-center gap-2">
@@ -371,6 +383,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
           {/* Quick Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Leads the cluster: the buttons beside it are only worth
+                clicking if the port answers from here. */}
+            <ReachabilityChip r={reach} ip={primaryV4} />
             {/* SSH Key Selector */}
             <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] px-2 py-1 border border-[#ced4da] dark:border-[#373b3e] rounded">
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
@@ -447,6 +462,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               </button>
             )}
           </div>
+
+          <ReachabilityNotice r={reach} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
         </div>
       </div>
 
