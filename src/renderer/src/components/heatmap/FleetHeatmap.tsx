@@ -130,7 +130,9 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
                       </button>
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{row.region}</td>
-                    {COLUMNS.map((column) => <Cell key={column.key} cell={row.cells[column.key]} kind={column.kind} />)}
+                    {row.cells.cpu.state === 'off'
+                      ? <td colSpan={COLUMNS.length} className="px-3 py-2 text-center text-xs text-slate-400">{row.cells.cpu.tooltip} — no metrics while the server is not running</td>
+                      : COLUMNS.map((column) => <Cell key={column.key} cell={row.cells[column.key]} kind={column.kind} />)}
                   </tr>
                   )
                 })}
