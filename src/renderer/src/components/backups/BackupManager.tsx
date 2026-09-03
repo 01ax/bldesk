@@ -41,7 +41,21 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     initialServerId || (servers.length > 0 ? servers[0].id : null)
   )
 
-  const activeServerId = selectedServerId || (servers.length > 0 ? servers[0].id : null)
+  /*
+   * Mounted inside a server's own page (`initialServerId` given), this is that
+   * server's backups and nothing else. The account-wide Backups page passes no
+   * id, and there the picker is the whole point.
+   *
+   * Previously the picker showed in both, so from a server's Backups tab you
+   * could switch to another server while every other piece of chrome - the
+   * sidebar, the header, the tab you are standing in - still named the first
+   * one. Restore and Take Backup did correctly follow the picker rather than
+   * the page, so nothing was ever performed on the wrong server, but the only
+   * thing telling you which server you were about to overwrite was the name in
+   * the confirm dialog.
+   */
+  const pinnedServerId = initialServerId ?? null
+  const activeServerId = pinnedServerId ?? selectedServerId ?? (servers.length > 0 ? servers[0].id : null)
   const activeServer = servers.find((s) => s.id === activeServerId)
 
   // Queries for current server
@@ -268,20 +282,22 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-white dark:bg-[#2b3035] px-3 py-1.5 border border-[#ced4da] dark:border-[#373b3e] rounded shadow-sm">
-            <Server className="w-3.5 h-3.5 text-[#017cb6]" />
-            <select
-              value={activeServerId || ''}
-              onChange={(e) => setSelectedServerId(Number(e.target.value))}
-              className="bg-transparent text-xs text-[#212529] dark:text-white focus:outline-none cursor-pointer max-w-[160px]"
-            >
-              {servers.map((s) => (
-                <option key={s.id} value={s.id} className="bg-white dark:bg-[#2b3035]">
-                  {s.name} (#{s.id})
-                </option>
-              ))}
-            </select>
-          </div>
+          {!pinnedServerId && (
+            <div className="flex items-center gap-2 bg-white dark:bg-[#2b3035] px-3 py-1.5 border border-[#ced4da] dark:border-[#373b3e] rounded shadow-sm">
+              <Server className="w-3.5 h-3.5 text-[#017cb6]" />
+              <select
+                value={activeServerId || ''}
+                onChange={(e) => setSelectedServerId(Number(e.target.value))}
+                className="bg-transparent text-xs text-[#212529] dark:text-white focus:outline-none cursor-pointer max-w-[160px]"
+              >
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-white dark:bg-[#2b3035]">
+                    {s.name} (#{s.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button
             onClick={() => setIsTakingSnapshot(true)}
@@ -289,7 +305,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-50"
           >
             {takeBackupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            <span>Take Snapshot</span>
+            <span>Take Backup</span>
           </button>
         </div>
       </div>
