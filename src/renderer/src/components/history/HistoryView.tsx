@@ -38,7 +38,7 @@ export const HistoryView: React.FC<{ profileId?: string; profileName?: string }>
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const confirm = useConfirm()
+  const confirmAction = useConfirm()
 
   const refresh = useCallback(async () => {
     if (!profileId) {
@@ -87,7 +87,7 @@ export const HistoryView: React.FC<{ profileId?: string; profileName?: string }>
 
   const handleClear = async () => {
     if (!profileId) return
-    const r = await confirm({
+    const r = await confirmAction({
       title: 'Clear history',
       target: { kind: 'account', name: profileName ?? profileId },
       summary: `Delete the local record of ${entries.length} change${entries.length === 1 ? '' : 's'} on this account. This only affects BLDesk's own log — nothing on BinaryLane changes.`,
