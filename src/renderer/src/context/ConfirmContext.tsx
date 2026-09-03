@@ -37,9 +37,22 @@ export interface ConfirmRequest {
   log?: boolean
   /** Where it was started from, for the log. */
   source?: 'ui' | 'palette'
+  /**
+   * Ask why. A select of `options` plus a free-text detail; the composed text
+   * comes back as `reason` and is appended to the History summary. Options in
+   * `requireDetailFor` (e.g. "Other") need the detail filled in.
+   */
+  reason?: {
+    label: string
+    options: string[]
+    detailPlaceholder?: string
+    requireDetailFor?: string[]
+  }
+  /** A side action offered inside the dialog, e.g. "Copy the zone file first". Does not close it. */
+  extraAction?: { label: string; onClick: () => void }
 }
 
-export type ConfirmResult = { ok: false } | { ok: true; changeId?: string }
+export type ConfirmResult = { ok: false } | { ok: true; changeId?: string; reason?: string }
 
 type ConfirmFn = (req: ConfirmRequest) => Promise<ConfirmResult>
 
@@ -83,7 +96,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const settle = useCallback(
-    async (ok: boolean) => {
+    async (ok: boolean, reason?: string) => {
       const cur = pending
       if (!cur) return
       let result: ConfirmResult = { ok: false }
@@ -94,13 +107,13 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             label: cur.req.title,
             target: cur.req.target,
             severity: cur.req.severity ?? 'normal',
-            summary: cur.req.summary,
+            summary: [cur.req.summary, reason ? `Reason: ${reason}` : undefined].filter(Boolean).join(' '),
             changes: cur.req.changes,
             diff: cur.req.diff,
             source: cur.req.source ?? 'ui'
           })
         }
-        result = { ok: true, changeId }
+        result = { ok: true, changeId, reason }
       }
       setPending(queue.current.shift() ?? null)
       cur.resolve(result)
@@ -120,23 +133,35 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
 // ---------------------------------------------------------------------------
 
-function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: boolean) => void }) {
+function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: boolean, reason?: string) => void }) {
   const severity = req.severity ?? 'normal'
   const mustType = req.typeToConfirm ?? (severity === 'irreversible' ? req.target?.name : undefined)
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
+  const [reasonChoice, setReasonChoice] = useState(req.reason?.options[0] ?? '')
+  const [reasonDetail, setReasonDetail] = useState('')
   const typedOk = !mustType || typed.trim().toLowerCase() === mustType.toLowerCase()
+  const detailNeeded = !!req.reason?.requireDetailFor?.includes(reasonChoice)
+  const reasonOk = !req.reason || (!detailNeeded || reasonDetail.trim().length > 0)
+  const composedReason = req.reason
+    ? detailNeeded
+      ? reasonDetail.trim()
+      : reasonDetail.trim()
+        ? `${reasonChoice}: ${reasonDetail.trim()}`
+        : reasonChoice
+    : undefined
+  const canConfirm = typedOk && reasonOk
   const primaryRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (!mustType) primaryRef.current?.focus()
-  }, [mustType])
+    if (!mustType && !req.reason) primaryRef.current?.focus()
+  }, [mustType, req.reason])
 
   const finish = (ok: boolean) => {
     if (busy) return
-    if (ok && !typedOk) return
+    if (ok && !canConfirm) return
     setBusy(true)
-    onSettle(ok)
+    onSettle(ok, ok ? composedReason : undefined)
   }
 
   useEffect(() => {
@@ -152,7 +177,7 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typedOk, busy])
+  }, [canConfirm, busy, composedReason])
 
   const tone =
     severity === 'irreversible'
@@ -194,11 +219,18 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
         <div className="p-4 space-y-3 text-xs max-h-[60vh] overflow-y-auto select-text">
           {req.summary && <p className="text-[#212529] dark:text-[#f8f9fa] leading-relaxed">{req.summary}</p>}
 
-          {req.notes && req.notes.length > 0 && (
+          {((req.notes && req.notes.length > 0) || req.extraAction) && (
             <ul className="p-2.5 rounded border border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 leading-relaxed space-y-1">
-              {req.notes.map((n, i) => (
+              {(req.notes ?? []).map((n, i) => (
                 <li key={i}>{n}</li>
               ))}
+              {req.extraAction && (
+                <li>
+                  <button type="button" onClick={req.extraAction.onClick} className="underline font-medium hover:no-underline">
+                    {req.extraAction.label}
+                  </button>
+                </li>
+              )}
             </ul>
           )}
 
@@ -249,6 +281,30 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
             </div>
           )}
 
+          {req.reason && (
+            <div className="space-y-1.5">
+              <label className="block text-[#6c757d] dark:text-[#adb5bd]">{req.reason.label}</label>
+              <select
+                value={reasonChoice}
+                onChange={(e) => setReasonChoice(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+              >
+                {req.reason.options.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={reasonDetail}
+                onChange={(e) => setReasonDetail(e.target.value)}
+                maxLength={200}
+                placeholder={detailNeeded ? 'Tell us more (required)' : (req.reason.detailPlaceholder ?? 'Anything to add? (optional)')}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
+              />
+            </div>
+          )}
+
           {mustType && (
             <label className="block space-y-1.5">
               <span className="text-[#6c757d] dark:text-[#adb5bd]">
@@ -282,7 +338,7 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
             <button
               ref={primaryRef}
               onClick={() => finish(true)}
-              disabled={!typedOk || busy}
+              disabled={!canConfirm || busy}
               className={`px-3 py-1.5 text-xs font-semibold rounded text-white transition disabled:opacity-40 ${tone.btn}`}
             >
               {req.confirmLabel ?? (severity === 'normal' ? 'Confirm' : req.title)} <kbd className="ml-1 text-[9px] opacity-70">↵</kbd>

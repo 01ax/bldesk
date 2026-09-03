@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight, ExternalLink} from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { RemoveDnsHostingDialog } from './RemoveDnsHostingDialog'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { describeApiError } from '../../api/queries'
@@ -115,9 +114,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [domainPage, setDomainPage] = useState(1)
-  const [removing, setRemoving] = useState<any | null>(null)
   const [removeBusy, setRemoveBusy] = useState(false)
-  const [removeError, setRemoveError] = useState<string | null>(null)
 
   useEffect(() => {
     setDomainPage(1)
@@ -154,6 +151,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const handleFlushCache = async () => {
     if (!client) return
     try {
+      // history: n/a — asks BinaryLane's nameservers to reload; no record changes
       await client.POST('/v2/domains/refresh_nameserver_cache')
       window.bldeskApi?.sendNotification?.({
         title: 'DNS Cache Flushed',
@@ -169,8 +167,17 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!client || !selectedDomain) return
 
     setIsSubmitting(true)
+    // The form is the review: a record add is small and shown in full, so it
+    // is recorded rather than confirmed.
+    const changeId = await recordChange({
+      label: 'Add DNS record',
+      target: { kind: 'domain', name: selectedDomain },
+      severity: 'normal',
+      changes: [{ label: `${recordType} ${recordName.trim()}`, to: recordData.trim() }],
+      source: 'ui'
+    })
     try {
-      await client.POST('/v2/domains/{domain_name}/records', {
+      const { error } = await client.POST('/v2/domains/{domain_name}/records', {
         params: { path: { domain_name: selectedDomain } },
         body: {
           type: recordType as any,
@@ -179,14 +186,8 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           ttl: Number(recordTtl)
         }
       })
-      void recordChange({
-        label: 'Add DNS record',
-        target: { kind: 'domain', name: selectedDomain },
-        severity: 'normal',
-        changes: [{ label: `${recordType} ${recordName.trim()}`, to: recordData.trim() }],
-        outcome: 'completed',
-        source: 'ui'
-      })
+      if (error) throw new Error(describeApiError(error))
+      void updateChange(changeId, { outcome: 'completed' })
       setIsAddingRecord(false)
       setRecordName('@')
       setRecordData('')
@@ -196,6 +197,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
         body: `${recordType} record for ${recordName}.${selectedDomain} created.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to add record: ${err.message}`)
     } finally {
       setIsSubmitting(false)
@@ -237,21 +239,38 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     }
   }
 
-  const handleRemoveDnsHosting = async () => {
-    if (!client || !removing) return
+  /**
+   * `DELETE /v2/domains/{domain_name}` drops the zone and every record in it,
+   * with no undo and no export beyond what the operator has already copied —
+   * so this is `irreversible` (type the domain) with "copy the zone file first"
+   * offered inside the dialog.
+   */
+  const handleRemoveDnsHosting = async (domain: any) => {
+    if (!client || !domain) return
+    const recordCount = selectedDomain === domain.name ? records.length : undefined
+    const c = await confirmAction({
+      title: 'Remove DNS hosting',
+      target: { kind: 'domain', name: domain.name },
+      summary: `Deletes the DNS zone for ${domain.name}${typeof recordCount === 'number' ? ` and all ${recordCount} record${recordCount === 1 ? '' : 's'} in it` : ' and every record in it'}.`,
+      severity: 'irreversible',
+      notes: ['There is no undo. BinaryLane keeps no copy of a deleted zone, so the records cannot be recovered afterwards — they would have to be recreated by hand.'],
+      extraAction: domain.zone_file ? { label: 'Copy the zone file first', onClick: () => copy('zone', domain.zone_file) } : undefined,
+      confirmLabel: 'Remove DNS hosting'
+    })
+    if (!c.ok) return
     setRemoveBusy(true)
-    setRemoveError(null)
     try {
       const { error } = await client.DELETE('/v2/domains/{domain_name}', {
-        params: { path: { domain_name: removing.name } }
+        params: { path: { domain_name: domain.name } }
       })
-      if (error) throw new Error(typeof error === 'string' ? error : JSON.stringify(error))
+      if (error) throw new Error(describeApiError(error))
+      void updateChange(c.changeId, { outcome: 'completed' })
 
       // Clear anything pointing at the zone that no longer exists, then wait for
       // the refetch before closing: the dialog stays up until the list has
       // actually reloaded, so the row visibly disappears rather than the user
       // being left wondering whether it worked.
-      if (selectedDomain === removing.name) setSelectedDomain(null)
+      if (selectedDomain === domain.name) setSelectedDomain(null)
       const { data: refreshed } = await domainsQuery.refetch()
 
       // Deleting the last entry on the final page would otherwise strand the
@@ -261,10 +280,9 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       ).length
       const lastPage = Math.max(1, Math.ceil(remaining / DOMAINS_PER_PAGE))
       setDomainPage((p) => Math.min(p, lastPage))
-
-      setRemoving(null)
     } catch (err: any) {
-      setRemoveError(err.message || 'Failed to remove DNS hosting.')
+      void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
+      alert(`Failed to remove DNS hosting: ${err.message || 'Unknown error'}`)
     } finally {
       setRemoveBusy(false)
     }
@@ -602,10 +620,11 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
             </MenuItem>
             <div className="my-1 border-t border-[#ced4da] dark:border-[#373b3e]" />
             <button
+              disabled={removeBusy}
               onClick={() => {
-                setRemoving(menu.domain)
-                setRemoveError(null)
+                const d = menu.domain
                 setMenu(null)
+                void handleRemoveDnsHosting(d)
               }}
               className="w-full text-left px-3 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition"
             >
@@ -615,17 +634,6 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
         </>
       )}
 
-      {removing && (
-        <RemoveDnsHostingDialog
-          domain={removing.name}
-          recordCount={selectedDomain === removing.name ? records.length : undefined}
-          isDeleting={removeBusy}
-          error={removeError}
-          onCancel={() => setRemoving(null)}
-          onConfirm={handleRemoveDnsHosting}
-          onCopyZone={removing.zone_file ? () => copy('zone', removing.zone_file) : undefined}
-        />
-      )}
 
       {copied && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-md bg-[#212529] text-white text-xs shadow-lg">
