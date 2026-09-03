@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowRightLeft } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
@@ -55,8 +55,46 @@ export const ChangePlanPanel: React.FC<{
   const [memory, setMemory] = useState<number>(server.memory ?? 0)
   const [disk, setDisk] = useState<number>(server.disk ?? 0)
 
+  /*
+   * `resize` carries the whole size configuration, not just the plan slug, and
+   * the panel only ever sent memory and disk. Everything else the web panel
+   * offers on this page - address count, backup retention, offsite - was
+   * silently left at whatever the server already had, so a customer could not
+   * change them here at all.
+   *
+   * Prefilled from `selected_size_options`, which is the server's current
+   * selection rather than the plan's defaults.
+   */
+  const current = server.selected_size_options ?? {}
+  const publicIps = useMemo(
+    () => (server.networks?.v4 ?? []).filter((n) => n.type === 'public').map((n) => n.ip_address as string),
+    [server.networks?.v4]
+  )
+
+  const [ipCount, setIpCount] = useState<number>((current as any).ipv4_addresses ?? (publicIps.length || 1))
+  const [ipsToRemove, setIpsToRemove] = useState<string[]>([])
+  const [dailyBackups, setDailyBackups] = useState<number>((current as any).daily_backups ?? 0)
+  const [weeklyBackups, setWeeklyBackups] = useState<number>((current as any).weekly_backups ?? 0)
+  const [monthlyBackups, setMonthlyBackups] = useState<number>((current as any).monthly_backups ?? 0)
+  const [offsiteBackups, setOffsiteBackups] = useState<boolean>(!!(current as any).offsite_backups)
+  const [keepImage, setKeepImage] = useState(true)
+
+  /*
+   * Reducing the address count requires naming which addresses go: the API
+   * rejects the resize otherwise, and picking for the customer would drop
+   * whichever address happened to be first - possibly the one their DNS points
+   * at.
+   */
+  const ipOpts = selected?.options ?? server.size?.options
+  const mustRelease = Math.max(0, publicIps.length - ipCount)
+  const releaseSatisfied = ipsToRemove.length === mustRelease
+
   // A different plan brings its own limits, so the adjustable options reset to
   // that plan's included amounts rather than carrying invalid values across.
+  useEffect(() => {
+    if (mustRelease === 0 && ipsToRemove.length) setIpsToRemove([])
+  }, [mustRelease, ipsToRemove.length])
+
   const pick = (slug: string): void => {
     const p = plans.find((x) => x.slug === slug)
     if (!p) return
@@ -83,7 +121,14 @@ export const ChangePlanPanel: React.FC<{
   const { total, gst } = billingTotal(monthly)
   const isShrink = !!selected && (memory < (server.memory ?? 0) || disk < (server.disk ?? 0))
   const unchanged =
-    selected?.slug === server.size_slug && memory === (server.memory ?? 0) && disk === (server.disk ?? 0)
+    selected?.slug === server.size_slug &&
+    memory === (server.memory ?? 0) &&
+    disk === (server.disk ?? 0) &&
+    ipCount === ((current as any).ipv4_addresses ?? publicIps.length) &&
+    dailyBackups === ((current as any).daily_backups ?? 0) &&
+    weeklyBackups === ((current as any).weekly_backups ?? 0) &&
+    monthlyBackups === ((current as any).monthly_backups ?? 0) &&
+    offsiteBackups === !!(current as any).offsite_backups
 
   const cellClass = 'py-1.5 px-1 sm:py-2 sm:px-3'
 
@@ -248,6 +293,118 @@ export const ChangePlanPanel: React.FC<{
         </div>
       )}
 
+      {/*
+        * "Continue using <OS>" mirrors the web panel's box. Unticking it there
+        * starts an image change as part of the resize, which reinstalls the
+        * server and destroys the disk - so this offers the choice but sends the
+        * customer to Rebuild rather than folding a data-destroying step into a
+        * plan change, where the confirm dialog talks about memory and storage.
+        */}
+      <label className="flex items-start gap-2 text-xs text-[#212529] dark:text-slate-200">
+        <input
+          type="checkbox"
+          checked={keepImage}
+          onChange={(e) => setKeepImage(e.target.checked)}
+          disabled={busy}
+          className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+        />
+        <span>
+          Continue using {server.image?.full_name || server.image?.name || 'the current image'}
+          {!keepImage && (
+            <span className="block mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+              Changing the operating system reinstalls the server and erases the disk. That is a rebuild, not a plan
+              change — use Settings → Danger Zone so the confirmation says so. Re-tick this to continue.
+            </span>
+          )}
+        </span>
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300 mb-1">
+            IP Addresses
+          </label>
+          <select
+            value={ipCount}
+            onChange={(e) => setIpCount(Number(e.target.value))}
+            disabled={busy}
+            className="w-full px-2 py-1.5 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529]"
+          >
+            {/* Falls back to the server's own size while no plan is selected:
+                reading only from `selected` showed "+$0.00" for an address that
+                costs money, which is the wrong way round to be wrong. */}
+            {Array.from({ length: (ipOpts?.ipv4_addresses_max ?? publicIps.length) || 1 }, (_, i) => {
+              const extra = i * (ipOpts?.ipv4_addresses_cost_per_address ?? 0)
+              return (
+                <option key={i + 1} value={i + 1}>
+                  {i === 0 ? '1 IP address (included)' : `${i + 1} IP addresses (+$${extra.toFixed(2)})`}
+                </option>
+              )
+            })}
+          </select>
+
+          {mustRelease > 0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Select {mustRelease} address{mustRelease === 1 ? '' : 'es'} to release. They are given up permanently
+                and cannot be reclaimed.
+              </p>
+              {publicIps.map((ip) => (
+                <label key={ip} className="flex items-center gap-2 text-[11px] font-mono">
+                  <input
+                    type="checkbox"
+                    checked={ipsToRemove.includes(ip)}
+                    disabled={busy || (!ipsToRemove.includes(ip) && ipsToRemove.length >= mustRelease)}
+                    onChange={(e) =>
+                      setIpsToRemove((prev) => (e.target.checked ? [...prev, ip] : prev.filter((x) => x !== ip)))
+                    }
+                    className="shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+                  />
+                  <span>{ip}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300">Backups</label>
+          {(
+            [
+              ['Daily', dailyBackups, setDailyBackups],
+              ['Weekly', weeklyBackups, setWeeklyBackups],
+              ['Monthly', monthlyBackups, setMonthlyBackups]
+            ] as const
+          ).map(([label, value, setter]) => (
+            <div key={label} className="flex items-center gap-2">
+              <span className="w-14 text-[11px] text-[#6c757d] dark:text-slate-400">{label}</span>
+              <select
+                value={value}
+                onChange={(e) => (setter as (v: number) => void)(Number(e.target.value))}
+                disabled={busy}
+                className="flex-1 px-2 py-1 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529]"
+              >
+                {Array.from({ length: 11 }, (_, n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? `No ${label.toLowerCase()} backup` : `Keep ${n}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={offsiteBackups}
+              onChange={(e) => setOffsiteBackups(e.target.checked)}
+              disabled={busy || dailyBackups + weeklyBackups + monthlyBackups === 0}
+              className="shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+            />
+            <span className="text-[#212529] dark:text-slate-200">Offsite backups (requires on-site backups)</span>
+          </label>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-[#495057] dark:text-slate-300">
           {selected ? (
@@ -261,11 +418,26 @@ export const ChangePlanPanel: React.FC<{
         </p>
         <button
           type="button"
-          disabled={busy || !selected || unchanged}
+          disabled={busy || !selected || unchanged || !releaseSatisfied || !keepImage}
           onClick={() =>
             selected &&
             onApply(
-              { type: 'resize', size: selected.slug, options: { memory, disk } },
+              {
+                type: 'resize',
+                size: selected.slug,
+                options: {
+                  memory,
+                  disk,
+                  ipv4_addresses: ipCount,
+                  daily_backups: dailyBackups,
+                  weekly_backups: weeklyBackups,
+                  monthly_backups: monthlyBackups,
+                  offsite_backups: offsiteBackups,
+                  // Only when reducing: the API rejects a reduction that does
+                  // not say which addresses are being given up.
+                  ...(ipsToRemove.length ? { ipv4_addresses_to_remove: ipsToRemove } : {})
+                }
+              },
               `Change plan to ${selected.slug} (${memory / 1024} GB memory, ${disk} GB storage)`,
               [
                 { label: 'Plan', from: server.size_slug ?? undefined, to: selected.slug },
@@ -274,6 +446,12 @@ export const ChangePlanPanel: React.FC<{
                 // Both sides ex-GST and both including the image surcharge:
                 // `size.price_monthly` alone is the bare plan price and `total`
                 // is inc-GST, so comparing those understated the current cost.
+                { label: 'IP addresses', from: String((current as any).ipv4_addresses ?? publicIps.length), to: String(ipCount) },
+                ...(ipsToRemove.length ? [{ label: 'Releasing', from: ipsToRemove.join(', '), to: undefined }] : []),
+                { label: 'Daily backups', from: String((current as any).daily_backups ?? 0), to: String(dailyBackups) },
+                { label: 'Weekly backups', from: String((current as any).weekly_backups ?? 0), to: String(weeklyBackups) },
+                { label: 'Monthly backups', from: String((current as any).monthly_backups ?? 0), to: String(monthlyBackups) },
+                { label: 'Offsite backups', from: (current as any).offsite_backups ? 'on' : 'off', to: offsiteBackups ? 'on' : 'off' },
                 ...(server.size ? [{ label: 'Monthly (ex-GST)', from: `$${planMonthlyPrice(server.size, image, server.memory ?? 0, server.disk ?? 0).toFixed(2)}`, to: `$${monthly.toFixed(2)}` }] : [])
               ].filter((c) => c.from !== c.to)
             )
@@ -281,7 +459,15 @@ export const ChangePlanPanel: React.FC<{
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] text-white disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <ArrowRightLeft className="w-3.5 h-3.5" />
-          <span>{unchanged ? 'No change selected' : 'Change Plan'}</span>
+          <span>
+            {!keepImage
+              ? 'Untick blocked — rebuild instead'
+              : !releaseSatisfied
+                ? `Select ${mustRelease - ipsToRemove.length} more address${mustRelease - ipsToRemove.length === 1 ? '' : 'es'}`
+                : unchanged
+                  ? 'No change selected'
+                  : 'Change Plan'}
+          </span>
         </button>
       </div>
     </div>
