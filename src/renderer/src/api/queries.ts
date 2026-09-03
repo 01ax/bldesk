@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BinaryLaneClient } from './client'
 import { components } from '@shared/api/schema'
+import type { FleetMetricResult } from '../lib/heatmap'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -330,6 +331,50 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
     },
     enabled: !!client && serverIds.length > 0,
     staleTime: 60_000
+  })
+}
+
+/** Latest metrics for the active fleet, four requests at a time and at fleet cadence. */
+function combineAbortSignals(querySignal: AbortSignal, timeoutSignal: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([querySignal, timeoutSignal])
+  const controller = new AbortController()
+  const forward = (source: AbortSignal) => {
+    if (!controller.signal.aborted) controller.abort(source.reason)
+  }
+  for (const source of [querySignal, timeoutSignal]) {
+    if (source.aborted) forward(source)
+    else source.addEventListener('abort', () => forward(source), { once: true })
+  }
+  return controller.signal
+}
+
+export function useFleetMetrics(client: BinaryLaneClient | null, serverIds: number[]) {
+  const key = serverIds.join(',')
+  return useQuery({
+    queryKey: ['fleet-metrics', key],
+    queryFn: async ({ signal }) => {
+      const map = new Map<number, FleetMetricResult>()
+      if (!client) return map
+      const results = await mapLimitNullable(serverIds, 4, async (id) => {
+        try {
+          const timeout = AbortSignal.timeout(20_000)
+          const requestSignal = combineAbortSignals(signal, timeout)
+          const { data, error } = await client.GET('/v2/samplesets/{server_id}/latest', {
+            params: { path: { server_id: id } },
+            signal: requestSignal
+          })
+          if (error) return { sample: null, error: describeApiError(error) }
+          return { sample: data?.sample_set ?? null, error: null }
+        } catch (error) {
+          return { sample: null, error: error instanceof Error ? error.message : 'Metrics request failed.' }
+        }
+      })
+      serverIds.forEach((id, index) => map.set(id, results[index] ?? { sample: null, error: 'Metrics request failed.' }))
+      return map
+    },
+    enabled: !!client && serverIds.length > 0,
+    refetchInterval: 30_000,
+    placeholderData: keepPreviousData
   })
 }
 
