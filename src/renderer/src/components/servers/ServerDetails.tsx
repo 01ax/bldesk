@@ -27,6 +27,7 @@ import { ServerUsage } from './ServerUsage'
 import {
   useServerMetrics,
   useServerConsole,
+  useServerUserData,
   useServerActionMutation,
   useServerDiagnosticMutation,
   useCancelServerMutation
@@ -43,6 +44,7 @@ import { ServerSubTab } from '../layout/Sidebar'
 import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
+import { CloudInitTemplates, imageSupportsUserData } from './CloudInitTemplates'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -137,6 +139,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
 
   const handleCopyLink = async () => {
     await copyDeepLink({ kind: 'server', serverId: server.id, subTab: activeSubTab })
@@ -163,6 +166,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
   const metricsQuery = useServerMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
+  const userDataQuery = useServerUserData(client, server.id)
   const serverAction = useServerActionMutation(client)
   const diagnosticAction = useServerDiagnosticMutation(client, server.id)
   const cancelServer = useCancelServerMutation(client)
@@ -637,6 +641,25 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
         {/* USAGE & METRICS TAB */}
         {activeSubTab === 'usage' && <ServerUsage client={client} server={server} />}
+
+        {activeSubTab === 'cloud-init' && (
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[#212529] dark:text-white">Cloud-init user data</h3>
+                  <p className="text-xs text-[#6c757d] dark:text-slate-400">Image support: {imageSupportsUserData(server.image) ? 'Yes' : 'No'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={!userDataQuery.data} onClick={() => userDataQuery.data && handleCopy(userDataQuery.data)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs disabled:opacity-40"><Copy className="w-3.5 h-3.5" />Copy</button>
+                  <button disabled={!userDataQuery.data} onClick={() => setTemplateDraftOpen(true)} className="px-3 py-1.5 rounded bg-[#017cb6] text-white text-xs disabled:opacity-40">Save as template</button>
+                </div>
+              </div>
+              {userDataQuery.isLoading ? <p className="text-xs text-[#6c757d]">Loading…</p> : userDataQuery.isError ? <p className="text-xs text-rose-600">Could not read stored user data.</p> : userDataQuery.data ? <textarea readOnly value={userDataQuery.data} rows={20} spellCheck={false} className="w-full px-3 py-2 text-xs font-mono rounded border bg-[#f8f9fa] dark:bg-[#212529] border-[#ced4da] dark:border-[#495057]" /> : <p className="text-xs text-[#6c757d]">This server has no stored user data.</p>}
+            </div>
+          </div>
+        )}
+        {templateDraftOpen && userDataQuery.data && <CloudInitTemplates client={client} servers={allServers ?? [server]} initialDraft={{ userData: userDataQuery.data, source: { server_id: server.id, server_name: server.name, image_slug: server.image?.slug ?? undefined } }} onClose={() => setTemplateDraftOpen(false)} />}
 
         {/* REMOTE ACCESS TAB */}
         {activeSubTab === 'remote-access' && (

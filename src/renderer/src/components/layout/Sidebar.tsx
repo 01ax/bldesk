@@ -37,6 +37,7 @@ export type ServerSubTab =
   | 'overview'
   | 'remote-access'
   | 'usage'
+  | 'cloud-init'
   | 'network'
   | 'backups'
   | 'firewall'
@@ -89,6 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'overview', label: 'Overview' },
     { id: 'remote-access', label: 'Remote Access' },
     { id: 'usage', label: 'Usage & Metrics' },
+    { id: 'cloud-init', label: 'Cloud-init' },
     { id: 'network', label: 'Network' },
     { id: 'backups', label: 'Backups' },
     { id: 'firewall', label: 'Firewall Rules' },

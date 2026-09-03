@@ -79,6 +79,45 @@ export function useServer(client: BinaryLaneClient | null, serverId: number | nu
   })
 }
 
+export function useServerUserData(client: BinaryLaneClient | null, serverId: number | null) {
+  return useQuery({
+    queryKey: ['server-user-data', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return null
+      const { data, error } = await client.GET('/v2/servers/{server_id}/user_data', {
+        params: { path: { server_id: serverId } }
+      })
+      if (error) throw new Error(describeApiError(error))
+      return data?.user_data ?? null
+    },
+    enabled: !!client && !!serverId,
+    staleTime: 60000
+  })
+}
+
+export function useFleetUserData(client: BinaryLaneClient | null, serverIds: number[]) {
+  const key = serverIds.join(',')
+  return useQuery({
+    queryKey: ['fleet-user-data', key],
+    queryFn: async () => {
+      const map = new Map<number, string | null | undefined>()
+      if (!client) return map
+      const results = await mapLimitNullable(serverIds, 4, async (id) => {
+        const { data, error } = await client.GET('/v2/servers/{server_id}/user_data', {
+          params: { path: { server_id: id } },
+          signal: AbortSignal.timeout(20_000)
+        })
+        if (error) throw new Error(describeApiError(error))
+        return { userData: data?.user_data ?? null }
+      })
+      serverIds.forEach((id, i) => map.set(id, results[i] === null ? undefined : results[i]?.userData))
+      return map
+    },
+    enabled: !!client && serverIds.length > 0,
+    staleTime: 60000
+  })
+}
+
 export function useServerMetrics(client: BinaryLaneClient | null, serverId: number | null) {
   return useQuery({
     queryKey: ['serverMetrics', serverId],

@@ -25,6 +25,13 @@ const api: IpcApi = {
   changelogList: (profileId, limit) => ipcRenderer.invoke('changelog:list', profileId, limit),
   changelogClear: (profileId) => ipcRenderer.invoke('changelog:clear', profileId),
 
+  // Device-wide cloud-init templates
+  templatesList: () => ipcRenderer.invoke('templates:list'),
+  templatesGet: (slug) => ipcRenderer.invoke('templates:get', slug),
+  templatesSave: (document, oldSlug) => ipcRenderer.invoke('templates:save', document, oldSlug),
+  templatesRemove: (slug) => ipcRenderer.invoke('templates:remove', slug),
+  templatesReveal: (slug) => ipcRenderer.invoke('templates:reveal', slug),
+
   // Tray / menu bar
   updateTray: (summary) => ipcRenderer.invoke('tray:update', summary),
   getTraySettings: () => ipcRenderer.invoke('tray:getSettings'),

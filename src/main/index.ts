@@ -8,6 +8,7 @@ import { UpdaterManager } from './updater'
 import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
 import { ChangeLogStore } from './changelog'
+import { TemplateStore } from './templates'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
 let mainWindow: BrowserWindow | null = null
@@ -271,6 +272,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle('changelog:update', (_, profileId: string, id: string, patch) => ChangeLogStore.update(profileId, id, patch))
   ipcMain.handle('changelog:list', (_, profileId: string, limit?: number) => ChangeLogStore.list(profileId, limit))
   ipcMain.handle('changelog:clear', (_, profileId: string) => ChangeLogStore.clear(profileId))
+
+  // Device-wide cloud-init template library
+  ipcMain.handle('templates:list', () => TemplateStore.list())
+  ipcMain.handle('templates:get', (_, slug: string) => TemplateStore.get(slug))
+  ipcMain.handle('templates:save', (_, document: string, oldSlug?: string) => TemplateStore.save(document, oldSlug))
+  ipcMain.handle('templates:remove', (_, slug: string) => TemplateStore.remove(slug))
+  ipcMain.handle('templates:reveal', (_, slug: string) => TemplateStore.reveal(slug))
 
   // Tray / menu bar
   ipcMain.handle('tray:update', (_, summary: TrayFleetSummary) => TrayManager.update(summary))
