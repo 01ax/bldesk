@@ -26,7 +26,7 @@ import {
   useDeleteLoadBalancerMutation
 } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { updateChange } from '../../lib/changelog'
+import { recordChange, updateChange } from '../../lib/changelog'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -88,6 +88,17 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       return
     }
 
+    const changeId = await recordChange({
+      label: 'Create load balancer',
+      target: { kind: 'loadbalancer', name: lbName.trim() },
+      severity: 'normal',
+      changes: [
+        { label: 'Region', to: lbRegion },
+        { label: 'Entry protocol', to: entryProtocol },
+        { label: 'Backends', to: selectedServerIds.map((id) => servers.find((s) => s.id === id)?.name || `#${id}`).join(', ') || undefined }
+      ],
+      source: 'ui'
+    })
     try {
       await createLbMutation.mutateAsync({
         name: lbName.trim(),
@@ -99,6 +110,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
         ],
         server_ids: selectedServerIds
       })
+      void updateChange(changeId, { outcome: 'completed' })
 
       window.bldeskApi?.sendNotification?.({
         title: 'Load Balancer Created',
@@ -109,6 +121,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       setLbName('')
       setSelectedServerIds([])
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       setCreateError(err.message || 'Failed to create load balancer.')
     }
   }
@@ -117,13 +130,21 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
     e.preventDefault()
     if (!attachModalLb || !selectedServerToAttach) return
 
+    const sName = servers.find((s) => s.id === selectedServerToAttach)?.name || String(selectedServerToAttach)
+    const changeId = await recordChange({
+      label: 'Add to load balancer',
+      target: { kind: 'loadbalancer', id: attachModalLb.id, name: attachModalLb.name },
+      severity: 'normal',
+      changes: [{ label: 'Backend', to: sName }],
+      source: 'ui'
+    })
     try {
       await addServerMutation.mutateAsync({
         loadBalancerId: attachModalLb.id,
         serverId: selectedServerToAttach
       })
+      void updateChange(changeId, { outcome: 'completed' })
 
-      const sName = servers.find((s) => s.id === selectedServerToAttach)?.name || selectedServerToAttach
       window.bldeskApi?.sendNotification?.({
         title: 'Backend Pool Updated',
         body: `Added "${sName}" to ${attachModalLb.name}.`
@@ -132,6 +153,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       setAttachModalLb(null)
       setSelectedServerToAttach(null)
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to add server: ${err.message}`)
     }
   }

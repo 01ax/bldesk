@@ -15,7 +15,7 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useVpcs, useServers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { updateChange } from '../../lib/changelog'
+import { recordChange, updateChange } from '../../lib/changelog'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { describeApiError } from '../../api/queries'
 
@@ -51,13 +51,22 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
     if (!client) return
 
     setIsSubmitting(true)
+    const changeId = await recordChange({
+      label: 'Create VPC',
+      target: { kind: 'vpc', name: vpcName.trim() },
+      severity: 'normal',
+      changes: [{ label: 'IP range', to: ipRange.trim() }],
+      source: 'ui'
+    })
     try {
-      await client.POST('/v2/vpcs', {
+      const { error } = await client.POST('/v2/vpcs', {
         body: {
           name: vpcName.trim(),
           ip_range: ipRange.trim()
         }
       })
+      if (error) throw new Error(describeApiError(error))
+      void updateChange(changeId, { outcome: 'completed' })
       setIsCreating(false)
       setVpcName('')
       vpcsQuery.refetch()
@@ -66,6 +75,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
         body: `Virtual Private Cloud "${vpcName}" created successfully.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to create VPC: ${err.message}`)
     } finally {
       setIsSubmitting(false)
@@ -78,16 +88,26 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
     if (!client || !attachModalVpc || !selectedServerToAttach) return
 
     setIsAttaching(true)
+    const targetServerName = servers.find((s) => s.id === selectedServerToAttach)?.name || String(selectedServerToAttach)
+    const changeId = await recordChange({
+      label: 'Attach to VPC',
+      target: { kind: 'server', id: selectedServerToAttach, name: String(targetServerName) },
+      severity: 'normal',
+      changes: [{ label: 'VPC', to: attachModalVpc.name }],
+      source: 'ui'
+    })
     try {
-      await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: selectedServerToAttach } },
         body: {
           type: 'change_network',
           vpc_id: attachModalVpc.id
         }
       })
+      if (error) throw new Error(describeApiError(error))
+      if (data?.action) track(data.action, 'Attach to VPC', String(targetServerName), changeId)
+      else void updateChange(changeId, { outcome: 'completed' })
 
-      const targetServerName = servers.find((s) => s.id === selectedServerToAttach)?.name || selectedServerToAttach
       window.bldeskApi?.sendNotification?.({
         title: 'Server Attached to VPC',
         body: `Moved "${targetServerName}" into VPC "${attachModalVpc.name}".`
@@ -98,6 +118,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
       queryClient.invalidateQueries({ queryKey: ['servers'] })
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to attach server: ${err.message}`)
     } finally {
       setIsAttaching(false)

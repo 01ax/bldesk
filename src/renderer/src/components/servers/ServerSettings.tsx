@@ -40,7 +40,6 @@ type ThresholdAlertRequest = components['schemas']['ThresholdAlertRequest']
 type ThresholdAlertType = components['schemas']['ThresholdAlertType']
 type VmMachineType = components['schemas']['VmMachineType']
 import { visibleFeatures, mergeHiddenFeatures, formatMachineType } from '../../lib/advancedFeatures'
-import { CancelServerDialog } from './CancelServerDialog'
 import { ChangePlanPanel } from './ChangePlanPanel'
 type VideoDevice = components['schemas']['VideoDevice']
 
@@ -54,8 +53,6 @@ interface ServerSettingsProps {
 type SettingsTab = 'hostname' | 'plan' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
 
 export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, onCancelled }) => {
-  const [cancelOpen, setCancelOpen] = useState(false)
-  const [cancelError, setCancelError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<SettingsTab>('hostname')
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -204,6 +201,46 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   }
 
   // --- Handlers ---
+
+  /**
+   * Cancel goes through the same dialog as everything else — irreversible, so
+   * the hostname must be typed — with a reason picker the API forwards to
+   * BinaryLane. Confirming records the History entry, including the reason.
+   */
+  const handleCancelServer = async () => {
+    const monthly = server.size?.price_monthly
+    const c = await confirmAction({
+      title: 'Cancel server',
+      target: { kind: 'server', id: server.id, name: server.name },
+      summary: 'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups and snapshots attached to it go with it.',
+      severity: 'irreversible',
+      notes: [
+        'There is no undo — BinaryLane keeps no copy of a cancelled server.',
+        ...(typeof monthly === 'number' && monthly > 0 ? [`This server currently bills at $${monthly.toFixed(2)}/month.`] : [])
+      ],
+      changes: [
+        { label: 'Plan', from: server.size_slug, to: undefined },
+        { label: 'Public IPv4', from: server.networks?.v4?.find((n) => n.type === 'public')?.ip_address, to: undefined }
+      ],
+      reason: {
+        label: 'Why are you cancelling?',
+        options: ['No longer required', 'Too expensive', 'Moving to another provider', 'Performance did not meet expectations', 'Technical issues', 'Created by mistake / testing', 'Other'],
+        requireDetailFor: ['Other']
+      },
+      confirmLabel: 'Cancel server'
+    })
+    if (!c.ok) return
+    setErrorMsg(null)
+    try {
+      await cancelServer.mutateAsync({ serverId: server.id, reason: c.reason })
+      void updateChange(c.changeId, { outcome: 'completed', detail: 'BinaryLane accepted the cancellation; the server is removed within minutes.' })
+      onCancelled?.()
+    } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
+      setErrorMsg(err?.message || 'Failed to cancel the server.')
+    }
+  }
+
   const handleRename = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!hostnameInput.trim() || hostnameInput.trim() === server.name) return
@@ -519,10 +556,11 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
             client={client}
             server={server}
             busy={busy}
-            onApply={(payload, summary) =>
+            onApply={(payload, summary, changes) =>
               void executeAction('Change Plan', payload, {
-                summary,
+                summary: `${summary}. The server restarts to apply it.`,
                 severity: 'destructive',
+                changes,
                 confirmLabel: 'Change plan'
               })
             }
@@ -806,24 +844,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
         </div>
       )}
 
-      <CancelServerDialog
-        isOpen={cancelOpen}
-        serverName={server.name}
-        monthlyPrice={server.size?.price_monthly}
-        busy={cancelServer.isPending}
-        error={cancelError}
-        onCancel={() => setCancelOpen(false)}
-        onConfirm={async (reason) => {
-          setCancelError(null)
-          try {
-            await cancelServer.mutateAsync({ serverId: server.id, reason })
-            setCancelOpen(false)
-            onCancelled?.()
-          } catch (err: any) {
-            setCancelError(err?.message || 'Failed to cancel the server.')
-          }
-        }}
-      />
 
       {/* 4. ALERTS TAB */}
       {activeTab === 'alerts' && (
@@ -1121,10 +1141,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
             </p>
             <button
               type="button"
-              onClick={() => {
-                setCancelError(null)
-                setCancelOpen(true)
-              }}
+              onClick={() => void handleCancelServer()}
               disabled={busy}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-rose-600 text-white disabled:opacity-40"
             >

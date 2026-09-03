@@ -3,7 +3,7 @@ import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X } from 'lucide-rea
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { updateChange } from '../../lib/changelog'
+import { recordChange, updateChange } from '../../lib/changelog'
 
 interface SshKeysManagerProps {
   client: BinaryLaneClient | null
@@ -36,16 +36,26 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
   }
 
   const handleImportLocalKey = async (localKey: { name: string; publicKey: string }) => {
+    const changeId = await recordChange({
+      label: 'Add SSH key',
+      target: { kind: 'sshkey', name: localKey.name },
+      severity: 'normal',
+      summary: 'Imported from ~/.ssh',
+      changes: [{ label: 'Public key', to: localKey.publicKey.slice(0, 40) + '…' }],
+      source: 'ui'
+    })
     try {
       await addKeyMutation.mutateAsync({
         name: localKey.name,
         publicKey: localKey.publicKey
       })
+      void updateChange(changeId, { outcome: 'completed' })
       window.bldeskApi?.sendNotification?.({
         title: 'SSH Key Imported',
         body: `Imported "${localKey.name}" from your local ~/.ssh directory.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Import failed: ${err.message}`)
     }
   }
@@ -54,11 +64,19 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
     e.preventDefault()
     if (!keyName.trim() || !publicKey.trim()) return
 
+    const changeId = await recordChange({
+      label: 'Add SSH key',
+      target: { kind: 'sshkey', name: keyName.trim() },
+      severity: 'normal',
+      changes: [{ label: 'Public key', to: publicKey.trim().slice(0, 40) + '…' }],
+      source: 'ui'
+    })
     try {
       await addKeyMutation.mutateAsync({
         name: keyName.trim(),
         publicKey: publicKey.trim()
       })
+      void updateChange(changeId, { outcome: 'completed' })
       setIsAdding(false)
       setKeyName('')
       setPublicKey('')
@@ -67,6 +85,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
         body: `Added SSH key "${keyName}".`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Failed to add key: ${err.message}`)
     }
   }
