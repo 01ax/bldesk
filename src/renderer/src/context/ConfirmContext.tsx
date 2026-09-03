@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { AlertTriangle, Check, ShieldAlert, X } from 'lucide-react'
+import { AlertTriangle, Check, ShieldAlert } from 'lucide-react'
+import { Modal } from '../components/ui/Modal'
 import type { DiffLine, FieldChange } from '../lib/diff'
 import { summariseDiff } from '../lib/diff'
 import { recordChange, type ChangeSeverity, type ChangeTarget } from '../lib/changelog'
@@ -166,10 +166,8 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        finish(false)
-      } else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+      // Escape is handled by the Modal shell; Enter confirms from anywhere in it.
+      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault()
         finish(true)
       }
@@ -189,34 +187,54 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
 
   const diffSummary = req.diff ? summariseDiff(req.diff) : null
 
-  return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 overlay-safe select-none" onMouseDown={() => finish(false)}>
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        className="w-full max-w-lg bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-      >
-        <div className="flex items-start justify-between gap-3 p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
-          <div className={`flex items-center gap-2 min-w-0 ${tone.head}`}>
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            <h3 id="confirm-title" className="font-bold text-sm truncate">
-              {req.title}
-              {req.target && (
-                <span className="ml-2 font-mono font-normal text-[#212529] dark:text-[#f8f9fa]">
-                  {req.target.name}
-                  {req.target.id !== undefined && <span className="text-[#6c757d]"> #{req.target.id}</span>}
-                </span>
-              )}
-            </h3>
-          </div>
-          <button onClick={() => finish(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition" aria-label="Cancel">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+  const titleNode = (
+    <>
+      {req.title}
+      {req.target && (
+        <span className="ml-2 font-mono font-normal text-[#212529] dark:text-[#f8f9fa]">
+          {req.target.name}
+          {req.target.id !== undefined && <span className="text-[#6c757d]"> #{req.target.id}</span>}
+        </span>
+      )}
+    </>
+  )
 
-        <div className="p-4 space-y-3 text-xs max-h-[60vh] overflow-y-auto select-text">
+  return (
+    <Modal
+      title={titleNode}
+      icon={Icon}
+      headTone={tone.head}
+      onClose={() => finish(false)}
+      busy={busy}
+      noSelect
+      labelledBy="confirm-title"
+      footer={
+        <div className="flex items-center justify-between gap-2 p-4">
+          <span className="text-[10px] text-[#6c757d]">
+            {severity === 'irreversible' ? 'No undo. ' : ''}
+            {req.log === false ? '' : 'Recorded in History.'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => finish(false)}
+              className="px-3 py-1.5 text-xs font-medium rounded border border-[#ced4da] dark:border-[#373b3e] text-[#212529] dark:text-slate-200 hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition"
+            >
+              Cancel <kbd className="ml-1 text-[9px] opacity-60">Esc</kbd>
+            </button>
+            <button
+              ref={primaryRef}
+              onClick={() => finish(true)}
+              disabled={!canConfirm || busy}
+              className={`px-3 py-1.5 text-xs font-semibold rounded text-white transition disabled:opacity-40 ${tone.btn}`}
+            >
+              {req.confirmLabel ?? (severity === 'normal' ? 'Confirm' : req.title)} <kbd className="ml-1 text-[9px] opacity-70">↵</kbd>
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div className="p-4 space-y-3 text-xs max-h-[60vh]">
+
           {req.summary && <p className="text-[#212529] dark:text-[#f8f9fa] leading-relaxed">{req.summary}</p>}
 
           {((req.notes && req.notes.length > 0) || req.extraAction) && (
@@ -321,32 +339,8 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
               />
             </label>
           )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 p-4 border-t border-[#ced4da] dark:border-[#373b3e]">
-          <span className="text-[10px] text-[#6c757d]">
-            {severity === 'irreversible' ? 'No undo. ' : ''}
-            {req.log === false ? '' : 'Recorded in History.'}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => finish(false)}
-              className="px-3 py-1.5 text-xs font-medium rounded border border-[#ced4da] dark:border-[#373b3e] text-[#212529] dark:text-slate-200 hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition"
-            >
-              Cancel <kbd className="ml-1 text-[9px] opacity-60">Esc</kbd>
-            </button>
-            <button
-              ref={primaryRef}
-              onClick={() => finish(true)}
-              disabled={!canConfirm || busy}
-              className={`px-3 py-1.5 text-xs font-semibold rounded text-white transition disabled:opacity-40 ${tone.btn}`}
-            >
-              {req.confirmLabel ?? (severity === 'normal' ? 'Confirm' : req.title)} <kbd className="ml-1 text-[9px] opacity-70">↵</kbd>
-            </button>
-          </div>
-        </div>
+        
       </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }
