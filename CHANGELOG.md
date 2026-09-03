@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
+## [1.0.60-beta.2] - 2026-09-04
+
+### Fixed
+- **Change Plan review follow-up** (*PR #40 by @01ax*): A required licence group (cPanel images ship no opt-out tier) now defaults to its cheapest real option and holds the submit until one is chosen, instead of the API rejecting the resize after confirmation. Billing counts backups against the plan's included counts, charges the offsite surcharge for the highest enabled frequency, and prices transfer above the allowance; none of these move a number on today's plans. The resize payload now carries `transfer`, clamped to the target plan's range, so a plan change no longer resets the allowance. The pre-action backup offers only genuinely free slots and, where none is free, asks for the exact backup to replace. Windows SAL copy points at support rather than the web panel. Adds `vitest` with 43 tests over `lib/licences.ts` and `lib/serverPricing.ts`, run by `npm run typecheck`.
+- **Template dialogs and the sidebar** (*PR #41 by @termau*): The template editor, apply and paste dialogs had no body or footer padding, so fields sat flush against the panel edge; they now match the other dialogs. Every dialog starts below the title bar instead of over it. Leaving Server Details (for example via **Save server as template**) shifted the whole app 48px because the icon rail plus server sub-nav was wider than the plain sidebar; the sub-nav is now sized so both layouts are the same width, and the width transition is gone.
+
+---
+ 
 ## [1.0.60-beta.1] - 2026-09-04
 
 ### Added
