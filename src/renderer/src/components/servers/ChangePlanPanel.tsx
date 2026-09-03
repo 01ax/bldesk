@@ -21,7 +21,7 @@ import {
   isCapacityBlock,
   planMonthlyPrice,
   configuredCost,
-  preservedTransfer,
+  transferForResize,
   retentionOptionLabel,
   memoryChoices,
   diskChoices,
@@ -246,13 +246,20 @@ export const ChangePlanPanel: React.FC<{
 
   /*
    * Transfer is not editable here, but it has to be *sent*: `resize` resets any
-   * resource option the payload omits to the target plan's default, so leaving
-   * it out silently moves the server off whatever allowance it had. It cannot
-   * be sent raw either - a retired plan can carry more than its replacement
-   * permits (4 TB onto a plan capped at 3), which is a 400 - so it is clamped
-   * into the target's range. See `preservedTransfer`.
+   * resource option the payload omits to the target plan's default.
+   *
+   * Changing plan hands over the target plan's included transfer, exactly as
+   * the web panel does - it clears the previous value on a size change rather
+   * than carrying it across. That can be a reduction, so it is surfaced in the
+   * change table below rather than applied silently.
    */
-  const transferTb = preservedTransfer((selected ?? server.size) as any, current.transfer as number)
+  const sizeChanged = !!selected && selected.slug !== server.size_slug
+  const transferTb = transferForResize(
+    (selected ?? server.size) as any,
+    current.transfer as number,
+    sizeChanged
+  )
+  const currentTransferTb = (current.transfer as number) ?? server.size?.transfer ?? 0
 
   const incompatible = licensed.filter((l) => l.incompatible)
   const licencesMonthly = licenceCost(offered as any, licences)
@@ -400,7 +407,7 @@ export const ChangePlanPanel: React.FC<{
         weeklyBackups: (current.weekly_backups as number) ?? 0,
         monthlyBackups: (current.monthly_backups as number) ?? 0,
         offsiteBackups: !!current.offsite_backups,
-        transferTb: (current.transfer as number) ?? server.size?.transfer,
+        transferTb: currentTransferTb,
         licencesMonthly: currentLicenceCost(licensed as any)
       })
     : null
@@ -431,6 +438,11 @@ export const ChangePlanPanel: React.FC<{
       { label: 'Memory', from: `${(server.memory ?? 0) / 1024} GB`, to: `${memory / 1024} GB` },
       { label: 'Storage', from: `${server.disk ?? 0} GB`, to: `${disk} GB` },
       { label: 'IP addresses', from: String(currentIpCount), to: String(ipCount) },
+      {
+        label: 'Data',
+        from: `${currentTransferTb * 1000} GB`,
+        to: `${transferTb * 1000} GB`
+      },
       { label: 'Daily backups', from: String((current.daily_backups as number) ?? 0), to: String(dailyBackups) },
       { label: 'Weekly backups', from: String((current.weekly_backups as number) ?? 0), to: String(weeklyBackups) },
       { label: 'Monthly backups', from: String((current.monthly_backups as number) ?? 0), to: String(monthlyBackups) },
