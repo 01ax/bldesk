@@ -31,6 +31,8 @@ export interface SoftwareLike {
   minimum_licence_count: number
   maximum_licence_count: number
   licence_step_count: number
+  /** Image slugs this software can be licensed on. Absent on older payloads. */
+  supported_operating_systems?: string[] | null
 }
 
 /** software_id -> licence count. Absent means not licensed. */
@@ -44,9 +46,15 @@ export interface LicenceGroup {
    * ubuntu-24.04 include an explicit "cPanel: Not required"; the cPanel images
    * do not, because a cPanel server must carry a cPanel licence, and their
    * cheapest tier is $0 instead.
+   *
+   * The API marks it structurally: "a software in each group with a
+   * licence_step_count value of -1 that may be selected to indicate the
+   * software from that group is not required". The name is only a fallback.
    */
   optOut: SoftwareLike | null
 }
+
+export const isOptOut = (s: SoftwareLike): boolean => s.licence_step_count === -1
 
 const byCost = (a: SoftwareLike, b: SoftwareLike): number =>
   a.cost_per_licence_per_month - b.cost_per_licence_per_month || a.name.localeCompare(b.name)
@@ -71,7 +79,7 @@ export function splitSoftware(offered: SoftwareLike[]): { groups: LicenceGroup[]
         return {
           name,
           options: sorted,
-          optOut: sorted.find((o) => /not required|none|no licence|no license/i.test(o.name)) ?? null
+          optOut: sorted.find(isOptOut) ?? sorted.find((o) => /\bnot required\b/i.test(o.name)) ?? null
         }
       })
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -159,14 +167,24 @@ export function countChoices(s: SoftwareLike): number[] {
  * server holding Remote Desktop SAL would lose it the first time someone
  * changed its memory. Incompatible entries are left out: the API removes those
  * at the next plan change regardless.
+ *
+ * When the server is being reinstalled onto `targetOs`, a held licence is kept
+ * on offer only if its own `supported_operating_systems` says the new image
+ * can carry it. A held licence that does not say (older payloads) is kept too:
+ * if the new image cannot carry it, the API rejects the request visibly,
+ * which beats this form silently dropping a licence that cannot be re-bought.
  */
 export function offerableSoftware(
   osSoftware: SoftwareLike[],
-  licensed: Array<{ software: SoftwareLike; licence_count: number; incompatible: boolean }>
+  licensed: Array<{ software: SoftwareLike; licence_count: number; incompatible: boolean }>,
+  targetOs?: string | null
 ): SoftwareLike[] {
   const out = [...osSoftware]
   for (const l of licensed) {
-    if (!l.incompatible && !out.some((o) => o.id === l.software.id)) out.push(l.software)
+    if (l.incompatible || out.some((o) => o.id === l.software.id)) continue
+    const supported = l.software.supported_operating_systems
+    if (targetOs && supported?.length && !supported.includes(targetOs)) continue
+    out.push(l.software)
   }
   return out
 }

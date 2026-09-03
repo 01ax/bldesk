@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useAccount, useBalance } from '../../api/queries'
+import { MPANEL_URL } from '../ui/LinkOut'
 
 /**
  * Account details.
@@ -29,7 +30,7 @@ import { useAccount, useBalance } from '../../api/queries'
  * out to the web panel. Nothing here pretends to be actionable when it isn't.
  */
 
-const MPANEL = 'https://home.binarylane.com.au'
+const MPANEL = MPANEL_URL
 
 interface AccountOverviewProps {
   client: BinaryLaneClient | null

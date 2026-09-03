@@ -170,6 +170,8 @@ export function useServerActionMutation(client: BinaryLaneClient | null) {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['servers'] })
       queryClient.invalidateQueries({ queryKey: ['server', variables.serverId] })
+      // A resize can change what the server is licensed for.
+      queryClient.invalidateQueries({ queryKey: ['server-software', variables.serverId] })
     }
   })
 }
@@ -1718,12 +1720,17 @@ export function useOsSoftware(client: BinaryLaneClient | null, osSlug: string | 
     queryKey: ['software', 'os', osSlug],
     queryFn: async () => {
       if (!client || !osSlug) return []
-      const { data, error } = await client.GET('/v2/software/operating_system/{operating_system_id_or_slug}', {
+      const { data, error, response } = await client.GET('/v2/software/operating_system/{operating_system_id_or_slug}', {
         params: { path: { operating_system_id_or_slug: osSlug } as any, query: { per_page: 200 } as any }
       })
       // A 404 here is an image with no licences on offer (every Windows slug,
-      // and any custom image), not a failure worth surfacing.
-      if (error) return []
+      // and any custom image), not a failure worth surfacing. Anything else is:
+      // Change Plan builds `change_licenses` from this list, and an empty list
+      // that really means "the request failed" would read as "drop them all".
+      if (error) {
+        if (response?.status === 404) return []
+        throw new Error(describeApiError(error))
+      }
       return data?.software || []
     },
     enabled: !!client && !!osSlug,

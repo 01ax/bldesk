@@ -21,3 +21,5 @@ export const LinkOut: React.FC<{ href: string; children: React.ReactNode }> = ({
 /** The agreement the create form and Change Plan both require. */
 export const TOS_URL = 'https://www.binarylane.com.au/terms-of-service'
 export const REFUND_URL = 'https://www.binarylane.com.au/refund-policy'
+/** BinaryLane's own control panel, for what the API does not expose. */
+export const MPANEL_URL = 'https://home.binarylane.com.au'

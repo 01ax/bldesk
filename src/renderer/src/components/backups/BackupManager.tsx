@@ -26,6 +26,7 @@ import {
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
+import { availableBackupSlots, BACKUP_SLOT_LABELS } from '../../lib/backupSlots'
 
 interface BackupManagerProps {
   /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
@@ -494,16 +495,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                   onChange={(e) => setSelectedSlot(e.target.value)}
                   className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
                 >
-                  <option value="temporary">Temporary Snapshot (Retained for up to 7 days)</option>
-                  {(activeServer?.selected_size_options?.daily_backups ?? 0) > 0 && (
-                    <option value="daily">Daily Backup Slot</option>
-                  )}
-                  {(activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 && (
-                    <option value="weekly">Weekly Backup Slot</option>
-                  )}
-                  {(activeServer?.selected_size_options?.monthly_backups ?? 0) > 0 && (
-                    <option value="monthly">Monthly Backup Slot</option>
-                  )}
+                  {availableBackupSlots(activeServer?.selected_size_options).map((slot) => (
+                    <option key={slot} value={slot}>
+                      {slot === 'temporary' ? 'Temporary Snapshot (Retained for up to 7 days)' : `${BACKUP_SLOT_LABELS[slot]} Backup Slot`}
+                    </option>
+                  ))}
                   {allImages.length > 0 && (
                     <optgroup label="Replace Existing Image">
                       {allImages.map((img) => (
