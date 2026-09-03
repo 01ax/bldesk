@@ -171,10 +171,14 @@ export interface IpcApi {
   getTraySettings: () => Promise<TraySettings>
   
   // Window Controls
+  /** 'darwin' | 'win32' | 'linux' in Electron; 'android' | 'web' from the mobile bridge. Decides whose window chrome is drawn. */
+  platform: string
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
   isMaximized: () => Promise<boolean>
+  /** Fires on maximise / restore from any cause; returns an unsubscribe. */
+  onWindowMaximized?: (listener: (maximized: boolean) => void) => () => void
   
   // Shell / Browser
   openExternal: (url: string) => Promise<void>

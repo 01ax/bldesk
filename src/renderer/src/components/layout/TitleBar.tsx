@@ -22,11 +22,18 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleMobileDrawer
 }) => {
   const [isMaximized, setIsMaximized] = useState(false)
+  const platform = window.bldeskApi?.platform ?? 'web'
+  // We draw the window controls only where we also dropped the OS frame
+  // (Windows, Linux). macOS keeps its traffic lights, overlaid at the left of
+  // this bar, so the brand shifts right to make room for them.
+  const ownsControls = platform === 'win32' || platform === 'linux'
+  const macInset = platform === 'darwin'
 
   useEffect(() => {
     if (window.bldeskApi?.isMaximized) {
       window.bldeskApi.isMaximized().then(setIsMaximized)
     }
+    return window.bldeskApi?.onWindowMaximized?.(setIsMaximized)
   }, [])
 
   const handleMinimize = () => window.bldeskApi?.minimizeWindow?.()
@@ -40,7 +47,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   const handleClose = () => window.bldeskApi?.closeWindow?.()
 
   return (
-    <div className="titlebar-drag-region min-h-[44px] w-full bg-[#343a40] text-[#f8f9fa] border-b border-black/20 flex items-center justify-between px-2.5 sm:px-3 pt-[env(safe-area-inset-top,0px)] select-none z-50 flex-shrink-0 gap-2">
+    <div
+      onDoubleClick={(e) => {
+        // Double-click on the bar itself toggles maximise, as a native title bar would.
+        if (ownsControls && e.target === e.currentTarget) void handleMaximize()
+      }}
+      className={`titlebar-drag-region min-h-[44px] w-full bg-[#343a40] text-[#f8f9fa] border-b border-black/20 flex items-center justify-between ${
+        macInset ? 'pl-[84px] pr-3' : 'px-2.5 sm:px-3'
+      } pt-[env(safe-area-inset-top,0px)] select-none z-50 flex-shrink-0 gap-2`}
+    >
       {/* Brand & Mobile Drawer Toggle */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
         {onToggleMobileDrawer && (
@@ -131,7 +146,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           </button>
         )}
 
-        {/* Window Action Controls (Desktop Only) */}
+        {/* Window controls — only where the OS frame is gone (Windows, Linux) */}
+        {ownsControls && (
         <div className="hidden md:flex items-center ml-2 border-l border-white/10 pl-2">
           <button
             onClick={handleMinimize}
@@ -155,6 +171,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+        )}
       </div>
     </div>
   )

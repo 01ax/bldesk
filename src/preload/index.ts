@@ -37,6 +37,12 @@ const api: IpcApi = {
   getTraySettings: () => ipcRenderer.invoke('tray:getSettings'),
 
   // Window Controls
+  platform: process.platform,
+  onWindowMaximized: (listener) => {
+    const handler = (_: Electron.IpcRendererEvent, maximized: boolean) => listener(maximized)
+    ipcRenderer.on('window:maximized', handler)
+    return () => ipcRenderer.removeListener('window:maximized', handler)
+  },
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
