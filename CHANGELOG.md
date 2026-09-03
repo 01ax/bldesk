@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.55] - 2026-09-03
+
+### Changed
+- **One dialog shell.** The confirm dialog, the create-server form (and its add-key sub-dialog) and the traceroute viewer now render through a single `Modal` component: same backdrop, panel, header, close button, Escape and backdrop-click everywhere. The mutation guard's rule 2 is now "no `createPortal` outside the shell", so a new kind of dialog fails CI instead of needing a review discussion. Mutating dialogs still go through `useConfirm()`; read-only ones are a `Modal` with their own body.
+
+---
+
 ## [1.0.54] - 2026-09-03
 
 ### Changed
