@@ -5,18 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
----
-## [Unreleased]
+## [1.0.58] - 2026-09-03
+
+### Added
+- **Fleet Utilisation Heatmap** (FEATURES.md #9, *PR #31 by @Freewheelin*): a sortable live grid for CPU, RAM, disk, network and storage IO across every server. Capacity metrics use each server's provisioned resources, throughput rates use fleet-relative intensity, and stale, unavailable, building and inactive servers remain explicit. Active-server metrics refresh once per 5-minute sample period, timed to the period end, four requests at a time, and a sweep already in flight is not duplicated; selecting a row opens that server's Usage tab.
 
 ### Fixed
 - **Frameless window had no edge on Linux** (*PR #26 by @termau*): Without the OS frame nothing drew a border or shadow, so the window was a flat rectangle against the desktop. A one-pixel inset border now stands in for the window manager's, Linux only, and disappears when maximised.
 
 ---
-
-## [Unreleased]
-
-### Added
-- **Fleet Utilisation Heatmap** (FEATURES.md #9): a sortable live grid for CPU, RAM, disk, network and storage IO across every server. Capacity metrics use each server's provisioned resources, throughput rates use fleet-relative intensity, and stale, unavailable, building and inactive servers remain explicit. Active-server metrics refresh once per 5-minute sample period, timed to the period end, four requests at a time, and a sweep already in flight is not duplicated; selecting a row opens that server's Usage tab.
 
 ## [1.0.57] - 2026-09-03
 
