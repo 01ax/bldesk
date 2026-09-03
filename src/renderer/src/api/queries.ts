@@ -1176,6 +1176,34 @@ function describeMissingAction(type: string, submitted: unknown): string {
   return `"${type}" returned ${bits.join(', ')} with no action body, so there is nothing to track.`
 }
 
+/**
+ * Cancel (terminate) a server.
+ *
+ * DELETE /v2/servers/{id} answers 204 with no body - it is not an Action, so
+ * there is nothing to poll and nothing to track. The optional `reason` is free
+ * text the panel collects for its own service reporting; the API caps it at 250
+ * characters.
+ */
+export function useCancelServerMutation(client: BinaryLaneClient | null) {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { serverId: number; reason?: string }>({
+    mutationFn: async ({ serverId, reason }) => {
+      if (!client) throw new Error('No client available')
+      const trimmed = (reason || '').trim().slice(0, 250)
+      const { error } = await client.DELETE('/v2/servers/{server_id}', {
+        params: {
+          path: { server_id: serverId },
+          query: trimmed ? { reason: trimmed } : {}
+        } as never
+      })
+      if (error) throw new Error(describeApiError(error))
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
 export function useNetworkActionMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation<ServerAction, Error, NetworkActionPayload>({
