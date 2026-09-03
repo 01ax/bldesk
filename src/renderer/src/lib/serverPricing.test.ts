@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { configuredCost, preservedTransfer, retentionOptionLabel, type SizeLike } from './serverPricing'
+import { configuredCost, transferForResize, retentionOptionLabel, type SizeLike } from './serverPricing'
 
 /**
  * Pricing regressions are expensive and invisible: every figure here was wrong
@@ -202,24 +202,34 @@ describe('configuredCost', () => {
   })
 })
 
-describe('preservedTransfer', () => {
-  it('keeps the existing allowance when the target permits it', () => {
-    expect(preservedTransfer(size({ options: { ...size().options, transfer_max: 10 } }), 6)).toBe(6)
+describe('transferForResize', () => {
+  it('hands over the target plan included transfer when the plan changes', () => {
+    // The web panel clears the previous value on a size change rather than
+    // carrying it across, and the server resets additional transfer to zero.
+    // 4 TB onto a 3 TB plan therefore becomes 3, not a clamped 3-by-accident.
+    expect(transferForResize(size(), 4, true)).toBe(3)
   })
 
-  it('clamps down to the target maximum', () => {
-    // The case that would 400: a retired plan carrying 4 TB onto a plan capped
-    // at its included 3.
-    expect(preservedTransfer(size(), 4)).toBe(3)
+  it('still hands over the target plan value when the target could carry more', () => {
+    // The case a clamp would get wrong: preserving 4 here would keep an
+    // allowance the panel discards.
+    const s = size({ options: { ...size().options, transfer_max: 10 } })
+    expect(transferForResize(s, 4, true)).toBe(3)
   })
 
-  it('raises up to the target minimum rather than under-requesting', () => {
-    expect(preservedTransfer(size({ transfer: 5, options: { ...size().options, transfer_max: 10 } }), 2)).toBe(5)
+  it('keeps the existing allowance when the plan is unchanged', () => {
+    const s = size({ options: { ...size().options, transfer_max: 10 } })
+    expect(transferForResize(s, 6, false)).toBe(6)
+  })
+
+  it('never exceeds the maximum on the same plan, which the API rejects outright', () => {
+    // 400 options.transfer: "Transfer upgrades are not supported by this size."
+    expect(transferForResize(size(), 4, false)).toBe(3)
   })
 
   it('falls back to the plan allowance when the server has none recorded', () => {
-    expect(preservedTransfer(size(), null)).toBe(3)
-    expect(preservedTransfer(size(), undefined)).toBe(3)
+    expect(transferForResize(size(), null, false)).toBe(3)
+    expect(transferForResize(size(), undefined, true)).toBe(3)
   })
 })
 

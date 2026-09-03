@@ -288,19 +288,39 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
 }
 
 /**
- * A transfer allowance the target plan will accept.
+ * The transfer allowance to send with a resize.
  *
- * `resize` resets any resource option the payload omits to the new plan's
- * default, so an existing selection has to be sent to be kept. It cannot be sent
- * raw, though: a retired plan can carry more transfer than its replacement
- * permits (4 TB onto a plan whose `transfer_max` is 3), and that is a 400. So
- * the kept value is clamped into the target plan's range rather than preserved
- * literally.
+ * `resize` resets any resource option the payload omits to the target plan's
+ * default, so this has to be sent explicitly to be meaningful at all.
+ *
+ * The rule is the web panel's, not a clamp. `ServerSizeConfigStore.selectSize`
+ * clears the previous value (`selectedExtras.transfer = undefined`) whenever a
+ * different base size is chosen, and `SizeHelper.applySizeDefaultsToOptions`
+ * then resolves `transfer: selectedOptions.transfer ?? size.transfer` - so
+ * changing plan hands the customer the *target plan's* included transfer, while
+ * keeping the same plan keeps whatever they had. The server agrees:
+ * `GuestPlanApiService.GetGuestExtras` resets additional transfer to zero on a
+ * plan change and accepts the target plan's base.
+ *
+ * An earlier version clamped the existing value into the target's range
+ * instead. That happens to give the same answer today - no offered size has
+ * `transfer_max` above its included transfer - but it would have preserved a
+ * larger allowance the panel discards, on any plan that ever allows topping it
+ * up.
+ *
+ * The same-size path is still bounded, because the API rejects anything above
+ * the plan's maximum outright:
+ *   400 options.transfer: "Transfer upgrades are not supported by this size."
  */
-export function preservedTransfer(size: SizeLike, currentTransferTb: number | null | undefined): number {
-  const max = size.options?.transfer_max ?? size.transfer
-  const wanted = currentTransferTb ?? size.transfer
-  return Math.min(Math.max(wanted, size.transfer), max)
+export function transferForResize(
+  targetSize: SizeLike,
+  currentTransferTb: number | null | undefined,
+  sizeChanged: boolean
+): number {
+  if (sizeChanged) return targetSize.transfer
+  const max = targetSize.options?.transfer_max ?? targetSize.transfer
+  const wanted = currentTransferTb ?? targetSize.transfer
+  return Math.min(Math.max(wanted, targetSize.transfer), max)
 }
 
 /**
