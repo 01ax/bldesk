@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDown, ArrowUp, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, ChartNoAxesCombined, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useFleetMetrics } from '../../api/queries'
@@ -26,13 +26,24 @@ const COLUMNS: Array<{ key: HeatmapMetric; label: string; kind: 'ratio' | 'rate'
   { key: 'ioWrite', label: 'IO write', kind: 'rate' }
 ]
 
+/** Cool is near-neutral on purpose: a heatmap only works if the hot cells are the ones that draw the eye. */
 const BUCKET_CLASS = [
-  'bg-sky-500/15 text-sky-800 dark:text-sky-200',
-  'bg-cyan-500/25 text-cyan-900 dark:text-cyan-100',
-  'bg-amber-400/35 text-amber-950 dark:text-amber-100',
-  'bg-orange-500/45 text-orange-950 dark:text-orange-100',
-  'bg-rose-600/65 text-white'
+  'bg-[#f1f3f5] text-[#6c757d] dark:bg-white/5 dark:text-slate-400',
+  'bg-sky-500/15 text-sky-900 dark:bg-sky-400/20 dark:text-sky-100',
+  'bg-amber-400/40 text-amber-950 dark:bg-amber-400/30 dark:text-amber-50',
+  'bg-orange-500/55 text-orange-950 dark:bg-orange-500/50 dark:text-orange-50',
+  'bg-rose-600/80 text-white dark:bg-rose-600/70'
 ]
+
+/** Row-wide states: every metric cell would say the same thing, so say it once. */
+const SPAN_STATES = new Set(['off', 'error', 'no-sample', 'pending', 'capacity-unknown'])
+const SPAN_LABEL: Record<string, (tooltip: string) => string> = {
+  off: (t) => `${t} — no metrics while the server is not running`,
+  error: (t) => `Metrics request failed: ${t}`,
+  'no-sample': () => 'No samples yet — BinaryLane publishes the first one a few minutes after boot',
+  pending: () => 'Loading…',
+  'capacity-unknown': () => 'Capacity unknown for this server'
+}
 
 function Cell({ cell, kind }: { cell: HeatmapCell; kind: 'ratio' | 'rate' }) {
   if (cell.state === 'off') return <td className="px-2 py-2 text-center text-xs text-slate-400" title={cell.tooltip}>{cell.tooltip}</td>
@@ -81,12 +92,12 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
       <div className="mx-auto max-w-[1500px] space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Fleet Heatmap</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Live utilisation relative to each server's capacity and the fleet's current rate peaks.</p>
+            <h2 className="text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2"><ChartNoAxesCombined className="w-5 h-5 text-[#017cb6]" />Fleet Heatmap</h2>
+            <p className="text-xs text-[#6c757d] dark:text-slate-400">Live utilisation: CPU, RAM and disk against each server's own capacity; network and IO rates against the busiest server in the fleet right now.</p>
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-3 text-xs text-[#6c757d] dark:text-slate-400">
             <span>Updated {fleet.dataUpdatedAt ? new Date(fleet.dataUpdatedAt).toLocaleTimeString() : 'not yet'}</span>
-            <button onClick={() => void fleet.refetch()} disabled={fleet.isFetching} className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-2.5 py-1.5 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700">
+            <button onClick={() => void fleet.refetch()} disabled={fleet.isFetching} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-[#ced4da] dark:border-[#495057] hover:border-[#017cb6] disabled:opacity-50 text-[#212529] dark:text-white">
               <RefreshCw className={`h-3.5 w-3.5 ${fleet.isFetching ? 'animate-spin' : ''}`} /> Refresh
             </button>
           </div>
@@ -97,23 +108,25 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
         {!serversLoading && (!client || (!fleet.isLoading && servers.length === 0)) && <div className="rounded border border-dashed border-slate-300 py-16 text-center text-sm text-slate-500 dark:border-slate-600">No servers to display.</div>}
 
         {!serversLoading && !!client && servers.length > 0 && (
-          <div className="min-w-0 overflow-x-auto rounded border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-[#2b3035]">
+          <div className="min-w-0 overflow-x-auto rounded-lg border border-[#ced4da] bg-white shadow-sm dark:border-[#373b3e] dark:bg-[#2b3035]">
             <table className="w-full min-w-[1050px] border-collapse text-left">
-              <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <thead className="sticky top-0 z-10 bg-[#f8f9fa] text-[10px] font-semibold uppercase tracking-wider text-[#6c757d] dark:bg-[#212529] dark:text-slate-400">
                 <tr>
                   <th className="px-3 py-3" aria-sort={sort === 'name' ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>{header('name', 'Server')}</th>
                   <th className="px-3 py-3" aria-sort={sort === 'region' ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>{header('region', 'Region')}</th>
                   {COLUMNS.map((column) => <th key={column.key} className="px-2 py-3 text-center" aria-sort={sort === column.key ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>{header(column.key, column.label)}</th>)}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              <tbody className="divide-y divide-[#e9ecef] dark:divide-[#373b3e]">
                 {rows.map((row) => {
                   const status = describeStatus(row.server.status)
+                  const rowState = row.cells.cpu.state
+                  const spans = SPAN_STATES.has(rowState) && COLUMNS.every((column) => row.cells[column.key].state === rowState)
                   return (
                   <tr
                     key={row.server.id}
                     onClick={() => onSelectServer(row.server)}
-                    className="cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5"
+                    className="cursor-pointer hover:bg-[#f8f9fa] dark:hover:bg-white/5"
                   >
                     <td className="whitespace-nowrap px-3 py-2 text-sm font-medium">
                       <button
@@ -129,9 +142,9 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
                         <span className="ml-2 text-[10px] font-normal text-slate-400">{status.label}</span>
                       </button>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{row.region}</td>
-                    {row.cells.cpu.state === 'off'
-                      ? <td colSpan={COLUMNS.length} className="px-3 py-2 text-center text-xs text-slate-400">{row.cells.cpu.tooltip} — no metrics while the server is not running</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs text-[#6c757d] dark:text-slate-400">{row.region}</td>
+                    {spans
+                      ? <td colSpan={COLUMNS.length} className={`px-3 py-2 text-center text-xs ${rowState === 'error' ? 'text-rose-600 dark:text-rose-400' : 'text-[#adb5bd] dark:text-slate-500'}`} title={row.cells.cpu.tooltip}>{SPAN_LABEL[rowState](row.cells.cpu.tooltip)}</td>
                       : COLUMNS.map((column) => <Cell key={column.key} cell={row.cells[column.key]} kind={column.kind} />)}
                   </tr>
                   )
@@ -141,9 +154,9 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-          <span>Cool</span>{BUCKET_CLASS.map((className, index) => <span key={index} className={`h-4 w-8 rounded ${className}`} />)}<span>Hot</span>
-          <span className="ml-2">Rates are relative to the fleet maximum.</span>
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#6c757d] dark:text-slate-400">
+          <span>Under 50%</span>{BUCKET_CLASS.map((className, index) => <span key={index} className={`h-4 w-8 rounded ${className}`} title={['under 50%', '50–70%', '70–85%', '85–95%', '95% and above'][index]} />)}<span>95%+</span>
+          <span className="ml-2">Rate colours are relative to the fleet's current maximum.</span>
           <button onClick={() => window.bldeskApi?.openExternal?.(MEMORY_GRAPH_KB)} className="inline-flex items-center gap-1 text-[#017cb6] hover:underline">Memory reporting help <ExternalLink className="h-3 w-3" /></button>
         </div>
       </div>
