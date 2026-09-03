@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.51] - 2026-09-03
+
+### Fixed
+- **AppImage startup crash on Ubuntu 24.04 resolved via launcher hook**: 1.0.49 tried to append `--no-sandbox` from Electron's `main/index.ts`, but Chromium spawns its zygote and validates the sandbox before any application JavaScript executes. We now use an electron-builder `afterPack` hook (`scripts/after-pack.cjs`) to install a wrapper launcher script (`bldesk`) that invokes `bldesk.bin` with `--no-sandbox` only when `$APPIMAGE` is set and unprivileged user namespaces are restricted. The `.deb` package's AppArmor profile was updated to attach to `bldesk.bin`.
+
+---
+
 ## [1.0.50] - 2026-09-03
 
 ### Fixed
@@ -17,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.49] - 2026-09-03
 
 ### Fixed
-- **AppImage aborted on Ubuntu 24.04** with "The SUID sandbox helper binary was found, but is not configured correctly". AppArmor there blocks unprivileged user namespaces, so Chromium falls back to a setuid helper that cannot be root-owned inside a FUSE mount. The `.deb` failed the same way for a different reason: electron-builder's post-install tests for user namespaces as root, where they always work, and so deliberately left the helper without its setuid bit. The `.deb` now installs an AppArmor profile granting `userns` to the binary (what Ubuntu documents and what Chrome's own package does), so Chromium's preferred sandbox works there and the setuid helper is never used; it only falls back to a setuid helper where the kernel restricts namespaces *and* AppArmor is absent. The AppImage, which cannot install a profile, detects that kernel setting and runs with `--no-sandbox` only in that case. The `.deb` is the recommended package on those releases. It also now depends on `libasound2`, without which the binary would not load on a machine that lacked ALSA.
+- **AppImage aborted on Ubuntu 24.04** with "The SUID sandbox helper binary was found, but is not configured correctly". AppArmor there blocks unprivileged user namespaces, so Chromium falls back to a setuid helper that cannot be root-owned inside a FUSE mount. The `.deb` failed the same way for a different reason: electron-builder's post-install tests for user namespaces as root, where they always work, and so deliberately left the helper without its setuid bit. The `.deb` now installs an AppArmor profile granting `userns` to the binary (what Ubuntu documents and what Chrome's own package does), so Chromium's preferred sandbox works there and the setuid helper is never used; it only falls back to a setuid helper where the kernel restricts namespaces *and* AppArmor is absent. The AppImage, which cannot install a profile, now ships a launcher that checks that kernel setting and starts the real binary with `--no-sandbox` only in that case (1.0.49 tried to do this from inside the app, which is too late: Chromium sandboxes before any app code runs). The `.deb` is the recommended package on those releases. It also now depends on `libasound2`, without which the binary would not load on a machine that lacked ALSA.
 
 ---
 

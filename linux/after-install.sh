@@ -15,7 +15,7 @@
 set -e
 
 APP_DIR='/opt/BLDesk'
-EXECUTABLE='bldesk'
+EXECUTABLE='bldesk'   # the launcher script; the ELF is bldesk.bin (see scripts/after-pack.cjs)
 
 # --- Desktop integration (as electron-builder's default) ---
 if type update-alternatives >/dev/null 2>&1; then
@@ -39,7 +39,7 @@ if [ -d /etc/apparmor.d ] && command -v apparmor_parser >/dev/null 2>&1; then
 abi <abi/4.0>,
 include <tunables/global>
 
-profile bldesk /opt/BLDesk/bldesk flags=(unconfined) {
+profile bldesk /opt/BLDesk/bldesk.bin flags=(unconfined) {
   userns,
 
   # Site-specific additions and overrides. See local/README for details.
