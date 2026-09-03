@@ -240,14 +240,18 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
   let offsite = 0
   if (i.offsiteBackups && selectedBackups > 0) {
     const f = o.offsite_backup_frequency_cost || {}
-    // The highest rate among the frequencies actually enabled - not the highest
-    // published rate, which would charge for a frequency nobody selected.
-    const enabled = [
-      i.dailyBackups > 0 ? f.daily_per_gigabyte || 0 : null,
-      i.weeklyBackups > 0 ? f.weekly_per_gigabyte || 0 : null,
-      i.monthlyBackups > 0 ? f.monthly_per_gigabyte || 0 : null
-    ].filter((r): r is number => r !== null)
-    const frequencyRate = enabled.length ? Math.max(...enabled) : 0
+    // The rate of the highest *frequency* enabled - daily over weekly over
+    // monthly - which is what the API says it charges ("based on highest
+    // frequency of backups currently enabled"). Not the largest rate among
+    // them: the three rates are published independently, so a monthly rate
+    // above the daily one would otherwise bill monthly on a server whose
+    // offsite copies actually run daily.
+    const frequencyRate =
+      i.dailyBackups > 0
+        ? f.daily_per_gigabyte || 0
+        : i.weeklyBackups > 0
+          ? f.weekly_per_gigabyte || 0
+          : f.monthly_per_gigabyte || 0
     offsite = selectedBackups * i.diskGb * (o.offsite_backups_cost_per_gigabyte || 0) + frequencyRate * i.diskGb
   }
 
