@@ -182,9 +182,10 @@ export function diskChoices(size: SizeLike): number[] {
  *             not on the raw total. `SizeOptions.{daily,weekly,monthly}_backups`
  *             are inclusions, so charging for all of them overcharges any plan
  *             that bundles some.
- *   offsite   the per-GB rate on the selected count, plus a per-GB surcharge for
- *             the highest *enabled* frequency. The API is explicit that "only
- *             the highest value of the daily, weekly and monthly is applied".
+ *   offsite   the per-GB rate on the raw selected count - inclusions are not
+ *             deducted here, unlike on-site - plus a one-off per-GB surcharge
+ *             for the first enabled frequency in daily, weekly, monthly order.
+ *             Both quirks are the web panel's, verified against its source.
  *   transfer  charged per GB above the plan's included allowance.
  *
  * None of the three currently moves a number on the 21 offered sizes: every one
@@ -240,14 +241,31 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
   let offsite = 0
   if (i.offsiteBackups && selectedBackups > 0) {
     const f = o.offsite_backup_frequency_cost || {}
-    // The highest rate among the frequencies actually enabled - not the highest
-    // published rate, which would charge for a frequency nobody selected.
-    const enabled = [
-      i.dailyBackups > 0 ? f.daily_per_gigabyte || 0 : null,
-      i.weeklyBackups > 0 ? f.weekly_per_gigabyte || 0 : null,
-      i.monthlyBackups > 0 ? f.monthly_per_gigabyte || 0 : null
-    ].filter((r): r is number => r !== null)
-    const frequencyRate = enabled.length ? Math.max(...enabled) : 0
+    /*
+     * The frequency surcharge is one rate, chosen by *priority* - daily, else
+     * weekly, else monthly - and not by `Math.max`.
+     *
+     * The API documents it as "only the highest value of the daily, weekly and
+     * monthly is applied", and this originally implemented that literally. The
+     * web panel does not: `SizeHelper.getOffsiteBackupsCost` picks the first
+     * enabled frequency in that fixed order. The two agree only while
+     * daily >= weekly >= monthly, which is how the rates are published today,
+     * so they cannot be told apart from the live API - every offered size
+     * publishes 0.0 for all three. Matching the panel is what matters: a
+     * customer comparing the two screens must see the same figure, even if the
+     * rates are ever published out of that order.
+     */
+    const frequencyRate = i.dailyBackups
+      ? f.daily_per_gigabyte || 0
+      : i.weeklyBackups
+        ? f.weekly_per_gigabyte || 0
+        : f.monthly_per_gigabyte || 0
+    /*
+     * The per-GB storage term multiplies the *raw* retention total, including
+     * what the plan bundles - deliberately unlike the on-site term above, which
+     * subtracts inclusions. Confirmed in the panel: `numberOfBackups` sums the
+     * selected counts with no subtraction.
+     */
     offsite = selectedBackups * i.diskGb * (o.offsite_backups_cost_per_gigabyte || 0) + frequencyRate * i.diskGb
   }
 
