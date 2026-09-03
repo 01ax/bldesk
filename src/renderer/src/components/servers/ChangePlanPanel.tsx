@@ -442,11 +442,20 @@ export const ChangePlanPanel: React.FC<{
   const currentInList = plans.some((p) => p.slug === server.size_slug)
   const windowsish = /windows/i.test(effectiveImage?.distribution || server.image?.distribution || '')
 
-  const setGroup = (optionIds: number[], chosen: number | null): void =>
+  /*
+   * Picking a group's opt-out means "no licence from this group", so it clears
+   * the group rather than sending that option's id.
+   *
+   * Verified against the live API: sending `{software_id: 105, count: 1}` for
+   * "cPanel: Not required" is accepted and then not persisted - the server comes
+   * back with zero licences. Treating it as a licence made the panel report a
+   * change that never stuck, and then offer the same change again forever.
+   */
+  const setGroup = (g: { options: Array<{ id: number }>; optOut: { id: number } | null }, chosen: number | null): void =>
     setLicenceEdit(() => {
       const next: LicenceSelection = { ...licences }
-      for (const id of optionIds) delete next[id]
-      if (chosen !== null) {
+      for (const o of g.options) delete next[o.id]
+      if (chosen !== null && chosen !== g.optOut?.id) {
         const o = offered.find((x) => x.id === chosen)
         next[chosen] = o?.minimum_licence_count || 1
       }
@@ -778,21 +787,39 @@ export const ChangePlanPanel: React.FC<{
           )}
 
           {groups.map((g) => {
-            const optionIds = g.options.map((o) => o.id)
             const chosen = g.options.find((o) => (licences[o.id] ?? 0) > 0)
+            /*
+             * Nothing licensed shows as the opt-out where the OS has one, so the
+             * control reads the way the web panel's does ("cPanel: Not
+             * required") instead of as an empty box.
+             */
+            const shown = chosen ? String(chosen.id) : g.optOut ? String(g.optOut.id) : ''
             return (
               <div key={g.name}>
                 <label className={labelClass}>{g.name}</label>
                 <select
-                  value={chosen ? String(chosen.id) : ''}
-                  onChange={(e) => setGroup(optionIds, e.target.value ? Number(e.target.value) : null)}
+                  value={shown}
+                  onChange={(e) => setGroup(g, e.target.value ? Number(e.target.value) : null)}
                   disabled={busy}
                   className={selectClass}
                 >
-                  {/* An OS with no explicit opt-out among its options needs one
-                      of them, so the empty entry is a placeholder rather than a
-                      choice - a cPanel image cannot drop its cPanel licence. */}
-                  {!g.optOut && <option value="">Not licensed</option>}
+                  {/*
+                    * An OS with no explicit opt-out needs one of its options, so
+                    * this entry reports a state rather than offering a choice -
+                    * hence `disabled`.
+                    *
+                    * BinaryLane ships an explicit "Not required" tier for the OSes
+                    * where dropping cPanel is allowed (ubuntu-24.04, alma-9,
+                    * alma-10) and none for the cPanel images, whose cheapest tier
+                    * is $0 instead. Read as deliberate: the platform offers no way
+                    * to run a cPanel image with no cPanel licence, so neither does
+                    * this. Relax it to selectable if that reading is wrong.
+                    */}
+                  {!g.optOut && (
+                    <option value="" disabled>
+                      Not licensed
+                    </option>
+                  )}
                   {g.options.map((o) => (
                     <option key={o.id} value={String(o.id)}>
                       {shortName(o)} - {costLabel(o)}
