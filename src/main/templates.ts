@@ -3,7 +3,7 @@ import { closeSync, existsSync, fstatSync, fsyncSync, mkdirSync, openSync, readF
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { parse } from 'yaml'
-import { MAX_TEMPLATE_BYTES, templateSlug } from '../shared/templates'
+import { MAX_TEMPLATE_BYTES, TEMPLATE_KIND, templateSlug } from '../shared/templates'
 import type { TemplateGetResult } from '../shared/ipc-types'
 
 function templatesDir(): string {
@@ -20,8 +20,15 @@ function validateDocument(input: string): { slug: string; name: string; document
     throw new Error(`Template YAML is ${bytes} bytes; the maximum is ${MAX_TEMPLATE_BYTES} bytes (256 KiB).`)
   }
   const value = parse(document)
-  if (!value || typeof value !== 'object' || typeof value.name !== 'string' || typeof value.user_data !== 'string') {
-    throw new Error('Template YAML requires string fields "name" and "user_data".')
+  if (!value || typeof value !== 'object' || typeof value.name !== 'string' || !value.name.trim()) {
+    throw new Error('Template YAML requires a string "name".')
+  }
+  // Current schema: `kind: bldesk/server-template@1` with an optional `spec` map.
+  // First cut: `name` + `user_data` — still readable, and still accepted here.
+  const current = value.kind === TEMPLATE_KIND && (value.spec === undefined || (value.spec && typeof value.spec === 'object'))
+  const legacy = value.kind === undefined && typeof value.user_data === 'string'
+  if (!current && !legacy) {
+    throw new Error(`Template YAML must have kind "${TEMPLATE_KIND}" (or the older "name" + "user_data" form).`)
   }
   return { slug: templateSlug(value.name), name: value.name, document }
 }
