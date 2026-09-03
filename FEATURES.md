@@ -147,7 +147,9 @@ tag add prod wp-*
 
 ## 10. Network map
 
-**Today:** VPCs, private IPs, load balancers and firewall rules are all fetched into separate tabs.
+**Status: built** (unreleased at time of writing). `lib/networkMap.ts` is the pure, deterministic lane layout (internet rail → load balancers → region bands → VPC boxes → servers); `components/map/NetworkMap.tsx` renders it as SVG with pan/zoom, selection, a detail panel and SVG/PNG export. Exposure per server comes from the firewall audit, so the map and the matrix never disagree. Not yet: private server↔server links beyond VPC membership (BinaryLane has no such data), and route entries.
+
+**Before:** VPCs, private IPs, load balancers and firewall rules were all fetched into separate tabs.
 
 **Proposed:**
 - Render the topology: servers grouped by VPC, load balancers fronting their members, public IPs on the edge, firewall rules as annotated edges.

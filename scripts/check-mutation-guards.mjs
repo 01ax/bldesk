@@ -19,6 +19,8 @@
  *  4. `track(` calls that submit an action from a confirmed flow should pass
  *     the changeId (4th arg) — warned, not failed, because diagnostics and
  *     unconfirmed flows legitimately omit it.
+ *  5. `useServers()` is called only from App.tsx; everything else takes
+ *     `servers` as a prop.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -107,6 +109,16 @@ for (const file of walk(SRC)) {
       }
       if (!guarded) {
         failures.push(`${rel}:${i + 1}: mutation without a confirm or a History record in its handler — call confirmAction() (or recordChange() for flows the form itself reviews) before it, pass the changeId on, or mark the line above with \`// history: n/a — <why>\`.`)
+      }
+    })
+  }
+
+  // 5. Only App.tsx may call useServers(): a second observer on the same cache
+  //    key replaces the shared query's function (AGENTS.md rule 8).
+  if (rel !== 'App.tsx' && rel !== 'api/queries.ts') {
+    codeOnly.forEach((l, i) => {
+      if (/\buseServers\s*\(/.test(l)) {
+        failures.push(`${rel}:${i + 1}: useServers() outside App.tsx — take \`servers\` as a prop instead (App passes the cached, power-annotated list). See AGENTS.md rule 8.`)
       }
     })
   }

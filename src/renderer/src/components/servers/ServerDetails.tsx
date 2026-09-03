@@ -585,7 +585,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         {/* BACKUPS TAB */}
         {activeSubTab === 'backups' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm">
-            <BackupManager client={client} initialServerId={server.id} />
+            <BackupManager client={client} initialServerId={server.id} servers={allServers ?? [server]} />
           </div>
         )}
 
@@ -601,7 +601,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
         {/* SETTINGS TAB */}
         {activeSubTab === 'settings' && (
-          <ServerSettings client={client} server={server} onCancelled={onBack} />
+          <ServerSettings client={client} server={server} onCancelled={onBack} servers={allServers ?? [server]} />
         )}
 
         {/* RECOVERY TAB */}

@@ -21,6 +21,7 @@ import { ActionToasts } from './components/actions/ActionToasts'
 import { ActionTrackerProvider } from './context/ActionTrackerContext'
 import { ConfirmProvider } from './context/ConfirmContext'
 import { HistoryView } from './components/history/HistoryView'
+import { NetworkMap } from './components/map/NetworkMap'
 import { setChangeLogProfile } from './lib/changelog'
 import { useServers, useBalance, useActionsAwaitingInteraction, useUnpaidInvoices } from './api/queries'
 import { useFleetWatch } from './lib/fleetWatch'
@@ -313,6 +314,7 @@ function MainDashboard() {
 
             {activeTab === 'vpcs' && (
               <VpcManager
+                servers={servers}
                 client={client}
                 onSelectServer={(s) => {
                   handleSelectServer(s)
@@ -327,6 +329,7 @@ function MainDashboard() {
 
             {activeTab === 'loadbalancers' && (
               <LoadBalancerManager
+                servers={servers}
                 client={client}
                 onSelectServer={(s) => {
                   handleSelectServer(s)
@@ -340,7 +343,7 @@ function MainDashboard() {
             )}
 
             {activeTab === 'backups' && (
-              <BackupManager client={client} />
+              <BackupManager client={client} servers={servers} />
             )}
 
             {activeTab === 'keys' && (
@@ -353,6 +356,17 @@ function MainDashboard() {
 
             {activeTab === 'account' && (
               <AccountOverview client={client} />
+            )}
+
+            {activeTab === 'map' && (
+              <NetworkMap
+                client={client}
+                servers={servers}
+                onSelectServer={(s) => {
+                  handleSelectServer(s)
+                  setActiveTab('servers')
+                }}
+              />
             )}
 
             {activeTab === 'history' && (

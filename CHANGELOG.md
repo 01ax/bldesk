@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.47] - 2026-09-03
+
+### Added
+- **Network Map** (FEATURES.md #10): a new tab that draws the account as a schematic — the internet on a rail at the left, load balancers in a column with their backends linked, servers boxed by VPC (with CIDR) inside region bands. Every server carries an *exposure port*: the ports the world can reach, coloured by the firewall audit (red for SSH/RDP open to the internet, amber for no rules or shadowed rules). Click a node to draw its paths and open a detail panel (addresses, VPC, what's reachable, findings, Open / SSH); "Public paths" draws every internet edge at once. Search dims everything that doesn't match. Pan by dragging, zoom with ⌘/Ctrl + wheel, fit to window. Export as SVG or 2× PNG for a ticket or a doc. The layout is deterministic, so the same fleet always draws the same picture. `go map` in the palette.
+
+---
+
 ## [1.0.46] - 2026-09-03
 
 ### Changed

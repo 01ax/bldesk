@@ -21,7 +21,6 @@ import { BinaryLaneClient } from '../../api/client'
 import {
   useServer,
   useRegions,
-  useServers,
   useServerThresholdAlerts,
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
@@ -44,6 +43,8 @@ import { ChangePlanPanel } from './ChangePlanPanel'
 type VideoDevice = components['schemas']['VideoDevice']
 
 interface ServerSettingsProps {
+  /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
+  servers: any[]
   client: BinaryLaneClient | null
   server: Server
   /** Called once the server is gone, so the detail view can step back to the list. */
@@ -52,7 +53,7 @@ interface ServerSettingsProps {
 
 type SettingsTab = 'hostname' | 'plan' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
 
-export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, onCancelled }) => {
+export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, onCancelled, servers: allServers }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('hostname')
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -62,7 +63,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   const server = serverQuery.data || initialServer
 
   const regionsQuery = useRegions(client)
-  const serversQuery = useServers(client)
   const alertsQuery = useServerThresholdAlerts(client, server.id)
   const advancedQuery = useAvailableAdvancedFeatures(client, server.id)
 
@@ -349,7 +349,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   const handleSavePartner = async (e: React.FormEvent) => {
     e.preventDefault()
     const partnerId = selectedPartnerId ? parseInt(selectedPartnerId, 10) : null
-    const partnerServer = serversQuery.data?.find((s) => s.id === partnerId)
+    const partnerServer = allServers.find((s) => s.id === partnerId)
     await executeAction(
       'Change Partner Server',
       { type: 'change_partner', partner_id: partnerId },
@@ -390,7 +390,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   }
 
   // Filter partner candidate servers (same region, not self)
-  const partnerCandidates = (serversQuery.data || []).filter(
+  const partnerCandidates = allServers.filter(
     (s) => s.id !== server.id && s.region?.slug === server.region?.slug
   )
 
@@ -1109,7 +1109,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
               <select
                 value={selectedPartnerId}
                 onChange={(e) => setSelectedPartnerId(e.target.value)}
-                disabled={busy || serversQuery.isLoading}
+                disabled={busy}
                 className={`${inputClass} w-full`}
               >
                 <option value="">No Partner Server (Independent)</option>

@@ -13,7 +13,6 @@ import {
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import {
-  useServers,
   useServerBackups,
   useServerSnapshots,
   useServerActions,
@@ -29,13 +28,13 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 
 interface BackupManagerProps {
+  /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
+  servers: any[]
   client: BinaryLaneClient | null
   initialServerId?: number | null
 }
 
-export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialServerId }) => {
-  const serversQuery = useServers(client)
-  const servers = serversQuery.data || []
+export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialServerId, servers }) => {
 
   const [selectedServerId, setSelectedServerId] = useState<number | null>(
     initialServerId || (servers.length > 0 ? servers[0].id : null)

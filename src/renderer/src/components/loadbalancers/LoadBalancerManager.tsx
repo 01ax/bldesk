@@ -18,7 +18,6 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import {
   useLoadBalancers,
-  useServers,
   useRegions,
   useAddServerToLoadBalancerMutation,
   useRemoveServerFromLoadBalancerMutation,
@@ -31,11 +30,14 @@ import { recordChange, updateChange } from '../../lib/changelog'
 type ServerResponse = components['schemas']['Server']
 
 interface LoadBalancerManagerProps {
+  /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
+  servers: any[]
   client: BinaryLaneClient | null
   onSelectServer?: (server: ServerResponse) => void
 }
 
 export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
+  servers,
   client,
   onSelectServer
 }) => {
@@ -55,7 +57,6 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   const [actionServerId, setActionServerId] = useState<number | null>(null)
 
   const lbsQuery = useLoadBalancers(client)
-  const serversQuery = useServers(client)
   const regionsQuery = useRegions(client)
 
   const addServerMutation = useAddServerToLoadBalancerMutation(client)
@@ -64,7 +65,6 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   const deleteLbMutation = useDeleteLoadBalancerMutation(client)
 
   const loadBalancers = lbsQuery.data || []
-  const servers = serversQuery.data || []
   const regions = regionsQuery.data || []
 
   const handleCopy = (text: string) => {
