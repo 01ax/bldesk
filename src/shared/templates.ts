@@ -1,4 +1,5 @@
 export const MAX_TEMPLATE_BYTES = 256 * 1024
+export const TEMPLATE_KIND = 'bldesk/server-template@1'
 
 export function templateSlug(value: string): string {
   const slug = value
