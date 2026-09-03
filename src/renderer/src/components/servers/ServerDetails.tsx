@@ -28,16 +28,19 @@ import {
   useServerMetrics,
   useServerConsole,
   useServerActionMutation,
-  useServerDiagnosticMutation
+  useServerDiagnosticMutation,
+  useCancelServerMutation
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
+import { describeStatus } from '../../lib/serverStatus'
+import { ChangePlanPanel } from './ChangePlanPanel'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerSubTab } from '../layout/Sidebar'
-import { useConfirm } from '../../context/ConfirmContext'
+import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
 
@@ -162,6 +165,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const consoleQuery = useServerConsole(client, server.id)
   const serverAction = useServerActionMutation(client)
   const diagnosticAction = useServerDiagnosticMutation(client, server.id)
+  const cancelServer = useCancelServerMutation(client)
   const { track } = useTrackedActions()
 
   const primaryV4 =
@@ -171,6 +175,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
   const primaryV6 = server.networks?.v6?.[0]?.ip_address
   const isRunning = server.status === 'active'
+  const state = describeStatus(server.status)
   const distroIcon = logoForDistribution(server.image?.distribution)
   const ramGB = (server.memory / 1024).toFixed(0)
 
@@ -181,7 +186,17 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   }
 
   const confirmAction = useConfirm()
-  const handleAction = async (actionType: string, customPayload: any = {}) => {
+  /**
+   * `confirm` lets a caller enrich the shared dialog - Change Plan passes a
+   * before/after table, which is the whole point of reviewing a resize. Without
+   * it the third argument from ChangePlanPanel.onApply would be accepted and
+   * silently dropped, quietly losing the change table added in #20.
+   */
+  const handleAction = async (
+    actionType: string,
+    customPayload: any = {},
+    confirm: Partial<Pick<ConfirmRequest, 'summary' | 'changes' | 'notes' | 'severity'>> = {}
+  ) => {
     // Diagnostics change nothing; asking "are you sure?" before a ping is noise.
     let changeId: string | undefined
     if (!isDiagnostic(actionType)) {
@@ -189,7 +204,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         title: describeActionType(actionType),
         target: { kind: 'server', id: server.id, name: server.name },
         summary: powerActionSummary(actionType),
-        severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal'
+        severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal',
+        ...confirm
       })
       if (!c.ok) return
       changeId = c.changeId
@@ -230,6 +246,59 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     }
   }
 
+  /**
+   * Cancel goes through the shared dialog like everything else - irreversible,
+   * so the hostname must be typed - with the reason picker ConfirmRequest now
+   * carries. Confirming records the History entry; the outcome is written back
+   * either way, because once the server is gone there is nothing left to ask.
+   */
+  const handleCancelServer = async (): Promise<void> => {
+    const monthly = server.size?.price_monthly
+    const c = await confirmAction({
+      title: 'Cancel server',
+      target: { kind: 'server', id: server.id, name: server.name },
+      summary:
+        'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups and snapshots attached to it go with it.',
+      severity: 'irreversible',
+      notes: [
+        'There is no undo - BinaryLane keeps no copy of a cancelled server.',
+        ...(typeof monthly === 'number' && monthly > 0
+          ? [`This server currently bills at $${monthly.toFixed(2)}/month.`]
+          : [])
+      ],
+      changes: [
+        { label: 'Plan', from: server.size_slug, to: undefined },
+        { label: 'Public IPv4', from: server.networks?.v4?.find((n) => n.type === 'public')?.ip_address, to: undefined }
+      ],
+      reason: {
+        label: 'Why are you cancelling?',
+        options: [
+          'No longer required',
+          'Too expensive',
+          'Moving to another provider',
+          'Performance did not meet expectations',
+          'Technical issues',
+          'Created by mistake / testing',
+          'Other'
+        ],
+        requireDetailFor: ['Other']
+      },
+      confirmLabel: 'Cancel server'
+    })
+    if (!c.ok) return
+    try {
+      await cancelServer.mutateAsync({ serverId: server.id, reason: c.reason })
+      void updateChange(c.changeId, {
+        outcome: 'completed',
+        detail: 'BinaryLane accepted the cancellation; the server is removed within minutes.'
+      })
+      onBack()
+    } catch (err: any) {
+      void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
+      alert(`Failed to cancel the server: ${err?.message || 'unknown error'}`)
+    }
+  }
+
   const handleLaunchRescueConsole = () => {
     if (!consoleQuery.data) return
     const url = consoleQuery.data.browser || consoleQuery.data.iframe
@@ -245,7 +314,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const sample = metricsQuery.data?.average
 
   return (
-    <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text">
+    <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text pb-bottom-nav">
       {/* 1. Authentic PanelSite ServerHeader */}
       <div className="p-4 bg-white dark:bg-[#2b3035] border-b border-[#ced4da] dark:border-[#373b3e] shadow-sm sticky top-0 z-20">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -266,13 +335,10 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   title={(server as any)._power
                         ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`
                         : 'From the API status field, which may not reflect power state'}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                    isRunning
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                  }`}
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 ${state.pill}`}
                 >
-                  {isRunning ? 'Running' : 'Stopped'}
+                  {state.busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                  {state.label}
                 </span>
               </h1>
             </div>
@@ -342,7 +408,12 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <span>Console</span>
             </button>
 
-            {isRunning ? (
+            {state.busy ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Building…</span>
+              </span>
+            ) : isRunning ? (
               <>
                 <button
                   onClick={() => handleAction('reboot')}
@@ -441,9 +512,29 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   <span>Network Status</span>
                   <Globe className="w-4 h-4 text-[#017cb6]" />
                 </div>
+                {/*
+                  * This was the literal string "Online", shown for every server in
+                  * every state - so it claimed a stopped or still-provisioning
+                  * server was online. It reports the API's provisioning status,
+                  * which is the only thing actually known here; it is not a
+                  * reachability probe, so it says "Reported" rather than implying
+                  * the server was pinged.
+                  */}
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">Online</span>
-                  <span className="text-xs text-[#6c757d] dark:text-slate-400">1 Gbps Uplink</span>
+                  <span
+                    className={`text-2xl font-bold ${
+                      server.status === 'active'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : server.status === 'new'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-[#6c757d] dark:text-slate-400'
+                    }`}
+                  >
+                    {server.status === 'active' ? 'Online' : state.label}
+                  </span>
+                  <span className="text-xs text-[#6c757d] dark:text-slate-400">
+                    {primaryV4 ? '1 Gbps uplink' : 'no public address'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -600,11 +691,53 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {/* SETTINGS TAB */}
+
         {activeSubTab === 'settings' && (
-          <ServerSettings client={client} server={server} onCancelled={onBack} servers={allServers ?? [server]} />
+          <ServerSettings client={client} server={server} servers={allServers ?? [server]} />
         )}
 
         {/* RECOVERY TAB */}
+        {activeSubTab === 'change-plan' && (
+          <div className="p-4 sm:p-6">
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-4 sm:p-5 shadow-sm space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">Change Plan</h3>
+                <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
+                  Moves the server to a different plan. The server restarts to apply the change.
+                </p>
+              </div>
+              <ChangePlanPanel
+                client={client}
+                server={server}
+                busy={actionInProgress !== null}
+                onApply={(payload, summary, changes) => void handleAction('resize', payload, { summary, changes })}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeSubTab === 'cancel' && (
+          <div className="p-4 sm:p-6">
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-rose-300 dark:border-rose-900 p-4 sm:p-5 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">
+                Cancel Server
+              </h3>
+              <p className="text-xs text-[#495057] dark:text-slate-300">
+                Cancels the Cloud Server service. It is cancelled within five minutes, after which an invoice is
+                generated for usage to date. The server and its data are destroyed and cannot be recovered.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleCancelServer()}
+                disabled={!!actionInProgress}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-rose-600 text-white disabled:opacity-40"
+              >
+                <span>Cancel Server</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeSubTab === 'recovery' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-[#212529] dark:text-white">Emergency Recovery & Rescue</h3>
