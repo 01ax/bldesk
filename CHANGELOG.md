@@ -4,6 +4,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
+---
+ 
+## [1.0.59] - 2026-09-03
+
+### Fixed
+- **Fleet Heatmap rate floors** (*PR #32 by @termau*): On quiet fleets, rate colours previously reached red at low numbers (e.g. 5.8 KB/s) because intensities were purely relative to the fleet maximum. Added absolute floors (~40 Mbit/s for network in/out and 10 MB/s for disk read/write) so cells only colour when activity is notable. Tooltips now explain whether the cell is scaled against the floor or the fleet maximum, and the CPU tooltip formats as a clear percentage of 100 × vCPUs.
+
+---
 
 ## [1.0.58] - 2026-09-03
 
