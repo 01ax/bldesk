@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Activity, AlertTriangle, Loader2, Route } from 'lucide-react'
 import type { TcpProbeResult, TracerouteHop } from '@shared/ipc-types'
+import type { BinaryLaneClient } from '../../api/client'
+import { useFirewallRules } from '../../api/queries'
+import { explainUnreachablePort, describeRule } from '../../lib/firewallMatch'
 
 /**
  * Reachability from the user's own machine (FEATURES.md #11).
@@ -23,9 +26,13 @@ import type { TcpProbeResult, TracerouteHop } from '@shared/ipc-types'
 export const ReachabilityBadge: React.FC<{
   ip?: string
   port?: number
-  /** Opens the firewall view; shown only when a timeout suggests a rule. */
+  client?: BinaryLaneClient | null
+  serverId?: number
+  /** Opens the firewall view; offered only when a rule could explain the drop. */
   onOpenFirewall?: () => void
-}> = ({ ip, port = 22, onOpenFirewall }) => {
+}> = ({ ip, port = 22, client, serverId, onOpenFirewall }) => {
+  // Only fetched once a timeout has actually happened, so a healthy server does
+  // not pull firewall rules it has no use for.
   const api = typeof window !== 'undefined' ? window.bldeskApi : undefined
   const supported = typeof api?.probeTcp === 'function'
 
@@ -49,6 +56,10 @@ export const ReachabilityBadge: React.FC<{
     setHops(null)
     void probe()
   }, [probe])
+
+  const timedOut = !!result && !result.ok && result.error === 'timeout'
+  const rulesQuery = useFirewallRules(client ?? null, timedOut && serverId ? serverId : null)
+  const verdict = explainUnreachablePort(timedOut ? rulesQuery.data : undefined, port)
 
   if (!supported || !ip) return null
 
@@ -111,27 +122,57 @@ export const ReachabilityBadge: React.FC<{
         )}
       </div>
 
-      {/* A timeout is the case a firewall rule explains; a refusal is not. */}
+      {/*
+        * A timeout is the only case a firewall rule can explain, and even then
+        * only if a rule actually covers the port. Saying "check your firewall
+        * rules" when none do would send the reader hunting for something that
+        * does not exist, while the real cause sits in the guest or the path.
+        */}
       {!busy && result && !result.ok && result.error === 'timeout' && (
-        <div className="text-[11px] text-[#6c757d] dark:text-slate-400 flex items-center gap-2 flex-wrap">
-          <span>
-            Port {port} did not answer from this network. Nothing was refused, which is what a firewall drop looks
-            like.
-          </span>
-          {onOpenFirewall && (
-            <button type="button" onClick={onOpenFirewall} className="text-[#017cb6] hover:underline">
-              Check firewall rules
-            </button>
+        <div className="text-[11px] text-[#6c757d] dark:text-slate-400 space-y-1">
+          {verdict.kind === 'blocked' && (
+            <div className="flex items-start gap-2 flex-wrap">
+              <span>
+                A firewall rule drops this: <span className="font-mono">{describeRule(verdict.rule)}</span>
+                {verdict.rule.description ? ` — “${verdict.rule.description}”` : ''} (rule {verdict.index + 1}).
+              </span>
+              {onOpenFirewall && (
+                <button type="button" onClick={onOpenFirewall} className="text-[#017cb6] hover:underline">
+                  Open firewall rules
+                </button>
+              )}
+            </div>
           )}
-          <button
-            type="button"
-            onClick={() => void runTrace()}
-            disabled={tracing}
-            className="inline-flex items-center gap-1 text-[#017cb6] hover:underline disabled:opacity-50"
-          >
-            {tracing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Route className="w-3 h-3" />}
-            <span>{tracing ? 'Tracing…' : 'Trace route'}</span>
-          </button>
+
+          {verdict.kind === 'no-rules' && (
+            <span>
+              No BinaryLane firewall rules are set for this server, so nothing is filtered at their end. The drop is
+              the server&apos;s own firewall or the path in between.
+            </span>
+          )}
+
+          {verdict.kind === 'no-matching-rule' && (
+            <span>
+              No BinaryLane rule blocks port {port}, so check the server&apos;s own firewall — ufw or nftables on
+              Linux, Windows Defender Firewall on Windows.
+            </span>
+          )}
+
+          {verdict.kind === 'unknown' && (
+            <span>Port {port} did not answer from this network. Nothing was refused, which is what a drop looks like.</span>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void runTrace()}
+              disabled={tracing}
+              className="inline-flex items-center gap-1 text-[#017cb6] hover:underline disabled:opacity-50"
+            >
+              {tracing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Route className="w-3 h-3" />}
+              <span>{tracing ? 'Tracing…' : 'Trace route'}</span>
+            </button>
+          </div>
         </div>
       )}
 

@@ -325,7 +325,14 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text pb-bottom-nav">
       {/* 1. Authentic PanelSite ServerHeader */}
       <div className="p-4 bg-white dark:bg-[#2b3035] border-b border-[#ced4da] dark:border-[#373b3e] shadow-sm sticky top-0 z-20">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/*
+          * Top-aligned, not centred: the reachability message under the action
+          * buttons can wrap to two or three lines, and with `items-center` the
+          * whole left column - the server name included - slid downwards as soon
+          * as a probe reported a problem. Nothing in the header should move
+          * because something beside it grew.
+          */}
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
           {/* Header Info */}
           <div>
             <div className="flex items-center gap-2">
@@ -405,13 +412,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <Terminal className="w-3.5 h-3.5" />
               <span>Launch SSH</span>
             </button>
-            {/* Reachability from the user's machine, beside the button it
-                qualifies: "Launch SSH" is only useful if 22 answers from here. */}
-            <ReachabilityBadge
-              ip={primaryV4}
-              port={22}
-              onOpenFirewall={() => onSelectSubTab?.('firewall')}
-            />
 
             <button
               onClick={handleLaunchRescueConsole}
@@ -457,6 +457,18 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 <span>Power On</span>
               </button>
             )}
+          </div>
+
+          {/* Its own line: the message needs room to wrap without squeezing the
+              buttons, and keeping it out of that row stops them reflowing. */}
+          <div className="mt-2">
+            <ReachabilityBadge
+              ip={primaryV4}
+              port={22}
+              client={client}
+              serverId={server.id}
+              onOpenFirewall={() => onSelectSubTab?.('firewall')}
+            />
           </div>
         </div>
       </div>
