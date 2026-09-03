@@ -83,6 +83,9 @@ npm run build:win
 
 # Build Linux AppImage & deb
 npm run build:linux
+# Linux users: prefer the .deb on Ubuntu 23.10+/24.04 — the AppImage runs there
+# too, but without the Chromium sandbox (AppArmor blocks user namespaces, and a
+# setuid helper can't live inside a FUSE mount). AppImages also need libfuse2.
 
 # Sync and prepare Android Capacitor build
 npm run cap:sync
