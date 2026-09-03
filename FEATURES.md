@@ -121,7 +121,11 @@ tag add prod wp-*
 
 ## 8. Cloud-init and server templates
 
-**Today:** `CreateServerModal.tsx` accepts user-data.
+**Status: built** (unreleased at time of writing). `main/templates.ts` stores one device-wide YAML document per template under `<userData>/templates`; the `templates:*` preload bridge and `lib/templates.ts` provide the same library through one localStorage key on Android. `CreateServerModal.tsx` gates user data by image support and can load or save templates. `ServerDetails.tsx` shows the user data last used to initialise a server and can save it as a template. `CloudInitTemplates.tsx` provides create, view, rename, delete, copy/paste import/export, desktop file reveal, and an on-demand four-at-a-time fleet coverage table. Templates are plain text on the device and capped at 256 KiB per YAML document.
+
+Desktop YAML files placed into the templates directory by hand must use canonical lowercase slug filenames containing only letters, numbers, and hyphens (for example, `wordpress-host.yaml`). Non-canonical filenames are ignored.
+
+**Not yet:** variables, secrets handling, whole-server capture (size, network, keys, firewall and backups), or Android file import/export.
 
 **Proposed:**
 - A local template library in `userData` (YAML): Docker host, WordPress, WireGuard bastion, k3s node, etc., with variables the modal prompts for.

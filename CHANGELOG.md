@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Cloud-init templates** (FEATURES.md #8): a device-wide YAML template library with desktop file storage and an Android localStorage fallback; create, rename, delete, copy/paste import/export, and desktop file reveal.
+- The create-server form now enables user data only for images advertising `user-data`, loads and saves templates, and omits `user_data` for unsupported images.
+- Server details now show the user data used at initialisation with copy and save-as-template actions, plus a fleet table that checks stored user data four servers at a time.
+
+---
+
 ## [1.0.47] - 2026-09-03
 
 ### Added
