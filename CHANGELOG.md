@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.53] - 2026-09-03
+
+### Fixed
+- **Release notes rendered as raw HTML in update popover**: GitHub Releases API provides release descriptions as pre-rendered HTML (`body_html`). The update menu previously escaped this as plain text, exposing raw HTML tags (`<h2>`, `<p>`, `<a>`). Added `ReleaseNotesView` to safely parse and sanitize HTML / Markdown, render styled headings, lists, code pills, and links, and route clicked links to the default system browser via `openExternal`.
+
+---
+
 ## [1.0.52] - 2026-09-03
 
 ### Added
