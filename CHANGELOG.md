@@ -7,12 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.0.48] - 2026-09-03
 
 ### Added
-- **Cloud-init templates** (FEATURES.md #8): a device-wide YAML template library with desktop file storage and an Android localStorage fallback; create, rename, delete, copy/paste import/export, and desktop file reveal.
-- The create-server form now enables user data only for images advertising `user-data`, loads and saves templates, and omits `user_data` for unsupported images.
-- Server details now show the user data used at initialisation with copy and save-as-template actions, plus a fleet table that checks stored user data four servers at a time.
+- **Cloud-Init Template Library** (FEATURES.md #8, *thanks @Freewheelin!*):
+  - Device-wide YAML template library with local file storage under `<userData>/templates/` on desktop and encrypted fallback on Android.
+  - Create, view, rename, delete, copy/paste, and reveal templates on disk.
+  - Create-server integration: user data is enabled only for images that advertise `user-data` support; load and save templates directly within the deployment flow.
+  - Server details Cloud-init subtab displaying the exact user data used at server initialisation (`GET /v2/servers/{id}/user_data`) with copy and save-as-template actions.
+  - On-demand fleet user-data coverage inspection table.
+
+### Changed
+- **Server Sub-Nav Reorganisation** (*thanks @01ax!*):
+  - Moved **Change Plan** and **Cancel Server** out of Settings into their own primary server sub-navigation tabs, matching mPanel layout. Both tabs are fully deep-linkable.
+  - Passed custom confirmation metadata through to preserve the Change Plan before → after diff table.
+- **Accurate Building Server Status** (*thanks @01ax!*):
+  - Properly detects and maps `new` status to an amber "Building" indicator with an animated spinner, sorting newly provisioned servers to the top of the fleet list.
+  - Fixed hardcoded "Online" network status literal on server cards to accurately reflect actual provisioning and power state.
+  - Added `.pb-bottom-nav` padding utility to prevent mobile navigation bar from obscuring bottom page content.
+- **Network Map VPC Grouping Polish**:
+  - Grouped fleet by VPC across regional columns so multi-region VPC clusters stay cleanly contained in single boxes.
+  - Added authoritative `useVpcMembers` query (`/v2/vpcs/{id}/members`) for precise membership resolution.
 
 ---
 
