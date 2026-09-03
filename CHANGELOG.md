@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.0.52] - 2026-09-03
+
+### Added
+- **Reachability Probes & Firewall Verdict** (FEATURES.md #11, *PR #25 by @01ax*):
+  - Local latency and connectivity chip alongside the **Launch SSH** button on Server Details, qualifying whether port 22 is reachable directly from the user's current workstation.
+  - Three distinct probe states: `connected` (with round-trip latency), `refused` (port closed / sshd not running on guest), and `timeout` (silently dropped by firewall).
+  - **Firewall Verdict**: When a timeout occurs, analyzes the server's rules against BinaryLane's stateless first-match firewall semantics to diagnose whether the packet was `blocked` (naming the exact rule number and definition), had `no-matching-rule` (drop occurred on the guest OS or intermediate route), or `no-rules` (unfiltered by BinaryLane).
+  - Source-scoping awareness: only universal (`0.0.0.0/0`) accept rules shadow subsequent drop rules.
+  - Rate-limited reachability probe worker (`main/reachability.ts`) enforcing account IP allowlists and rolling 30 probes/min throttle.
 
 ### Fixed
-- **Two sets of window chrome.** The app drew its own minimise / maximise / close buttons in its title bar *and* sat inside the OS title bar, so every window had two. Now, like Chrome: on Windows and Linux the OS frame is gone and the app's bar is the title bar (drag to move, double-click to maximise, edges still resize); on macOS the native traffic lights are kept, overlaid at the left of the app's bar, and the app's own controls are hidden. The maximise icon also now tracks the real window state whatever changed it.
+- **Double Window Chrome**: Removed redundant OS title bar frames on Windows and Linux (app title bar now handles window drag, minimize, maximize/restore tracking, and close). On macOS, native traffic lights are preserved and overlaid with inset padding.
 
 ---
 
