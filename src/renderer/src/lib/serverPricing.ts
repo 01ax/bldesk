@@ -169,6 +169,68 @@ export function diskChoices(size: SizeLike): number[] {
   return steps
 }
 
+/**
+ * Every monthly component of a configured server, ex-GST.
+ *
+ * Extracted from the create form so Change Plan bills the same way. Change Plan
+ * previously showed `planMonthlyPrice` alone as the "new monthly total", which
+ * ignored extra addresses, backup retention and licences - so a change that
+ * added $65/mo of cPanel and a second address reported the same total as one
+ * that added nothing.
+ *
+ * Backups are priced per selected backup per GB of storage, and offsite adds a
+ * second per-GB rate on top of the same count, which is how the create form has
+ * always done it.
+ */
+export interface ConfiguredCost {
+  plan: number
+  memory: number
+  disk: number
+  surcharge: number
+  addresses: number
+  backups: number
+  offsite: number
+  licences: number
+  total: number
+}
+
+export interface ConfiguredCostInput {
+  size: SizeLike
+  image?: ImageLike
+  memoryMb: number
+  diskGb: number
+  ipCount: number
+  dailyBackups: number
+  weeklyBackups: number
+  monthlyBackups: number
+  offsiteBackups: boolean
+  /** Monthly ex-GST cost of the selected licences, if any. */
+  licencesMonthly?: number
+}
+
+export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
+  const o = i.size.options || {}
+  const memory = Math.max(0, i.memoryMb - i.size.memory) * (o.memory_cost_per_additional_megabyte || 0)
+  const disk = Math.max(0, i.diskGb - i.size.disk) * (o.disk_cost_per_additional_gigabyte || 0)
+  const surcharge = imageSurcharge(i.image, i.memoryMb, i.size.vcpus)
+  const addresses = Math.max(0, i.ipCount - 1) * (o.ipv4_addresses_cost_per_address || 0)
+  const count = i.dailyBackups + i.weeklyBackups + i.monthlyBackups
+  const backups = count * i.diskGb * (o.backups_cost_per_backup_per_gigabyte || 0)
+  const offsite = i.offsiteBackups ? count * i.diskGb * (o.offsite_backups_cost_per_gigabyte || 0) : 0
+  const licences = i.licencesMonthly || 0
+  return {
+    plan: i.size.price_monthly,
+    memory,
+    disk,
+    surcharge,
+    addresses,
+    backups,
+    offsite,
+    licences,
+    total: i.size.price_monthly + memory + disk + surcharge + addresses + backups + offsite + licences
+  }
+}
+
 export const GST_RATE = 0.1
 
 /** Monthly total shown in the billing summary, inclusive of GST. */

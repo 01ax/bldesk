@@ -1,26 +1,58 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowRightLeft } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ArrowRightLeft, Info } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useSizes, useImages } from '../../api/queries'
+import { useSizes, useDistributionImages, useOsSoftware, useServerSoftware } from '../../api/queries'
+import { LinkOut, TOS_URL, REFUND_URL, MPANEL_URL } from '../ui/LinkOut'
+import { availableBackupSlots, BACKUP_SLOT_LABELS, type BackupSlot } from '../../lib/backupSlots'
 import {
   planUnavailableReason,
   isCapacityBlock,
   planMonthlyPrice,
+  configuredCost,
   memoryChoices,
   diskChoices,
-  billingTotal
+  billingTotal,
+  compareVersionNames
 } from '../../lib/serverPricing'
+import {
+  splitSoftware,
+  licenceCost,
+  currentSelection,
+  currentLicenceCost,
+  selectionsEqual,
+  toLicencePayload,
+  offerableSoftware,
+  isRetainedOnly,
+  shortName,
+  costLabel,
+  countChoices,
+  type LicenceSelection
+} from '../../lib/licences'
 
 type Server = components['schemas']['Server']
+
+/** What happens to an existing backup when the pre-action backup is taken. */
+type PreBackup = 'off' | 'none' | 'oldest' | 'newest'
+
+/** A stable empty list, so "no data yet" does not invalidate every memo each render. */
+const EMPTY: any[] = []
 
 /**
  * Change the server's plan - the `resize` action.
  *
  * Deliberately shares serverPricing with the create form: the licensed-image
- * surcharge, the availability reasons and the storage ladder have to agree
- * between the two, or the same plan shows a different price depending on which
- * screen you are looking at.
+ * surcharge, the availability reasons, the storage ladder and now the monthly
+ * cost have to agree between the two, or the same plan shows a different price
+ * depending on which screen you are looking at.
+ *
+ * `resize` carries five things, and the panel used to send one of them:
+ *
+ *   size              the plan slug
+ *   options           memory, storage, addresses, backup retention, offsite
+ *   change_licenses   cPanel tiers, CloudLinux, KernelCare
+ *   change_image      reinstall onto a different OS as part of the move
+ *   pre_action_backup take a backup before any of it happens
  */
 export const ChangePlanPanel: React.FC<{
   client: BinaryLaneClient | null
@@ -30,20 +62,34 @@ export const ChangePlanPanel: React.FC<{
     payload: Record<string, unknown>,
     summary: string,
     changes: Array<{ label: string; from?: string; to?: string }>,
-    /** Extra confirm settings for the dangerous shapes of a resize (releasing addresses). */
+    /** Extra confirm settings for the dangerous shapes of a resize (releasing addresses, reinstalling). */
     confirm?: { severity?: 'normal' | 'destructive' | 'irreversible'; notes?: string[]; typeToConfirm?: string }
   ) => void
 }> = ({ client, server, busy, onApply }) => {
   const sizesQuery = useSizes(client)
-  const imagesQuery = useImages(client)
+  /*
+   * The reinstall picker asks the API for distributions rather than filtering
+   * `useImages`, because `type` is only ever custom/snapshot/backup - a
+   * distribution image leaves it null, so filtering on `type === 'distribution'`
+   * matches nothing. The server's *current* image comes off the server itself
+   * (see `currentImage` below).
+   */
+  const distroQuery = useDistributionImages(client)
 
   const region = server.region?.slug || ''
-  const image = useMemo(
-    () => (imagesQuery.data ?? []).find((i) => i.slug === server.image?.slug),
-    [imagesQuery.data, server.image?.slug]
-  )
+  /*
+   * The current image is read off the server, not looked up in /v2/images - the
+   * same reason its size is. A legacy image is not in that list at all: this
+   * account has a server on `cpanel-whm-rocky-8`, which /v2/images does not
+   * return, so the lookup produced `undefined`, `imageSurcharge` returned 0 and
+   * the panel quietly dropped a $24/mo surcharge from both sides of the
+   * comparison - understating the monthly total while the delta still looked
+   * right. The server's own image object carries the surcharges and the
+   * minimums, so it is the better source either way.
+   */
+  const currentImage = (server.image ?? undefined) as any
 
-  const allSizes = sizesQuery.data ?? []
+  const allSizes = sizesQuery.data ?? EMPTY
   const typeSlugs = useMemo(
     () => Array.from(new Set(allSizes.map((s) => s.size_type?.slug).filter(Boolean))) as string[],
     [allSizes]
@@ -62,44 +108,167 @@ export const ChangePlanPanel: React.FC<{
   const [disk, setDisk] = useState<number>(server.disk ?? 0)
 
   /*
-   * `resize` carries the whole size configuration, not just the plan slug, and
-   * the panel only ever sent memory and disk. Everything else the web panel
-   * offers on this page - address count, backup retention, offsite - was
-   * silently left at whatever the server already had, so a customer could not
-   * change them here at all.
-   *
    * Prefilled from `selected_size_options`, which is the server's current
    * selection rather than the plan's defaults.
    */
-  const current = server.selected_size_options ?? {}
+  const current = useMemo(() => (server.selected_size_options ?? {}) as Record<string, any>, [server.selected_size_options])
   const publicIps = useMemo(
     () => (server.networks?.v4 ?? []).filter((n) => n.type === 'public').map((n) => n.ip_address as string),
     [server.networks?.v4]
   )
+  const currentIpCount = (current.ipv4_addresses as number) ?? publicIps.length
 
-  const [ipCount, setIpCount] = useState<number>((current as any).ipv4_addresses ?? (publicIps.length || 1))
+  const [ipCount, setIpCount] = useState<number>(currentIpCount)
   const [ipsToRemove, setIpsToRemove] = useState<string[]>([])
-  const [dailyBackups, setDailyBackups] = useState<number>((current as any).daily_backups ?? 0)
-  const [weeklyBackups, setWeeklyBackups] = useState<number>((current as any).weekly_backups ?? 0)
-  const [monthlyBackups, setMonthlyBackups] = useState<number>((current as any).monthly_backups ?? 0)
-  const [offsiteBackups, setOffsiteBackups] = useState<boolean>(!!(current as any).offsite_backups)
+  const [dailyBackups, setDailyBackups] = useState<number>((current.daily_backups as number) ?? 0)
+  const [weeklyBackups, setWeeklyBackups] = useState<number>((current.weekly_backups as number) ?? 0)
+  const [monthlyBackups, setMonthlyBackups] = useState<number>((current.monthly_backups as number) ?? 0)
+  const [offsiteBackups, setOffsiteBackups] = useState<boolean>(!!current.offsite_backups)
   const [keepImage, setKeepImage] = useState(true)
+  const [newImageSlug, setNewImageSlug] = useState<string>('')
+  const [preBackup, setPreBackup] = useState<PreBackup>('off')
+  const [preBackupSlot, setPreBackupSlot] = useState<BackupSlot>('temporary')
+  const [agreed, setAgreed] = useState(false)
 
   /*
-   * Reducing the address count requires naming which addresses go: the API
-   * rejects the resize otherwise, and picking for the customer would drop
-   * whichever address happened to be first - possibly the one their DNS points
-   * at.
+   * The image drives the licence list and the surcharge, so both follow the
+   * pending choice rather than what the server runs today.
    */
-  const ipOpts = selected?.options ?? server.size?.options
-  const mustRelease = Math.max(0, publicIps.length - ipCount)
-  const releaseSatisfied = ipsToRemove.length === mustRelease && mustRelease <= Math.max(0, publicIps.length - 1)
+  const pickedImage = useMemo(
+    () => (keepImage ? undefined : ((distroQuery.data ?? EMPTY) as any[]).find((i) => i.slug === newImageSlug)),
+    [keepImage, newImageSlug, distroQuery.data]
+  )
+  const effectiveImage = pickedImage ?? currentImage
+  const osSlug = (keepImage ? server.image?.slug : newImageSlug) || null
 
-  // A different plan brings its own limits, so the adjustable options reset to
-  // that plan's included amounts rather than carrying invalid values across.
+  const softwareQuery = useOsSoftware(client, osSlug)
+  const serverSoftwareQuery = useServerSoftware(client, server.id)
+  const onOffer = (softwareQuery.data ?? EMPTY) as any[]
+  const licensed = (serverSoftwareQuery.data ?? EMPTY) as any[]
+
+  /*
+   * Licences can only be reasoned about once both lists have actually arrived.
+   * `change_licenses` removes any licence it does not list, so a payload built
+   * while either query is still loading - or after one failed - would read as
+   * "drop everything". Until then the controls are disabled and no licence
+   * change is sent. A catalogue with no OS to ask about (custom image) counts
+   * as loaded: there is nothing to fetch.
+   */
+  const catalogueReady = !osSlug || softwareQuery.status === 'success'
+  const heldReady = serverSoftwareQuery.status === 'success'
+  const licencesReady = catalogueReady && heldReady
+  const licenceError = softwareQuery.error ?? serverSoftwareQuery.error
+
+  /*
+   * What the OS sells today plus what the server already holds. The second half
+   * is not cosmetic: `change_licenses` removes any licence it does not list, and
+   * the catalogue omits disabled products, so building the payload from the
+   * catalogue alone would strip a Windows server's Remote Desktop SAL the first
+   * time anyone changed its memory. On a reinstall, held licences the *new*
+   * image says it cannot carry are excluded, because switching image really
+   * does drop them - but one that is silent about its supported images is kept,
+   * so the API rejects the request rather than this form quietly dropping it.
+   */
+  const offered = useMemo(
+    () => offerableSoftware(onOffer, licensed, keepImage ? null : newImageSlug),
+    [onOffer, licensed, keepImage, newImageSlug]
+  )
+
+  const { groups, addons } = useMemo(() => splitSoftware(offered), [offered])
+  const licenceBaseline = useMemo(() => currentSelection(licensed), [licensed])
+  const [licenceEdit, setLicenceEdit] = useState<LicenceSelection | null>(null)
+
+  /*
+   * The panel stays mounted across a resize, and the held licences refetch once
+   * it completes. An edit made against the old baseline would otherwise keep
+   * reporting a change that has already happened - and resend it with the next
+   * unrelated resize. So when what the server holds changes, the edit is
+   * discarded and the controls fall back to showing the new baseline.
+   */
+  const previousBaseline = useRef(licenceBaseline)
   useEffect(() => {
-    if (mustRelease === 0 && ipsToRemove.length) setIpsToRemove([])
-  }, [mustRelease, ipsToRemove.length])
+    if (!selectionsEqual(previousBaseline.current, licenceBaseline)) setLicenceEdit(null)
+    previousBaseline.current = licenceBaseline
+  }, [licenceBaseline])
+
+  /*
+   * Untouched, the controls show what the server holds; touched, they show the
+   * edit. Pruned to what the chosen OS offers, so switching image cannot leave
+   * a `software_id` in the payload that the new OS would reject - and so the
+   * price stops counting a licence the new OS will not carry.
+   */
+  const licences = useMemo(() => {
+    const base = licenceEdit ?? licenceBaseline
+    const out: LicenceSelection = {}
+    for (const [id, count] of Object.entries(base)) {
+      if (offered.some((o) => o.id === Number(id))) out[Number(id)] = count
+    }
+    return out
+  }, [licenceEdit, licenceBaseline, offered])
+
+  const incompatible = licensed.filter((l) => l.incompatible)
+  const licencesMonthly = licenceCost(offered as any, licences)
+  const licencesChanged = licencesReady && !selectionsEqual(licences, licenceBaseline)
+
+  /*
+   * Which slots a pre-action backup can use: the server's *current* retention,
+   * not what this form is about to set, because the backup is taken before the
+   * new options apply. See `availableBackupSlots`.
+   */
+  const backupSlots = useMemo(() => availableBackupSlots(current), [current])
+
+  const ipOpts = selected?.options ?? server.size?.options
+  /*
+   * Reducing the address count requires naming which addresses go. Ticking more
+   * than are being removed is how a *replacement* is requested: the API
+   * re-provisions the extras with new addresses, which is the only way to move
+   * off a blocklisted address without rebuilding somewhere else.
+   */
+  const mustRelease = Math.max(0, publicIps.length - ipCount)
+  /*
+   * The original address is tied to the server for the life of the lease and
+   * BinaryLane will not release it, so it is neither releasable nor
+   * replaceable - only the secondaries are either. That also caps how far the
+   * count can be reduced, or the panel would demand an impossible release.
+   */
+  const secondaryIps = publicIps.slice(1)
+  const releaseSatisfied = ipsToRemove.length >= mustRelease && mustRelease <= secondaryIps.length
+  const replacing = Math.max(0, ipsToRemove.length - mustRelease)
+
+  useEffect(() => {
+    setIpsToRemove((prev) => prev.filter((ip) => secondaryIps.includes(ip)))
+  }, [publicIps])
+
+  /*
+   * A tick made to satisfy a count reduction is about *releasing*. If the count
+   * is then put back, leaving the tick would silently turn it into a
+   * replacement - the address re-provisioned with a new one - which nobody
+   * asked for. So ticks are cleared when a release stops being required. Ticks
+   * made while no release was required are deliberate swaps and stay.
+   */
+  const previousMustRelease = useRef(mustRelease)
+  useEffect(() => {
+    if (previousMustRelease.current > 0 && mustRelease === 0) setIpsToRemove([])
+    previousMustRelease.current = mustRelease
+  }, [mustRelease])
+
+  /*
+   * Offsite copies need something on-site to copy, so clearing the last
+   * retention slot clears offsite with it. Done from the setters rather than an
+   * effect on the values: an effect would also fire on mount against what the
+   * server already has, and a server holding `offsite_backups: true` with no
+   * retention would come up showing an "on -> off" change nobody made.
+   */
+  const setRetention =
+    (setter: (v: number) => void, others: () => number) =>
+    (value: number): void => {
+      setter(value)
+      if (value + others() === 0) setOffsiteBackups(false)
+    }
+
+  useEffect(() => {
+    if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
+  }, [backupSlots, preBackupSlot])
 
   const pick = (slug: string): void => {
     const p = plans.find((x) => x.slug === slug)
@@ -112,31 +281,213 @@ export const ChangePlanPanel: React.FC<{
   const blocks = useMemo(() => {
     const seen = new Map<string, { kind: string; message: string }>()
     for (const p of plans) {
-      const b = planUnavailableReason(p, region, image)
+      const b = planUnavailableReason(p, region, effectiveImage)
       if (b) seen.set(b.message, b)
     }
     return [...seen.values()]
-  }, [plans, region, image?.slug])
+  }, [plans, region, effectiveImage?.slug])
   const capacityOnly = blocks.length > 0 && blocks.every((b) => isCapacityBlock(b as never))
 
-  if (sizesQuery.isLoading || imagesQuery.isLoading) {
+  /** Distribution images, newest first within each OS, for the reinstall picker. */
+  const imageChoices = useMemo(() => {
+    const distros = new Map<string, any[]>()
+    for (const i of (distroQuery.data ?? []) as any[]) {
+      if (!i.slug) continue
+      distros.set(i.distribution || 'Other', [...(distros.get(i.distribution || 'Other') ?? []), i])
+    }
+    return [...distros.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([distribution, images]) => ({
+        distribution,
+        images: [...images].sort((a, b) =>
+          compareVersionNames(a.name || a.full_name || a.slug || '', b.name || b.full_name || b.slug || '')
+        )
+      }))
+  }, [distroQuery.data])
+
+  const newCost = selected
+    ? configuredCost({
+        size: selected,
+        image: effectiveImage,
+        memoryMb: memory,
+        diskGb: disk,
+        ipCount,
+        dailyBackups,
+        weeklyBackups,
+        monthlyBackups,
+        offsiteBackups,
+        licencesMonthly
+      })
+    : null
+  /*
+   * The "from" side is read off the server, not out of the plans list: a retired
+   * plan is not in /v2/sizes, and comparing against nothing would report the
+   * entire bill as an increase.
+   */
+  const oldCost = server.size
+    ? configuredCost({
+        size: server.size as any,
+        image: currentImage,
+        memoryMb: server.memory ?? 0,
+        diskGb: server.disk ?? 0,
+        ipCount: currentIpCount || 1,
+        dailyBackups: (current.daily_backups as number) ?? 0,
+        weeklyBackups: (current.weekly_backups as number) ?? 0,
+        monthlyBackups: (current.monthly_backups as number) ?? 0,
+        offsiteBackups: !!current.offsite_backups,
+        licencesMonthly: currentLicenceCost(licensed as any)
+      })
+    : null
+
+  /** Name of a licence by id, from either the offered list or what is held. */
+  const licenceName = (id: number): string => {
+    const o = offered.find((x) => x.id === id)
+    if (o) return o.name
+    const l = licensed.find((x) => x.software.id === id)
+    return l ? l.software.name : `Software #${id}`
+  }
+
+  /*
+   * One list, used for the summary on the page and for the confirm dialog. Built
+   * once so the two cannot disagree - the table you approve is the table you
+   * were shown.
+   *
+   * Computed on every render, not memoised: it reads the server (which refetches
+   * every few seconds and changes under the panel once a resize lands), the
+   * queries and a dozen pieces of state, and a stale copy is worse than the
+   * cost of rebuilding a few rows. A memo here once kept offering a reinstall
+   * onto the image the server was already running.
+   */
+  const changes = ((): Array<{ label: string; from?: string; to?: string }> => {
+    if (!selected) return []
+    const rows: Array<{ label: string; from?: string; to?: string }> = [
+      { label: 'Plan', from: server.size_slug ?? undefined, to: selected.slug },
+      { label: 'Memory', from: `${(server.memory ?? 0) / 1024} GB`, to: `${memory / 1024} GB` },
+      { label: 'Storage', from: `${server.disk ?? 0} GB`, to: `${disk} GB` },
+      { label: 'IP addresses', from: String(currentIpCount), to: String(ipCount) },
+      { label: 'Daily backups', from: String((current.daily_backups as number) ?? 0), to: String(dailyBackups) },
+      { label: 'Weekly backups', from: String((current.weekly_backups as number) ?? 0), to: String(weeklyBackups) },
+      { label: 'Monthly backups', from: String((current.monthly_backups as number) ?? 0), to: String(monthlyBackups) },
+      { label: 'Offsite backups', from: current.offsite_backups ? 'on' : 'off', to: offsiteBackups ? 'on' : 'off' }
+    ]
+
+    if (!keepImage && newImageSlug) {
+      rows.push({
+        label: 'Operating system',
+        from: server.image?.full_name || server.image?.name || server.image?.slug || undefined,
+        to: pickedImage?.full_name || pickedImage?.name || newImageSlug
+      })
+    }
+
+    // Grouped licences read as one row per group: the tier moved from A to B.
+    for (const g of groups) {
+      const was = g.options.find((o) => (licenceBaseline[o.id] ?? 0) > 0)
+      const now = g.options.find((o) => (licences[o.id] ?? 0) > 0)
+      if (was?.id !== now?.id) {
+        rows.push({ label: g.name, from: was ? shortName(was) : 'none', to: now ? shortName(now) : 'none' })
+      }
+    }
+    for (const a of addons) {
+      const was = licenceBaseline[a.id] ?? 0
+      const now = licences[a.id] ?? 0
+      if (was !== now) {
+        rows.push({
+          label: a.name,
+          from: was > 1 ? String(was) : was ? 'on' : 'off',
+          to: now > 1 ? String(now) : now ? 'on' : 'off'
+        })
+      }
+    }
+    /*
+     * A licence held but not offered by the chosen OS is being dropped, and none
+     * of the rows above can show it: it is not among any group's options. This
+     * is the visible half of switching a cPanel server onto Ubuntu.
+     */
+    for (const id of Object.keys(licenceBaseline).map(Number)) {
+      if (!offered.some((o) => o.id === id) && !licences[id]) {
+        rows.push({ label: licenceName(id), from: 'on', to: 'removed' })
+      }
+    }
+
+    const changed = rows.filter((r) => r.from !== r.to)
+
+    // Swapping a secondary address for a new one is a change in its own right,
+    // and the only one the address list can ask for on its own.
+    if (ipsToRemove.length) {
+      changed.push({
+        label: mustRelease ? 'Releasing' : 'Replacing',
+        from: ipsToRemove.join(', '),
+        to: replacing ? `${replacing} replaced with new` : undefined
+      })
+    }
+    // The pre-action backup and the cost are consequences of the rows above, so
+    // they only belong here once something else has changed.
+    if (changed.length) {
+      if (preBackup !== 'off') {
+        changed.push({ label: 'Backup first', to: `${preBackupSlot} slot` })
+      }
+      if (oldCost && newCost) {
+        changed.push({
+          label: 'Monthly (ex-GST)',
+          from: `$${oldCost.total.toFixed(2)}`,
+          to: `$${newCost.total.toFixed(2)}`
+        })
+      }
+    }
+    return changed
+  })()
+
+  // Distributions are only needed once "Continue using <OS>" is unticked, so
+  // they load behind the picker rather than holding up the whole panel.
+  if (sizesQuery.isLoading) {
     return <p className="text-xs text-[#6c757d] dark:text-slate-400">Loading plans...</p>
   }
 
-  const monthly = selected ? planMonthlyPrice(selected, image, memory, disk) : 0
+  const monthly = newCost?.total ?? 0
   const { total, gst } = billingTotal(monthly)
+  const delta = total - billingTotal(oldCost?.total ?? 0).total
   const isShrink = !!selected && (memory < (server.memory ?? 0) || disk < (server.disk ?? 0))
-  const unchanged =
-    selected?.slug === server.size_slug &&
-    memory === (server.memory ?? 0) &&
-    disk === (server.disk ?? 0) &&
-    ipCount === ((current as any).ipv4_addresses ?? publicIps.length) &&
-    dailyBackups === ((current as any).daily_backups ?? 0) &&
-    weeklyBackups === ((current as any).weekly_backups ?? 0) &&
-    monthlyBackups === ((current as any).monthly_backups ?? 0) &&
-    offsiteBackups === !!(current as any).offsite_backups
+  const imageMissing = !keepImage && !newImageSlug
+  const unchanged = changes.length === 0
+  const canApply = !!selected && !unchanged && releaseSatisfied && !imageMissing && agreed
+
+  /*
+   * Two shapes of resize are not undoable, so both confirm like a rebuild -
+   * type the hostname - rather than with the ordinary "are you sure?".
+   *
+   * Giving an address back is Adam's case (e503089): it returns to the pool and
+   * may be reassigned, and anything pointing at it breaks. Reinstalling is the
+   * worse one this change adds, because it destroys the disks outright.
+   */
+  const reinstalling = !keepImage && !!newImageSlug
+  const confirmExtra =
+    reinstalling || ipsToRemove.length
+      ? {
+          severity: 'irreversible' as const,
+          typeToConfirm: server.name,
+          notes: [
+            ...(reinstalling
+              ? [
+                  `Reinstalling onto ${pickedImage?.name || newImageSlug} destroys the server's disks and everything on them. Take a backup first if anything on it matters.`
+                ]
+              : []),
+            ...(mustRelease > 0
+              ? [
+                  `Releasing ${ipsToRemove.join(', ')}. Released addresses go back to the pool and may be assigned to someone else; update DNS and any allow-lists first.`
+                ]
+              : ipsToRemove.length
+                ? [
+                    `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
+                  ]
+                : [])
+          ]
+        }
+      : undefined
 
   const cellClass = 'py-1.5 px-1 sm:py-2 sm:px-3'
+  const selectClass =
+    'w-full px-2 py-1.5 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529] text-[#212529] dark:text-white'
+  const labelClass = 'block text-[11px] font-semibold text-[#495057] dark:text-slate-300 mb-1'
 
   /*
    * The server's own size is read from the server object, not looked up in the
@@ -146,6 +497,27 @@ export const ChangePlanPanel: React.FC<{
    * before choosing what to move to.
    */
   const currentInList = plans.some((p) => p.slug === server.size_slug)
+  const windowsish = /windows/i.test(effectiveImage?.distribution || server.image?.distribution || '')
+
+  /*
+   * Picking a group's opt-out means "no licence from this group", so it clears
+   * the group rather than sending that option's id.
+   *
+   * Verified against the live API: sending `{software_id: 105, count: 1}` for
+   * "cPanel: Not required" is accepted and then not persisted - the server comes
+   * back with zero licences. Treating it as a licence made the panel report a
+   * change that never stuck, and then offer the same change again forever.
+   */
+  const setGroup = (g: { options: Array<{ id: number }>; optOut: { id: number } | null }, chosen: number | null): void =>
+    setLicenceEdit(() => {
+      const next: LicenceSelection = { ...licences }
+      for (const o of g.options) delete next[o.id]
+      if (chosen !== null && chosen !== g.optOut?.id) {
+        const o = offered.find((x) => x.id === chosen)
+        next[chosen] = o?.minimum_licence_count || 1
+      }
+      return next
+    })
 
   return (
     <div className="space-y-4">
@@ -163,6 +535,65 @@ export const ChangePlanPanel: React.FC<{
           </span>
         )}
       </div>
+
+      {/*
+        * "Continue using <OS>" sits at the top, as the web panel has it: the
+        * answer changes which plans are eligible, what the image surcharge is
+        * and which licences are on offer, so it belongs before the plan table
+        * rather than after it.
+        */}
+      <div className="space-y-2">
+        <label className="flex items-start gap-2 text-xs text-[#212529] dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={keepImage}
+            onChange={(e) => {
+              setKeepImage(e.target.checked)
+              if (e.target.checked) setNewImageSlug('')
+            }}
+            disabled={busy}
+            className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+          />
+          <span>Continue using {server.image?.full_name || server.image?.name || 'the current image'}</span>
+        </label>
+
+        {!keepImage && (
+          <div className="ml-6 space-y-2">
+            <div>
+              <label className={labelClass}>Install instead</label>
+              <select
+                value={newImageSlug}
+                onChange={(e) => setNewImageSlug(e.target.value)}
+                disabled={busy}
+                className={selectClass}
+              >
+                <option value="">Choose an operating system...</option>
+                {distroQuery.isLoading && <option value="" disabled>Loading operating systems...</option>}
+                {imageChoices.map((d) => (
+                  <optgroup key={d.distribution} label={d.distribution}>
+                    {d.images.map((i) => (
+                      <option key={i.slug} value={i.slug as string}>
+                        {/* cpanel-plus-whm ships an empty `name`, which renders
+                            as a blank, unpickable-looking row. */}
+                        {i.name || i.full_name || i.slug}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-900 rounded p-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Installing a different operating system destroys the server's disks and everything on them. The
+                account's default SSH keys are deployed, and a new password for the remote user is emailed to the
+                account address. Take a backup below first if you want one.
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {typeSlugs.map((t) => {
           const name = allSizes.find((s) => s.size_type?.slug === t)?.size_type?.name || t
@@ -196,7 +627,7 @@ export const ChangePlanPanel: React.FC<{
           </thead>
           <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
             {plans.map((p) => {
-              const blocked = planUnavailableReason(p, region, image)
+              const blocked = planUnavailableReason(p, region, effectiveImage)
               const isSel = selected?.slug === p.slug
               const isCurrent = p.slug === server.size_slug
               return (
@@ -262,7 +693,7 @@ export const ChangePlanPanel: React.FC<{
                   </td>
                   <td className={`${cellClass} text-center`}>{p.transfer * 1000} GB</td>
                   <td className={`${cellClass} text-center font-medium`}>
-                    ${planMonthlyPrice(p, image, p.memory, p.disk).toFixed(2)}
+                    ${planMonthlyPrice(p, effectiveImage, p.memory, p.disk).toFixed(2)}
                   </td>
                 </tr>
               )
@@ -299,46 +730,21 @@ export const ChangePlanPanel: React.FC<{
         </div>
       )}
 
-      {/*
-        * "Continue using <OS>" mirrors the web panel's box. Unticking it there
-        * starts an image change as part of the resize, which reinstalls the
-        * server and destroys the disk - so this offers the choice but sends the
-        * customer to Rebuild rather than folding a data-destroying step into a
-        * plan change, where the confirm dialog talks about memory and storage.
-        */}
-      <label className="flex items-start gap-2 text-xs text-[#212529] dark:text-slate-200">
-        <input
-          type="checkbox"
-          checked={keepImage}
-          onChange={(e) => setKeepImage(e.target.checked)}
-          disabled={busy}
-          className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
-        />
-        <span>
-          Continue using {server.image?.full_name || server.image?.name || 'the current image'}
-          {!keepImage && (
-            <span className="block mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-              Changing the operating system reinstalls the server and erases the disk. That is a rebuild, not a plan
-              change — use Settings → Danger Zone so the confirmation says so. Re-tick this to continue.
-            </span>
-          )}
-        </span>
-      </label>
-
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300 mb-1">
-            IP Addresses
-          </label>
+          <label className={labelClass}>IP Addresses</label>
           <select
             value={ipCount}
             onChange={(e) => setIpCount(Number(e.target.value))}
             disabled={busy}
-            className="w-full px-2 py-1.5 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#212529]"
+            className={selectClass}
           >
             {/* Falls back to the server's own size while no plan is selected:
                 reading only from `selected` showed "+$0.00" for an address that
                 costs money, which is the wrong way round to be wrong. */}
+            {/* A server with no public address today keeps that as a choice,
+                or the form would report "0 -> 1" before anything was touched. */}
+            {currentIpCount === 0 && <option value={0}>No IP address</option>}
             {Array.from({ length: (ipOpts?.ipv4_addresses_max ?? publicIps.length) || 1 }, (_, i) => {
               const extra = i * (ipOpts?.ipv4_addresses_cost_per_address ?? 0)
               return (
@@ -349,28 +755,31 @@ export const ChangePlanPanel: React.FC<{
             })}
           </select>
 
-          {mustRelease > 0 && (
+          {publicIps.length > 0 && (
             <div className="mt-2 space-y-1">
-              <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                Select {mustRelease} address{mustRelease === 1 ? '' : 'es'} to release. They are given up permanently
-                and cannot be reclaimed.
+              <p className="text-[11px] text-[#6c757d] dark:text-slate-400">
+                {mustRelease > 0
+                  ? `Select at least ${mustRelease} address${mustRelease === 1 ? '' : 'es'} to give up.`
+                  : secondaryIps.length > 0
+                    ? 'Optional: tick a secondary address to swap it for a new one.'
+                    : 'This server has only its original address, which cannot be released or swapped.'}
               </p>
-              {/* The original address is tied to the server for the life of the
-                  lease — BinaryLane will not release it — so it is shown but
-                  cannot be ticked. Only secondary addresses can go. */}
+              {/* Shown but not tickable: BinaryLane keeps the original address
+                  with the server, so the UI cannot ask for what the platform
+                  refuses. (Adam, bd3d246.) */}
               {publicIps[0] && (
                 <div className="flex items-center gap-2 text-[11px] font-mono text-[#6c757d] dark:text-slate-500">
                   <input type="checkbox" disabled checked={false} className="shrink-0 rounded border-[#ced4da]" />
                   <span>{publicIps[0]}</span>
-                  <span className="font-sans text-[10px]">primary — stays with the server</span>
+                  <span className="font-sans text-[10px]">primary - stays with the server</span>
                 </div>
               )}
-              {publicIps.slice(1).map((ip) => (
+              {secondaryIps.map((ip) => (
                 <label key={ip} className="flex items-center gap-2 text-[11px] font-mono">
                   <input
                     type="checkbox"
                     checked={ipsToRemove.includes(ip)}
-                    disabled={busy || (!ipsToRemove.includes(ip) && ipsToRemove.length >= mustRelease)}
+                    disabled={busy}
                     onChange={(e) =>
                       setIpsToRemove((prev) => (e.target.checked ? [...prev, ip] : prev.filter((x) => x !== ip)))
                     }
@@ -379,6 +788,13 @@ export const ChangePlanPanel: React.FC<{
                   <span>{ip}</span>
                 </label>
               ))}
+              {ipsToRemove.length > 0 && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  {mustRelease > 0 && `${mustRelease} given up permanently and cannot be reclaimed. `}
+                  {replacing > 0 &&
+                    `${replacing} replaced with ${replacing === 1 ? 'a new address' : 'new addresses'}. Anything pointing at ${replacing === 1 ? 'it' : 'them'} - DNS, firewall rules elsewhere, licences tied to an address - needs updating.`}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -387,9 +803,9 @@ export const ChangePlanPanel: React.FC<{
           <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300">Backups</label>
           {(
             [
-              ['Daily', dailyBackups, setDailyBackups],
-              ['Weekly', weeklyBackups, setWeeklyBackups],
-              ['Monthly', monthlyBackups, setMonthlyBackups]
+              ['Daily', dailyBackups, setRetention(setDailyBackups, () => weeklyBackups + monthlyBackups)],
+              ['Weekly', weeklyBackups, setRetention(setWeeklyBackups, () => dailyBackups + monthlyBackups)],
+              ['Monthly', monthlyBackups, setRetention(setMonthlyBackups, () => dailyBackups + weeklyBackups)]
             ] as const
           ).map(([label, value, setter]) => (
             <div key={label} className="flex items-center gap-2">
@@ -421,6 +837,266 @@ export const ChangePlanPanel: React.FC<{
         </div>
       </div>
 
+      {(offered.length > 0 || windowsish) && (
+        <div className="space-y-2 border-t border-[#ced4da] dark:border-[#373b3e] pt-3">
+          <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300">
+            Licensed software
+          </label>
+
+          {!licencesReady && !licenceError && (
+            <p className="text-[11px] text-[#6c757d] dark:text-slate-400">Loading licences...</p>
+          )}
+          {licenceError && (
+            <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900 rounded p-2.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Could not load the server's licences ({licenceError.message}). They are left exactly as they are by this
+                change; reload to edit them.
+              </span>
+            </div>
+          )}
+
+          {groups.map((g) => {
+            const chosen = g.options.find((o) => (licences[o.id] ?? 0) > 0)
+            /*
+             * Nothing licensed shows as the opt-out where the OS has one, so the
+             * control reads the way the web panel's does ("cPanel: Not
+             * required") instead of as an empty box.
+             */
+            const shown = chosen ? String(chosen.id) : g.optOut ? String(g.optOut.id) : ''
+            return (
+              <div key={g.name}>
+                <label className={labelClass}>{g.name}</label>
+                <select
+                  value={shown}
+                  onChange={(e) => setGroup(g, e.target.value ? Number(e.target.value) : null)}
+                  disabled={busy || !licencesReady}
+                  className={selectClass}
+                >
+                  {/*
+                    * An OS with no explicit opt-out needs one of its options, so
+                    * this entry reports a state rather than offering a choice -
+                    * hence `disabled`.
+                    *
+                    * BinaryLane ships an explicit "Not required" tier for the OSes
+                    * where dropping cPanel is allowed (ubuntu-24.04, alma-9,
+                    * alma-10) and none for the cPanel images, whose cheapest tier
+                    * is $0 instead. Read as deliberate: the platform offers no way
+                    * to run a cPanel image with no cPanel licence, so neither does
+                    * this. Relax it to selectable if that reading is wrong.
+                    */}
+                  {!g.optOut && (
+                    <option value="" disabled>
+                      Not licensed
+                    </option>
+                  )}
+                  {g.options.map((o) => (
+                    <option key={o.id} value={String(o.id)}>
+                      {shortName(o)} - {costLabel(o)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )
+          })}
+
+          {addons.map((a) => {
+            const counts = countChoices(a)
+            const on = (licences[a.id] ?? 0) > 0
+            // Held but closed to new orders: keepable, and gone for good if
+            // dropped. Remote Desktop SAL is the one this exists for.
+            const retained = isRetainedOnly(a.id, onOffer)
+            return (
+              <div key={a.id} className="space-y-1">
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={busy || !licencesReady}
+                    onChange={(e) =>
+                      setLicenceEdit(() => {
+                        const next = { ...licences }
+                        if (e.target.checked) next[a.id] = a.minimum_licence_count || 1
+                        else delete next[a.id]
+                        return next
+                      })
+                    }
+                    className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+                  />
+                  <span className="text-[#212529] dark:text-slate-200">
+                    {a.name} <span className="text-[#6c757d] dark:text-slate-400">{costLabel(a)}</span>
+                    {a.description && a.description !== a.name && a.description !== '-' && (
+                      <span className="block text-[11px] text-[#6c757d] dark:text-slate-400">{a.description}</span>
+                    )}
+                    {retained && (
+                      <span className="block text-[11px] text-[#6c757d] dark:text-slate-400">
+                        Closed to new orders. This server can keep it or give it up, but cannot get it back.
+                      </span>
+                    )}
+                  </span>
+                </label>
+                {retained && !on && (
+                  <p className="ml-6 text-[11px] text-amber-700 dark:text-amber-400">
+                    Giving up {a.name} is permanent - it cannot be re-added from here.
+                  </p>
+                )}
+                {on && counts.length > 1 && (
+                  <select
+                    value={licences[a.id] ?? counts[0]}
+                    onChange={(e) => setLicenceEdit(() => ({ ...licences, [a.id]: Number(e.target.value) }))}
+                    disabled={busy || !licencesReady}
+                    className={`ml-6 max-w-[14rem] ${selectClass}`}
+                  >
+                    {counts.map((n) => (
+                      <option key={n} value={n}>
+                        {n} licence{n === 1 ? '' : 's'} - {costLabel(a, n)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )
+          })}
+
+          {/*
+            * Windows sells no licences through the API: every `windows-*` slug
+            * returns an empty list, because Remote Desktop SAL is
+            * `enabled: false` and the catalogue endpoints only return enabled
+            * products. A server already holding SAL shows it above and can
+            * change the count; one that does not cannot buy it here. Saying so
+            * beats an empty space that reads as a missing feature.
+            */}
+          {windowsish && offered.length === 0 && licencesReady && (
+            <div className="flex items-start gap-2 text-[11px] text-[#6c757d] dark:text-[#adb5bd] bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-2.5">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Windows licences are not sold through the BinaryLane API - Remote Desktop SAL is closed to new orders
+                there - so none can be added here. Use <LinkOut href={MPANEL_URL}>the BinaryLane control panel</LinkOut>{' '}
+                to add one.
+              </span>
+            </div>
+          )}
+
+          {incompatible.length > 0 && (
+            <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                {incompatible.map((l) => l.software.name).join(', ')} {incompatible.length === 1 ? 'is' : 'are'}{' '}
+                incompatible with this server and will be removed by the next plan change whatever is selected here.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 border-t border-[#ced4da] dark:border-[#373b3e] pt-3">
+        <div>
+          <label className={labelClass}>Backup will</label>
+          <select
+            value={preBackup}
+            onChange={(e) => setPreBackup(e.target.value as PreBackup)}
+            disabled={busy}
+            className={selectClass}
+          >
+            <option value="off">Not be taken before the change</option>
+            <option value="none">Use a free slot, or fail if there is none</option>
+            <option value="oldest">Replace the oldest backup if no slot is free</option>
+            <option value="newest">Replace the newest backup if no slot is free</option>
+          </select>
+        </div>
+        {preBackup !== 'off' && (
+          <div>
+            <label className={labelClass}>Backup slot</label>
+            <select
+              value={preBackupSlot}
+              onChange={(e) => setPreBackupSlot(e.target.value as typeof preBackupSlot)}
+              disabled={busy}
+              className={selectClass}
+            >
+              {backupSlots.map((slot) => (
+                <option key={slot} value={slot}>
+                  {BACKUP_SLOT_LABELS[slot]}
+                </option>
+              ))}
+            </select>
+            {backupSlots.length === 1 && (
+              <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
+                Only a temporary slot is available: this server keeps no scheduled backups yet.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {selected && !unchanged && (
+        <div className="border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
+          <div className="px-3 py-2 bg-[#f8f9fa] dark:bg-[#212529] text-[11px] font-bold uppercase tracking-wider text-[#495057] dark:text-[#adb5bd]">
+            Summary of changes
+          </div>
+          <table className="w-full text-[11px]">
+            <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+              {changes.map((c) => (
+                <tr key={c.label}>
+                  <td className="py-1.5 px-3 text-[#6c757d] dark:text-slate-400 align-top w-1/3">{c.label}</td>
+                  <td className="py-1.5 px-3 text-[#212529] dark:text-white break-all">
+                    {c.from && <span className="text-[#6c757d] dark:text-slate-400 line-through">{c.from}</span>}
+                    {c.from && c.to && <span className="text-[#6c757d] dark:text-slate-400"> &rarr; </span>}
+                    {c.to && <span className="font-medium">{c.to}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-3 py-2 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#212529] space-y-1 text-[11px]">
+            <div className="font-bold uppercase tracking-wider text-[#495057] dark:text-[#adb5bd]">Billing</div>
+            <div className="flex justify-between gap-6">
+              <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Change</span>
+              <span
+                className={
+                  delta > 0
+                    ? 'text-amber-700 dark:text-amber-400 font-medium'
+                    : delta < 0
+                      ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                      : 'text-[#212529] dark:text-white'
+                }
+              >
+                {delta < 0 ? '-' : '+'}${Math.abs(delta).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-6">
+              <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Total</span>
+              <span className="text-[#212529] dark:text-white font-medium">
+                ${total.toFixed(2)} (incl. ${gst.toFixed(2)} GST)
+              </span>
+            </div>
+            {licencesMonthly > 0 && (
+              <div className="flex justify-between gap-6">
+                <span className="text-[#6c757d] dark:text-[#adb5bd]">of which licences</span>
+                <span className="text-[#6c757d] dark:text-[#adb5bd]">${licencesMonthly.toFixed(2)} ex-GST</span>
+              </div>
+            )}
+            <p className="text-[#6c757d] dark:text-[#adb5bd] leading-relaxed pt-1">
+              All prices are in AUD and exclusive of GST unless stated otherwise. Charges are pro-rated from the time
+              the change is applied.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <label className="flex items-start gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          disabled={busy}
+          className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+        />
+        <span className="text-[#212529] dark:text-white">
+          I agree to the <LinkOut href={TOS_URL}>Terms of Service</LinkOut> and{' '}
+          <LinkOut href={REFUND_URL}>refund policy</LinkOut>.
+        </span>
+      </label>
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-[#495057] dark:text-slate-300">
           {selected ? (
@@ -434,7 +1110,7 @@ export const ChangePlanPanel: React.FC<{
         </p>
         <button
           type="button"
-          disabled={busy || !selected || unchanged || !releaseSatisfied || !keepImage}
+          disabled={busy || !canApply}
           onClick={() =>
             selected &&
             onApply(
@@ -449,53 +1125,45 @@ export const ChangePlanPanel: React.FC<{
                   weekly_backups: weeklyBackups,
                   monthly_backups: monthlyBackups,
                   offsite_backups: offsiteBackups,
-                  // Only when reducing: the API rejects a reduction that does
-                  // not say which addresses are being given up.
+                  // Naming more addresses than are being removed is how the API
+                  // is told to re-provision the extras with new ones.
                   ...(ipsToRemove.length ? { ipv4_addresses_to_remove: ipsToRemove } : {})
-                }
+                },
+                // Omitted rather than sent unchanged: any licence *not* included
+                // in `change_licenses` is removed, so sending it on every resize
+                // is a standing chance to drop one.
+                ...(licencesChanged ? { change_licenses: { licenses: toLicencePayload(licences) } } : {}),
+                ...(!keepImage && newImageSlug ? { change_image: { image: newImageSlug } } : {}),
+                ...(preBackup !== 'off'
+                  ? {
+                      pre_action_backup: {
+                        type: 'take_backup',
+                        backup_type: preBackupSlot,
+                        replacement_strategy: preBackup
+                      }
+                    }
+                  : {})
               },
-              `Change plan to ${selected.slug} (${memory / 1024} GB memory, ${disk} GB storage)`,
-              [
-                { label: 'Plan', from: server.size_slug ?? undefined, to: selected.slug },
-                { label: 'Memory', from: `${(server.memory ?? 0) / 1024} GB`, to: `${memory / 1024} GB` },
-                { label: 'Storage', from: `${server.disk ?? 0} GB`, to: `${disk} GB` },
-                // Both sides ex-GST and both including the image surcharge:
-                // `size.price_monthly` alone is the bare plan price and `total`
-                // is inc-GST, so comparing those understated the current cost.
-                { label: 'IP addresses', from: String((current as any).ipv4_addresses ?? publicIps.length), to: String(ipCount) },
-                ...(ipsToRemove.length ? [{ label: 'Releasing', from: ipsToRemove.join(', '), to: undefined }] : []),
-                { label: 'Daily backups', from: String((current as any).daily_backups ?? 0), to: String(dailyBackups) },
-                { label: 'Weekly backups', from: String((current as any).weekly_backups ?? 0), to: String(weeklyBackups) },
-                { label: 'Monthly backups', from: String((current as any).monthly_backups ?? 0), to: String(monthlyBackups) },
-                { label: 'Offsite backups', from: (current as any).offsite_backups ? 'on' : 'off', to: offsiteBackups ? 'on' : 'off' },
-                ...(server.size ? [{ label: 'Monthly (ex-GST)', from: `$${planMonthlyPrice(server.size, image, server.memory ?? 0, server.disk ?? 0).toFixed(2)}`, to: `$${monthly.toFixed(2)}` }] : [])
-              ].filter((c) => c.from !== c.to),
-              // Giving an address back is not undoable: it returns to the pool
-              // and may be reassigned to another customer, and anything that
-              // pointed at it (DNS, allow-lists) breaks. So a resize that
-              // releases addresses is confirmed like a rebuild — type the name.
-              ipsToRemove.length
-                ? {
-                    severity: 'irreversible',
-                    typeToConfirm: server.name,
-                    notes: [
-                      `Releasing ${ipsToRemove.join(', ')}. Released addresses go back to the pool and may be assigned to someone else; update DNS and any allow-lists first.`
-                    ]
-                  }
-                : undefined
+              reinstalling
+                ? `Change plan to ${selected.slug} and reinstall onto ${pickedImage?.name || newImageSlug}, erasing the disks`
+                : `Change plan to ${selected.slug} (${memory / 1024} GB memory, ${disk} GB storage)`,
+              changes,
+              confirmExtra
             )
           }
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] text-white disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <ArrowRightLeft className="w-3.5 h-3.5" />
           <span>
-            {!keepImage
-              ? 'Untick blocked — rebuild instead'
+            {imageMissing
+              ? 'Choose an operating system'
               : !releaseSatisfied
                 ? `Select ${mustRelease - ipsToRemove.length} more address${mustRelease - ipsToRemove.length === 1 ? '' : 'es'}`
                 : unchanged
                   ? 'No change selected'
-                  : 'Change Plan'}
+                  : !agreed
+                    ? 'Accept the terms to continue'
+                    : 'Change Plan'}
           </span>
         </button>
       </div>

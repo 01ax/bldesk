@@ -34,6 +34,16 @@ export default defineConfig({
   },
   renderer: {
     base: './',
+    /*
+     * Vite's default 5173 is unusable on Windows machines with Hyper-V or WSL:
+     * those reserve blocks of ports, and 5173 falls inside 5141-5240 on at least
+     * one dev box, so `npm run dev` dies with EACCES before the window opens.
+     * Overridable rather than moved, so the default stays familiar.
+     */
+    server: {
+      port: Number(process.env.BLDESK_DEV_PORT) || 5173,
+      strictPort: false
+    },
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION)
     },

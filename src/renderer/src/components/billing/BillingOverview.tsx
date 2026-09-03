@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useAccount, useBalance, useInvoices, useUnpaidInvoices, useDataUsage } from '../../api/queries'
+import { MPANEL_URL } from '../ui/LinkOut'
 
 /**
  * Billing, laid out the way mPanel does it: a summary strip, then tabs for
@@ -27,7 +28,7 @@ import { useAccount, useBalance, useInvoices, useUnpaidInvoices, useDataUsage } 
  * *types* are configured and nothing more, so changing them links out to mPanel.
  */
 
-const MPANEL = 'https://home.binarylane.com.au'
+const MPANEL = MPANEL_URL
 
 type BillingTab = 'pending' | 'invoices' | 'payment'
 
