@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.56] - 2026-09-03
+
+### Changed
+- **Change Plan: full size options configuration** (*PR #29 by @01ax*):
+  - Change Plan now sends the complete `ChangeSizeOptionsRequest` configuration rather than only `{size, memory, disk}`.
+  - Pre-populates and manages `ipv4_addresses`, `ipv4_addresses_to_remove`, backup retention schedules (`daily_backups`, `weekly_backups`, `monthly_backups`), and `offsite_backups` directly from the server's current `selected_size_options`.
+  - Enforces explicit address selection when decreasing IPv4 address counts, preventing accidental loss of arbitrary IP addresses.
+  - Adds "Continue using <OS>" option directing to Rebuild for intentional OS changes.
+  - Corrects address price fallback calculation (`+$2.00` per additional address) when current plan is retired.
+
+---
+
 ## [1.0.55] - 2026-09-03
 
 ### Changed
