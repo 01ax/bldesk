@@ -85,21 +85,29 @@ describe('configuredCost', () => {
     expect(c.backups).toBe(0)
   })
 
-  it('adds the highest enabled offsite frequency rate, not the highest published one', () => {
+  it('adds the rate of the highest enabled frequency, not the largest enabled rate', () => {
+    // Rates deliberately not ordered by frequency, so "largest rate" and
+    // "highest frequency" disagree and the test can tell them apart.
     const s = size({
       options: {
         ...size().options,
         offsite_backup_frequency_cost: {
-          daily_per_gigabyte: 0.1,
-          weekly_per_gigabyte: 0.02,
-          monthly_per_gigabyte: 0.01
+          daily_per_gigabyte: 0.02,
+          weekly_per_gigabyte: 0.05,
+          monthly_per_gigabyte: 0.1
         }
       }
     })
-    // Only weekly and monthly are on, so the daily rate must not apply:
-    // 3 backups x 60 x 0.05 = 9, plus max(0.02, 0.01) x 60 = 1.2
-    const c = configuredCost({ size: s, ...base, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
-    expect(c.offsite).toBeCloseTo(9 + 1.2, 5)
+    // Weekly and monthly on: weekly is the higher frequency, so its 0.05 applies
+    // even though monthly's 0.1 is larger. 3 backups x 60 x 0.05 = 9, plus 0.05 x 60 = 3.
+    const wm = configuredCost({ size: s, ...base, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
+    expect(wm.offsite).toBeCloseTo(9 + 3, 5)
+    // Daily on as well: daily wins outright. 4 x 60 x 0.05 = 12, plus 0.02 x 60 = 1.2.
+    const dwm = configuredCost({ size: s, ...base, dailyBackups: 1, weeklyBackups: 2, monthlyBackups: 1, offsiteBackups: true })
+    expect(dwm.offsite).toBeCloseTo(12 + 1.2, 5)
+    // Only monthly: its own rate, however large. 1 x 60 x 0.05 = 3, plus 0.1 x 60 = 6.
+    const m = configuredCost({ size: s, ...base, monthlyBackups: 1, offsiteBackups: true })
+    expect(m.offsite).toBeCloseTo(3 + 6, 5)
   })
 
   it('charges no offsite when offsite is off, however the rates are set', () => {
