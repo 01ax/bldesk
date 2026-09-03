@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Fleet Utilisation Heatmap** (FEATURES.md #9): a sortable live grid for CPU, RAM, disk, network and storage IO across every server. Capacity metrics use each server's provisioned resources, throughput rates use fleet-relative intensity, and stale, unavailable, building and inactive servers remain explicit. Active-server metrics refresh every 30 seconds, four requests at a time, and a sweep already in flight is not duplicated; selecting a row opens that server's Usage tab.
+
 ## [1.0.57] - 2026-09-03
 
 ### Changed
