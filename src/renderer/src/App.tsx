@@ -106,6 +106,16 @@ function MainDashboard() {
   const [terminalHost, setTerminalHost] = useState<string | undefined>(undefined)
   const [authErrorBanner, setAuthErrorBanner] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
+  // Linux draws nothing around a frameless window — no border, no shadow — so
+  // the app looked like a flat rectangle. A one-pixel inset border stands in
+  // for the window manager's, and drops away when maximised. macOS and Windows
+  // draw their own.
+  const [isMaximized, setIsMaximized] = useState(false)
+  useEffect(() => {
+    void window.bldeskApi?.isMaximized?.().then(setIsMaximized)
+    return window.bldeskApi?.onWindowMaximized?.(setIsMaximized)
+  }, [])
+  const linuxFrame = window.bldeskApi?.platform === 'linux' && !isMaximized
 
   const refreshProfiles = async () => {
     if (!window.bldeskApi) {
@@ -255,7 +265,11 @@ function MainDashboard() {
     <ConfirmProvider>
     <ActionTrackerProvider client={client} confirmPowerState={confirmPowerState}>
       <FleetWatch servers={servers} isFetchedAfterMount={isFetchedAfterMount} client={client} activeProfile={activeProfile} />
-      <div className="h-screen w-screen flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden font-sans select-none">
+      <div
+        className={`h-screen w-screen flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden font-sans select-none ${
+          linuxFrame ? 'ring-1 ring-inset ring-[#212529]/30 dark:ring-white/20' : ''
+        }`}
+      >
         {/* Frameless Custom Titlebar */}
         <TitleBar
           activeProfile={activeProfile}
