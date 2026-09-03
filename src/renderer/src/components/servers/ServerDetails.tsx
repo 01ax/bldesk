@@ -34,6 +34,7 @@ import {
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
+import { describeStatus } from '../../lib/serverStatus'
 import { ChangePlanPanel } from './ChangePlanPanel'
 import { CancelServerDialog } from './CancelServerDialog'
 import { launchSsh } from '../../lib/launchSsh'
@@ -177,6 +178,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
   const primaryV6 = server.networks?.v6?.[0]?.ip_address
   const isRunning = server.status === 'active'
+  const state = describeStatus(server.status)
   const distroIcon = logoForDistribution(server.image?.distribution)
   const ramGB = (server.memory / 1024).toFixed(0)
 
@@ -272,13 +274,10 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   title={(server as any)._power
                         ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`
                         : 'From the API status field, which may not reflect power state'}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                    isRunning
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                  }`}
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 ${state.pill}`}
                 >
-                  {isRunning ? 'Running' : 'Stopped'}
+                  {state.busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                  {state.label}
                 </span>
               </h1>
             </div>
@@ -348,7 +347,12 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <span>Console</span>
             </button>
 
-            {isRunning ? (
+            {state.busy ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Building…</span>
+              </span>
+            ) : isRunning ? (
               <>
                 <button
                   onClick={() => handleAction('reboot')}
@@ -447,9 +451,29 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   <span>Network Status</span>
                   <Globe className="w-4 h-4 text-[#017cb6]" />
                 </div>
+                {/*
+                  * This was the literal string "Online", shown for every server in
+                  * every state - so it claimed a stopped or still-provisioning
+                  * server was online. It reports the API's provisioning status,
+                  * which is the only thing actually known here; it is not a
+                  * reachability probe, so it says "Reported" rather than implying
+                  * the server was pinged.
+                  */}
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">Online</span>
-                  <span className="text-xs text-[#6c757d] dark:text-slate-400">1 Gbps Uplink</span>
+                  <span
+                    className={`text-2xl font-bold ${
+                      server.status === 'active'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : server.status === 'new'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-[#6c757d] dark:text-slate-400'
+                    }`}
+                  >
+                    {server.status === 'active' ? 'Online' : state.label}
+                  </span>
+                  <span className="text-xs text-[#6c757d] dark:text-slate-400">
+                    {primaryV4 ? '1 Gbps uplink' : 'no public address'}
+                  </span>
                 </div>
               </div>
             </div>
