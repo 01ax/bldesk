@@ -172,15 +172,26 @@ export function diskChoices(size: SizeLike): number[] {
 /**
  * Every monthly component of a configured server, ex-GST.
  *
- * Extracted from the create form so Change Plan bills the same way. Change Plan
- * previously showed `planMonthlyPrice` alone as the "new monthly total", which
- * ignored extra addresses, backup retention and licences - so a change that
- * added $65/mo of cPanel and a second address reported the same total as one
- * that added nothing.
+ * Extracted from the create form so Change Plan bills the same way - Change Plan
+ * previously showed `planMonthlyPrice` alone, ignoring addresses, retention and
+ * licences - and then corrected, because the create form's own version was
+ * wrong in three ways. Sharing a formula makes two screens agree; it does not
+ * make them right.
  *
- * Backups are priced per selected backup per GB of storage, and offsite adds a
- * second per-GB rate on top of the same count, which is how the create form has
- * always done it.
+ *   backups   priced per frequency against the count the plan already includes,
+ *             not on the raw total. `SizeOptions.{daily,weekly,monthly}_backups`
+ *             are inclusions, so charging for all of them overcharges any plan
+ *             that bundles some.
+ *   offsite   the per-GB rate on the selected count, plus a per-GB surcharge for
+ *             the highest *enabled* frequency. The API is explicit that "only
+ *             the highest value of the daily, weekly and monthly is applied".
+ *   transfer  charged per GB above the plan's included allowance.
+ *
+ * None of the three currently moves a number on the 21 offered sizes: every one
+ * includes zero backups, publishes zero for all three offsite frequency rates,
+ * and sets `transfer_max` equal to its included transfer. They are correctness
+ * rather than a live mischarge - which is exactly why they were easy to get
+ * wrong and would have stayed wrong until a plan changed shape.
  */
 export interface ConfiguredCost {
   plan: number
@@ -190,6 +201,7 @@ export interface ConfiguredCost {
   addresses: number
   backups: number
   offsite: number
+  transfer: number
   licences: number
   total: number
 }
@@ -204,6 +216,8 @@ export interface ConfiguredCostInput {
   weeklyBackups: number
   monthlyBackups: number
   offsiteBackups: boolean
+  /** Total monthly transfer in TB. Defaults to the plan's included allowance. */
+  transferTb?: number
   /** Monthly ex-GST cost of the selected licences, if any. */
   licencesMonthly?: number
 }
@@ -214,9 +228,32 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
   const disk = Math.max(0, i.diskGb - i.size.disk) * (o.disk_cost_per_additional_gigabyte || 0)
   const surcharge = imageSurcharge(i.image, i.memoryMb, i.size.vcpus)
   const addresses = Math.max(0, i.ipCount - 1) * (o.ipv4_addresses_cost_per_address || 0)
-  const count = i.dailyBackups + i.weeklyBackups + i.monthlyBackups
-  const backups = count * i.diskGb * (o.backups_cost_per_backup_per_gigabyte || 0)
-  const offsite = i.offsiteBackups ? count * i.diskGb * (o.offsite_backups_cost_per_gigabyte || 0) : 0
+
+  // Only retention beyond what the plan bundles is chargeable.
+  const chargeable =
+    Math.max(0, i.dailyBackups - (o.daily_backups || 0)) +
+    Math.max(0, i.weeklyBackups - (o.weekly_backups || 0)) +
+    Math.max(0, i.monthlyBackups - (o.monthly_backups || 0))
+  const backups = chargeable * i.diskGb * (o.backups_cost_per_backup_per_gigabyte || 0)
+
+  const selectedBackups = i.dailyBackups + i.weeklyBackups + i.monthlyBackups
+  let offsite = 0
+  if (i.offsiteBackups && selectedBackups > 0) {
+    const f = o.offsite_backup_frequency_cost || {}
+    // The highest rate among the frequencies actually enabled - not the highest
+    // published rate, which would charge for a frequency nobody selected.
+    const enabled = [
+      i.dailyBackups > 0 ? f.daily_per_gigabyte || 0 : null,
+      i.weeklyBackups > 0 ? f.weekly_per_gigabyte || 0 : null,
+      i.monthlyBackups > 0 ? f.monthly_per_gigabyte || 0 : null
+    ].filter((r): r is number => r !== null)
+    const frequencyRate = enabled.length ? Math.max(...enabled) : 0
+    offsite = selectedBackups * i.diskGb * (o.offsite_backups_cost_per_gigabyte || 0) + frequencyRate * i.diskGb
+  }
+
+  const transferTb = i.transferTb ?? i.size.transfer
+  const transfer = Math.max(0, transferTb - i.size.transfer) * 1000 * (o.transfer_cost_per_additional_gigabyte || 0)
+
   const licences = i.licencesMonthly || 0
   return {
     plan: i.size.price_monthly,
@@ -226,9 +263,26 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
     addresses,
     backups,
     offsite,
+    transfer,
     licences,
-    total: i.size.price_monthly + memory + disk + surcharge + addresses + backups + offsite + licences
+    total: i.size.price_monthly + memory + disk + surcharge + addresses + backups + offsite + transfer + licences
   }
+}
+
+/**
+ * A transfer allowance the target plan will accept.
+ *
+ * `resize` resets any resource option the payload omits to the new plan's
+ * default, so an existing selection has to be sent to be kept. It cannot be sent
+ * raw, though: a retired plan can carry more transfer than its replacement
+ * permits (4 TB onto a plan whose `transfer_max` is 3), and that is a 400. So
+ * the kept value is clamped into the target plan's range rather than preserved
+ * literally.
+ */
+export function preservedTransfer(size: SizeLike, currentTransferTb: number | null | undefined): number {
+  const max = size.options?.transfer_max ?? size.transfer
+  const wanted = currentTransferTb ?? size.transfer
+  return Math.min(Math.max(wanted, size.transfer), max)
 }
 
 export const GST_RATE = 0.1
