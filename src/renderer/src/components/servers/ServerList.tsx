@@ -25,6 +25,7 @@ import { logoForDistribution } from '../../lib/distroHelper'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerContextMenu, ContextMenuState } from './ServerContextMenu'
+import { VpcBadge } from '../vpcs/VpcBadge'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
@@ -362,7 +363,7 @@ export const ServerList: React.FC<ServerListProps> = ({
                       )}
                       {server.vpc_id && (
                         <div className="text-[10px] text-[#017cb6] font-medium mt-0.5">
-                          VPC #{server.vpc_id}
+                          <VpcBadge vpcId={server.vpc_id} client={client} />
                         </div>
                       )}
                     </td>
