@@ -129,9 +129,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       {/* 1. Desktop Dual-Navigation Container */}
       <aside className="hidden md:flex flex-row h-full select-none flex-shrink-0 z-30">
-        {/* Global Nav Strip */}
+        {/* Global Nav Strip.
+            The rail (w-16) plus the server sub-nav (w-40) is exactly the full
+            strip (w-56), so opening or leaving a server never moves the main
+            content. It used to: 64 + 208 against 224 shifted everything 48px,
+            which under a dialog's backdrop looked like the whole app sliding.
+            No width transition either: the labels rendered into a strip still
+            animating open, and the content jumped twice. */}
         <div
-          className={`bg-[#343a40] text-[#f8f9fa] flex flex-col justify-between transition-all duration-150 border-r border-black/20 ${
+          className={`bg-[#343a40] text-[#f8f9fa] flex flex-col justify-between border-r border-black/20 ${
             hasSubNav ? 'w-16' : 'w-56'
           }`}
         >
@@ -218,7 +224,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Server Sub-Navigation Drawer (when a server is selected) */}
         {hasSubNav && (
-          <div className="w-52 bg-[#f1f1f1] dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border-r border-[#ced4da] dark:border-[#373b3e] flex flex-col justify-between">
+          <div className="w-40 bg-[#f1f1f1] dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border-r border-[#ced4da] dark:border-[#373b3e] flex flex-col justify-between">
             <div>
               {/* Server Back Bar */}
               <div className="p-3 border-b border-[#ced4da] dark:border-[#373b3e]">

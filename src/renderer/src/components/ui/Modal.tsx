@@ -82,7 +82,10 @@ export const Modal: React.FC<ModalProps> = ({
   return createPortal(
     <div
       className={`fixed inset-0 flex ${align === 'top' ? 'items-start' : 'items-center'} justify-center bg-black/60 overlay-safe ${noSelect ? 'select-none' : ''}`}
-      style={{ zIndex: z }}
+      // Panels start below the app's title bar (2.75rem) rather than over it,
+      // so a tall dialog's header does not collide with the window's own and
+      // the drag region and window controls stay reachable.
+      style={{ zIndex: z, paddingTop: 'calc(2.75rem + max(1rem, env(safe-area-inset-top, 0px)))' }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !busy) onClose()
       }}
