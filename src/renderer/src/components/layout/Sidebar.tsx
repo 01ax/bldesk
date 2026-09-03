@@ -13,6 +13,7 @@ import {
   Activity,
   History,
   Waypoints,
+  ChartNoAxesCombined,
   ChevronLeft,
   X, UserCircle, LayoutTemplate} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
@@ -32,6 +33,7 @@ export type ActiveTab =
   | 'account'
   | 'history'
   | 'map'
+  | 'heatmap'
   | 'terminal'
 
 export type ServerSubTab =
@@ -79,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'firewall', label: 'Firewall', icon: Shield },
     { id: 'loadbalancers', label: 'Load Balancers', icon: Layers },
     { id: 'map', label: 'Network Map', icon: Waypoints },
+    { id: 'heatmap', label: 'Fleet Heatmap', icon: ChartNoAxesCombined },
     { id: 'dns', label: 'DNS & Domains', icon: Globe },
     { id: 'backups', label: 'Backups', icon: Archive },
     { id: 'keys', label: 'SSH Keys', icon: Key },
