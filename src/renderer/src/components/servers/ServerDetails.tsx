@@ -32,6 +32,7 @@ import {
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
+import { VpcBadge } from '../vpcs/VpcBadge'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
@@ -523,7 +524,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   <div className="flex items-center justify-between py-2.5 px-4">
                     <span className="w-32 text-[#6c757d] dark:text-slate-400">VPC Network</span>
                     <span className="text-[#212529] dark:text-white font-medium">
-                      {server.vpc_id ? `Attached (VPC #${server.vpc_id})` : 'Default Public Bridge'}
+                      {server.vpc_id ? <VpcBadge vpcId={server.vpc_id} client={client} /> : 'Default Public Bridge'}
                     </span>
                   </div>
 
@@ -599,7 +600,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {/* SETTINGS TAB */}
-        {activeSubTab === 'settings' && <ServerSettings client={client} server={server} />}
+        {activeSubTab === 'settings' && (
+          <ServerSettings client={client} server={server} onCancelled={onBack} />
+        )}
 
         {/* RECOVERY TAB */}
         {activeSubTab === 'recovery' && (

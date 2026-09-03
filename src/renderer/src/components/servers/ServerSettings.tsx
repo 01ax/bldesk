@@ -26,7 +26,8 @@ import {
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
   networkActionMutationKey,
-  actionFailureMessage
+  actionFailureMessage,
+  useCancelServerMutation
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
@@ -38,16 +39,23 @@ type Disk = components['schemas']['Disk']
 type ThresholdAlertRequest = components['schemas']['ThresholdAlertRequest']
 type ThresholdAlertType = components['schemas']['ThresholdAlertType']
 type VmMachineType = components['schemas']['VmMachineType']
+import { visibleFeatures, mergeHiddenFeatures, formatMachineType } from '../../lib/advancedFeatures'
+import { CancelServerDialog } from './CancelServerDialog'
+import { ChangePlanPanel } from './ChangePlanPanel'
 type VideoDevice = components['schemas']['VideoDevice']
 
 interface ServerSettingsProps {
   client: BinaryLaneClient | null
   server: Server
+  /** Called once the server is gone, so the detail view can step back to the list. */
+  onCancelled?: () => void
 }
 
-type SettingsTab = 'hostname' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
+type SettingsTab = 'hostname' | 'plan' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
 
-export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer }) => {
+export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, onCancelled }) => {
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<SettingsTab>('hostname')
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -62,6 +70,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   const advancedQuery = useAvailableAdvancedFeatures(client, server.id)
 
   const actionMutation = useServerActionWithHandoff(client, server.id)
+  const cancelServer = useCancelServerMutation(client)
   const { track } = useTrackedActions()
   const confirmAction = useConfirm()
   const mutatingCount = useIsMutating({ mutationKey: networkActionMutationKey(server.id) })
@@ -81,6 +90,10 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   // Advanced Features
   const [machineType, setMachineType] = useState<VmMachineType | ''>('')
+  const shownFeatures = visibleFeatures(
+    (advancedQuery.data?.advanced_features ?? []) as string[],
+    server.image?.distribution
+  )
   const [processorModel, setProcessorModel] = useState<number>(-1)
   const [videoDevice, setVideoDevice] = useState<VideoDevice>('cirrus-logic')
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
@@ -252,7 +265,11 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       'Update Advanced Features',
       {
         type: 'change_advanced_features',
-        enabled_advanced_features: selectedFeatures,
+        enabled_advanced_features: mergeHiddenFeatures(
+          selectedFeatures,
+          (server.advanced_features?.enabled_advanced_features ?? []) as string[],
+          shownFeatures
+        ),
         machine_type: machineType || undefined,
         processor_model: processorModel === -1 ? undefined : processorModel,
         video_device: videoDevice
@@ -342,6 +359,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   const navTabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'hostname', label: 'Hostname', icon: <Tag className="w-3.5 h-3.5" /> },
+    { id: 'plan', label: 'Change Plan', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
     { id: 'disks', label: 'Disks', icon: <HardDrive className="w-3.5 h-3.5" /> },
     { id: 'advanced', label: 'Advanced', icon: <Cpu className="w-3.5 h-3.5" /> },
     { id: 'alerts', label: 'Alerts', icon: <Bell className="w-3.5 h-3.5" /> },
@@ -489,6 +507,29 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       )}
 
       {/* 2. DISKS TAB */}
+      {activeTab === 'plan' && (
+        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4">
+          <div>
+            <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">Change Plan</h3>
+            <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
+              Moves the server to a different plan. The server restarts to apply the change.
+            </p>
+          </div>
+          <ChangePlanPanel
+            client={client}
+            server={server}
+            busy={busy}
+            onApply={(payload, summary) =>
+              void executeAction('Change Plan', payload, {
+                summary,
+                severity: 'destructive',
+                confirmLabel: 'Change plan'
+              })
+            }
+          />
+        </div>
+      )}
+
       {activeTab === 'disks' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
@@ -670,7 +711,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
                   <option value="">Default (Automatic)</option>
                   {advancedQuery.data.machine_types.map((m) => (
                     <option key={m} value={m}>
-                      {m}
+                      {formatMachineType(m as string)}
                     </option>
                   ))}
                 </select>
@@ -716,31 +757,40 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
               </select>
             </div>
 
-            {/* Feature Flags */}
-            {advancedQuery.data?.advanced_features && advancedQuery.data.advanced_features.length > 0 && (
+            {/* Feature Flags - the customer-facing subset, labelled as the web
+                panel labels them. The raw API list also carries operator-level
+                switches (local-rtc, qemu-guest-agent, uefi-boot); those stay
+                hidden but are preserved on save, see mergeHiddenFeatures. */}
+            {shownFeatures.length > 0 && (
               <div className="space-y-2 pt-2">
                 <label className="block text-[11px] font-semibold text-[#495057] dark:text-slate-300">
-                  Feature Flags
+                  Features
                 </label>
                 <div className="space-y-2">
-                  {advancedQuery.data.advanced_features.map((feat) => {
-                    const isChecked = selectedFeatures.includes(feat as string)
+                  {shownFeatures.map((feat) => {
+                    const isChecked = selectedFeatures.includes(feat.slug)
                     return (
-                      <label key={feat} className="flex items-center gap-2 text-xs text-[#212529] dark:text-slate-200 cursor-pointer">
+                      <label
+                        key={feat.slug}
+                        className="flex items-start gap-2 text-xs text-[#212529] dark:text-slate-200 cursor-pointer"
+                      >
                         <input
                           type="checkbox"
                           checked={isChecked}
                           disabled={busy}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedFeatures([...selectedFeatures, feat as string])
+                              setSelectedFeatures([...selectedFeatures, feat.slug])
                             } else {
-                              setSelectedFeatures(selectedFeatures.filter((f) => f !== feat))
+                              setSelectedFeatures(selectedFeatures.filter((f) => f !== feat.slug))
                             }
                           }}
-                          className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+                          className="mt-0.5 shrink-0 rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
                         />
-                        <span className="font-mono">{feat}</span>
+                        <span>
+                          <span className="block">{feat.label}</span>
+                          <span className="block text-[11px] text-[#6c757d] dark:text-slate-400">{feat.hint}</span>
+                        </span>
                       </label>
                     )
                   })}
@@ -755,6 +805,25 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
           </form>
         </div>
       )}
+
+      <CancelServerDialog
+        isOpen={cancelOpen}
+        serverName={server.name}
+        monthlyPrice={server.size?.price_monthly}
+        busy={cancelServer.isPending}
+        error={cancelError}
+        onCancel={() => setCancelOpen(false)}
+        onConfirm={async (reason) => {
+          setCancelError(null)
+          try {
+            await cancelServer.mutateAsync({ serverId: server.id, reason })
+            setCancelOpen(false)
+            onCancelled?.()
+          } catch (err: any) {
+            setCancelError(err?.message || 'Failed to cancel the server.')
+          }
+        }}
+      />
 
       {/* 4. ALERTS TAB */}
       {activeTab === 'alerts' && (
@@ -1043,6 +1112,27 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       {/* 7. DANGER ZONE TAB */}
       {activeTab === 'danger' && (
         <div className="space-y-4">
+          {/* Cancel - the only irreversible, untrackable action in the app */}
+          <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-rose-300 dark:border-rose-900 p-5 shadow-sm space-y-3">
+            <h3 className="text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">Cancel Server</h3>
+            <p className="text-xs text-[#495057] dark:text-slate-300">
+              Cancels the Cloud Server service. It is cancelled within five minutes, after which an invoice is generated
+              for usage to date. The server and its data are destroyed and cannot be recovered.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setCancelError(null)
+                setCancelOpen(true)
+              }}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-rose-600 text-white disabled:opacity-40"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Cancel Server</span>
+            </button>
+          </div>
+
           {/* Power and Password Reset */}
           <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4">
             <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">

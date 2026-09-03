@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.45] - 2026-09-03
+
+### Added
+- **Change Plan (Resize) Tab** (*thanks @01ax!*):
+  - Added dedicated Change Plan subtab under Server Details driving the `resize` action.
+  - Shares pricing and availability calculations (`serverPricing.ts`) with create form, ensuring consistent licensing surcharges and exact mPanel storage ladders.
+  - Gracefully displays current plan details even for retired plans (e.g. `a-3040`) with legacy notices.
+  - Warns when shrinking memory or storage volumes.
+- **Cancel Server Modal** (*thanks @01ax!*):
+  - Added guarded `DELETE /v2/servers/{id}` cancellation flow with optional cancellation reason dropdown and free-text input.
+  - Requires typing the exact server hostname to confirm irreversible deletion, displays current billing rate, and warns of attached backup/snapshot removal.
+- **Customer-Facing Advanced Features Filter** (*thanks @01ax!*):
+  - Filters raw operator-level hypervisor flags (`local-rtc`, `uefi-boot`, etc.) to customer-facing switches with mPanel labels and descriptions.
+  - Preserves hidden operator switches when saving (`mergeHiddenFeatures`).
+- **Machine Type and VPC Name Display** (*thanks @01ax!*):
+  - Formats QEMU machine types cleanly as `pc-i440fx-7.2` rather than raw API enum strings.
+  - Displays human-readable VPC network names with network glyphs instead of internal IDs (`VPC #4213`).
+
+---
+
 ## [1.0.44] - 2026-09-03
 
 ### Fixed
