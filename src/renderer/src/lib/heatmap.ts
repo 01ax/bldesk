@@ -18,6 +18,14 @@ export interface FleetMetricResult {
 export const STALE_AFTER_MS = 15 * 60 * 1000
 export const HEAT_BUCKET_THRESHOLDS = [0.5, 0.7, 0.85, 0.95] as const
 
+/**
+ * Rates are coloured against the busiest server in the fleet, but only once
+ * that is a rate worth noticing: on a quiet fleet the "busiest" box at
+ * 5.8 KB/s must not glow red. These floors are the smallest fleet maximum the
+ * scale will use, in KB/s — roughly 40 Mbit/s of network and 10 MB/s of disk.
+ */
+export const RATE_FLOOR_KBPS = { netIn: 5 * 1024, netOut: 5 * 1024, ioRead: 10 * 1024, ioWrite: 10 * 1024 } as const
+
 export interface HeatmapCell {
   state: HeatmapCellState
   raw: number | null
@@ -89,10 +97,10 @@ export function buildHeatmapRows(
       return Number.isFinite(end) && now - end <= STALE_AFTER_MS
     })
   const maxima = {
-    netIn: Math.max(0, ...activeSamples.map((sample) => sample.average.network_incoming_kbps)),
-    netOut: Math.max(0, ...activeSamples.map((sample) => sample.average.network_outgoing_kbps)),
-    ioRead: Math.max(0, ...activeSamples.map((sample) => sample.average.storage_read_kbps)),
-    ioWrite: Math.max(0, ...activeSamples.map((sample) => sample.average.storage_write_kbps))
+    netIn: Math.max(RATE_FLOOR_KBPS.netIn, ...activeSamples.map((sample) => sample.average.network_incoming_kbps)),
+    netOut: Math.max(RATE_FLOOR_KBPS.netOut, ...activeSamples.map((sample) => sample.average.network_outgoing_kbps)),
+    ioRead: Math.max(RATE_FLOOR_KBPS.ioRead, ...activeSamples.map((sample) => sample.average.storage_read_kbps)),
+    ioWrite: Math.max(RATE_FLOOR_KBPS.ioWrite, ...activeSamples.map((sample) => sample.average.storage_write_kbps))
   }
 
   return servers.map((server) => {
@@ -119,7 +127,7 @@ export function buildHeatmapRows(
       ? cell(state, raw, raw / total, sample.period.end, ageMs, `${tooltip}. Sample ended ${suffix}.`)
       : cell('capacity-unknown', null, null, sample.period.end, ageMs, 'Capacity unknown')
     const rateCell = (metric: keyof typeof maxima, raw: number) =>
-      cell(state, raw, maxima[metric] > 0 ? raw / maxima[metric] : 0, sample.period.end, ageMs, `${formatRate(raw)}. Sample ended ${suffix}.`)
+      cell(state, raw, raw / maxima[metric], sample.period.end, ageMs, `${formatRate(raw)} — ${Math.round((raw / maxima[metric]) * 100)}% of ${maxima[metric] === RATE_FLOOR_KBPS[metric] ? 'the quiet-fleet floor' : 'the fleet maximum'} (${formatRate(maxima[metric])}). Sample ended ${suffix}.`)
 
     const ram = average.memory_usage_bytes === 0
       ? cell('not-reported', 0, null, sample.period.end, ageMs, `${MEMORY_NOT_REPORTED_TEXT} ${MEMORY_GRAPH_KB}`)
@@ -130,7 +138,7 @@ export function buildHeatmapRows(
       name,
       region,
       cells: {
-        cpu: ratioCell(average.cpu_usage_percent, 100 * server.vcpus, `${average.cpu_usage_percent.toFixed(1)} aggregate CPU points across ${server.vcpus} vCPU${server.vcpus === 1 ? '' : 's'}`),
+        cpu: ratioCell(average.cpu_usage_percent, 100 * server.vcpus, `${average.cpu_usage_percent.toFixed(1)}% of ${100 * server.vcpus}% (${server.vcpus} vCPU${server.vcpus === 1 ? '' : 's'}, summed)`),
         ram,
         disk: ratioCell(average.storage_usage_megabytes, diskTotalMb, `${(average.storage_usage_megabytes / 1024).toFixed(1)} of ${server.disk.toFixed(1)} GB disk`),
         netIn: rateCell('netIn', average.network_incoming_kbps),
