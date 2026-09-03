@@ -36,6 +36,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
+import { ReachabilityBadge } from './ReachabilityBadge'
 import { ChangePlanPanel } from './ChangePlanPanel'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
@@ -52,6 +53,8 @@ interface ServerDetailsProps {
   server: ServerResponse
   client: BinaryLaneClient | null
   activeSubTab?: ServerSubTab
+  /** Change sub-tab from inside the view, e.g. "check firewall rules". */
+  onSelectSubTab?: (tab: ServerSubTab) => void
   onBack: () => void
   onOpenTerminal?: (ip: string) => void
   /** The app's server list, forwarded to the Firewall sub-tab (see FirewallManagerProps.servers). */
@@ -129,6 +132,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   server,
   client,
   activeSubTab = 'overview',
+  onSelectSubTab,
   onBack,
   servers: allServers
 }) => {
@@ -401,6 +405,13 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <Terminal className="w-3.5 h-3.5" />
               <span>Launch SSH</span>
             </button>
+            {/* Reachability from the user's machine, beside the button it
+                qualifies: "Launch SSH" is only useful if 22 answers from here. */}
+            <ReachabilityBadge
+              ip={primaryV4}
+              port={22}
+              onOpenFirewall={() => onSelectSubTab?.('firewall')}
+            />
 
             <button
               onClick={handleLaunchRescueConsole}

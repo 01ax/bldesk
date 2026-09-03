@@ -134,6 +134,27 @@ export type TemplateGetResult =
   | { ok: true; document: string }
   | { ok: false; code: 'missing' | 'too_large' | 'unreadable'; message: string; bytes?: number }
 
+/** Result of a TCP connect probe run from the user's machine (FEATURES.md #11). */
+export interface TcpProbeResult {
+  ok: boolean
+  latencyMs?: number
+  error?: 'timeout' | 'refused' | 'unreachable' | 'invalid-target' | 'other'
+  detail?: string
+}
+
+export interface PingProbeResult {
+  ok: boolean
+  latencyMs?: number
+  error?: string
+}
+
+export interface TracerouteHop {
+  hop: number
+  host?: string
+  latencyMs?: number
+  timedOut: boolean
+}
+
 export interface IpcApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
@@ -178,6 +199,18 @@ export interface IpcApi {
   
   // Shell / Browser
   openExternal: (url: string) => Promise<void>
+
+  /*
+   * Reachability probes. Optional because they only exist in Electron - the
+   * Android build has no raw sockets and no child_process, so the renderer
+   * feature-detects these and hides the UI rather than shipping a button that
+   * cannot work.
+   */
+  probeTcp?: (host: string, port: number, timeoutMs?: number) => Promise<TcpProbeResult>
+  probePing?: (host: string, timeoutMs?: number) => Promise<PingProbeResult>
+  traceroute?: (host: string, maxHops?: number) => Promise<TracerouteHop[]>
+  /** Addresses the main process will accept probes for; set from the server list. */
+  setProbeTargets?: (ips: string[]) => Promise<void>
 
   // Auto-update
   getUpdaterState: () => Promise<UpdaterState>

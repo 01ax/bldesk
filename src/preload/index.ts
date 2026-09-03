@@ -44,6 +44,11 @@ const api: IpcApi = {
 
   // External Links
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  probeTcp: (host: string, port: number, timeoutMs?: number) =>
+    ipcRenderer.invoke('net:probeTcp', host, port, timeoutMs),
+  probePing: (host: string, timeoutMs?: number) => ipcRenderer.invoke('net:probePing', host, timeoutMs),
+  traceroute: (host: string, maxHops?: number) => ipcRenderer.invoke('net:traceroute', host, maxHops),
+  setProbeTargets: (ips: string[]) => ipcRenderer.invoke('net:setTargets', ips),
 
   // Auto-update
   getUpdaterState: () => ipcRenderer.invoke('updater:getState'),
