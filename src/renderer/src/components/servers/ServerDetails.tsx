@@ -28,11 +28,14 @@ import {
   useServerMetrics,
   useServerConsole,
   useServerActionMutation,
-  useServerDiagnosticMutation
+  useServerDiagnosticMutation,
+  useCancelServerMutation
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
+import { ChangePlanPanel } from './ChangePlanPanel'
+import { CancelServerDialog } from './CancelServerDialog'
 import { launchSsh } from '../../lib/launchSsh'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
@@ -131,6 +134,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   /** `ok` drives the styling — a failed diagnostic must not read as an answer. */
   const [diagnosticResult, setDiagnosticResult] = useState<{ text: string; ok: boolean } | null>(null)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
   const [linkCopied, setLinkCopied] = useState(false)
@@ -162,6 +167,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const consoleQuery = useServerConsole(client, server.id)
   const serverAction = useServerActionMutation(client)
   const diagnosticAction = useServerDiagnosticMutation(client, server.id)
+  const cancelServer = useCancelServerMutation(client)
   const { track } = useTrackedActions()
 
   const primaryV4 =
@@ -245,7 +251,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const sample = metricsQuery.data?.average
 
   return (
-    <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text">
+    <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-y-auto select-text pb-bottom-nav">
       {/* 1. Authentic PanelSite ServerHeader */}
       <div className="p-4 bg-white dark:bg-[#2b3035] border-b border-[#ced4da] dark:border-[#373b3e] shadow-sm sticky top-0 z-20">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -600,11 +606,73 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         )}
 
         {/* SETTINGS TAB */}
+        <CancelServerDialog
+          isOpen={cancelOpen}
+          serverName={server.name}
+          monthlyPrice={server.size?.price_monthly}
+          busy={cancelServer.isPending}
+          error={cancelError}
+          onCancel={() => setCancelOpen(false)}
+          onConfirm={async (reason) => {
+            setCancelError(null)
+            try {
+              await cancelServer.mutateAsync({ serverId: server.id, reason })
+              setCancelOpen(false)
+              onBack()
+            } catch (err: any) {
+              setCancelError(err?.message || 'Failed to cancel the server.')
+            }
+          }}
+        />
+
         {activeSubTab === 'settings' && (
-          <ServerSettings client={client} server={server} onCancelled={onBack} />
+          <ServerSettings client={client} server={server} />
         )}
 
         {/* RECOVERY TAB */}
+        {activeSubTab === 'change-plan' && (
+          <div className="p-4 sm:p-6">
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-4 sm:p-5 shadow-sm space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">Change Plan</h3>
+                <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
+                  Moves the server to a different plan. The server restarts to apply the change.
+                </p>
+              </div>
+              <ChangePlanPanel
+                client={client}
+                server={server}
+                busy={actionInProgress !== null}
+                onApply={(payload) => void handleAction('resize', payload)}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeSubTab === 'cancel' && (
+          <div className="p-4 sm:p-6">
+            <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-rose-300 dark:border-rose-900 p-4 sm:p-5 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">
+                Cancel Server
+              </h3>
+              <p className="text-xs text-[#495057] dark:text-slate-300">
+                Cancels the Cloud Server service. It is cancelled within five minutes, after which an invoice is
+                generated for usage to date. The server and its data are destroyed and cannot be recovered.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelError(null)
+                  setCancelOpen(true)
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-rose-600 text-white"
+              >
+                <span>Cancel Server</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeSubTab === 'recovery' && (
           <div className="bg-white dark:bg-[#2b3035] p-5 rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-[#212529] dark:text-white">Emergency Recovery & Rescue</h3>

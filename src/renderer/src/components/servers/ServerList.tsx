@@ -26,6 +26,7 @@ import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerContextMenu, ContextMenuState } from './ServerContextMenu'
 import { VpcBadge } from '../vpcs/VpcBadge'
+import { describeStatus, compareByBuildingFirst } from '../../lib/serverStatus'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
@@ -122,7 +123,7 @@ export const ServerList: React.FC<ServerListProps> = ({
     launchSsh({ host: ip, username: 'root' })
   }
 
-  const filteredServers = servers.filter((s) => {
+  const filteredServers = [...servers].sort(compareByBuildingFirst).filter((s) => {
     const matchesSearch =
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.networks?.v4 || []).some((net) => net.ip_address.includes(searchTerm)) ||
@@ -154,7 +155,7 @@ export const ServerList: React.FC<ServerListProps> = ({
   }, [regionsQuery.data, servers])
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-4 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa]">
+    <div className="h-full flex flex-col p-6 space-y-4 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] pb-bottom-nav">
       {/* Header & Main Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -295,7 +296,7 @@ export const ServerList: React.FC<ServerListProps> = ({
               {filteredServers.map((server) => {
                 const publicIps = (server.networks?.v4 || []).filter((n) => n.type === 'public')
                 const privateIps = (server.networks?.v4 || []).filter((n) => n.type === 'private')
-                const isRunning = server.status === 'active'
+                const state = describeStatus(server.status)
                 const ramGB = (server.memory / 1024).toFixed(0)
                 const distroIcon = logoForDistribution(server.image?.distribution)
 
@@ -309,7 +310,10 @@ export const ServerList: React.FC<ServerListProps> = ({
                     {/* Server Name & Distro */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
-                        <span className={`w-2 h-2 shrink-0 rounded-full ${isRunning ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <span
+                          title={state.label}
+                          className={`w-2 h-2 shrink-0 rounded-full ${state.dot} ${state.busy ? 'animate-pulse' : ''}`}
+                        />
                         <span>{server.name}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
@@ -403,7 +407,14 @@ export const ServerList: React.FC<ServerListProps> = ({
                           <div className="p-1.5 flex items-center justify-center">
                             <Loader2 className="w-3.5 h-3.5 text-[#017cb6] animate-spin" />
                           </div>
-                        ) : isRunning ? (
+                        ) : state.busy ? (
+                          // Mid-build: power controls would be meaningless, and
+                          // acting on a half-provisioned server is not something
+                          // to offer.
+                          <div className="p-1.5 flex items-center justify-center" title="Building">
+                            <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                          </div>
+                        ) : server.status === 'active' ? (
                           <>
                             <button
                               onClick={(e) => handleAction(server.id, 'reboot', e)}
@@ -448,7 +459,7 @@ export const ServerList: React.FC<ServerListProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredServers.map((server) => {
             const primaryIp = server.networks?.v4?.find((n) => n.type === 'public')?.ip_address || server.networks?.v4?.[0]?.ip_address
-            const isRunning = server.status === 'active'
+            const state = describeStatus(server.status)
             const distroIcon = logoForDistribution(server.image?.distribution)
             const ramGB = (server.memory / 1024).toFixed(0)
 
@@ -475,13 +486,10 @@ export const ServerList: React.FC<ServerListProps> = ({
                       title={(server as any)._power
                         ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`
                         : 'From the API status field, which may not reflect power state'}
-                      className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                        isRunning
-                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                      }`}
+                      className={`px-2 py-0.5 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 ${state.pill}`}
                     >
-                      {isRunning ? 'Running' : 'Stopped'}
+                      {state.busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                      {state.label}
                     </span>
                   </div>
 
