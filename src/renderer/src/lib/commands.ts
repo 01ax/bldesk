@@ -323,7 +323,10 @@ function normaliseTab(raw: string): DeepLinkTab | undefined {
     term: 'terminal',
     shell: 'terminal',
     network: 'map',
-    topology: 'map'
+    topology: 'map',
+    heatmap: 'heatmap',
+    utilisation: 'heatmap',
+    utilization: 'heatmap'
   }
   const tab = aliases[s] ?? s
   return (TOP_TABS as readonly string[]).includes(tab) ? (tab as DeepLinkTab) : undefined

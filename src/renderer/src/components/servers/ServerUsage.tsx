@@ -7,6 +7,7 @@ import {
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useSampleSets, useServerMetrics } from '../../api/queries'
+import { MEMORY_GRAPH_KB } from '../../lib/metrics'
 
 type Server = components['schemas']['Server']
 type SampleSet = components['schemas']['SampleSet']
@@ -15,10 +16,6 @@ interface ServerUsageProps {
   client: BinaryLaneClient | null
   server: Server
 }
-
-/** Setup instructions for the in-guest agent that reports memory usage. */
-const MEMORY_GRAPH_DOC_URL =
-  'https://support.binarylane.com.au/support/solutions/articles/1000022811-mpanel-memory-graph'
 
 type TimeWindow = 'Day' | 'Week' | 'Month' | 'Year'
 
@@ -753,7 +750,7 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
             <div className="opacity-90 mt-0.5">
               Memory usage can be reported if you install the{' '}
               <button
-                onClick={() => window.bldeskApi?.openExternal?.(MEMORY_GRAPH_DOC_URL)}
+                onClick={() => window.bldeskApi?.openExternal?.(MEMORY_GRAPH_KB)}
                 className="underline font-medium hover:no-underline inline-flex items-center gap-1"
               >
                 Memory Graph
