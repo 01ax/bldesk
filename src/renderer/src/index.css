@@ -98,3 +98,19 @@
     padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 0.75rem);
   }
 }
+
+/*
+ * One-shot attention blink for the "?" beside a failed reachability probe.
+ *
+ * Deliberately finite: a looping animation in a header is noise once you have
+ * read it. Re-runs on each new probe because the element is keyed by probe
+ * sequence, so a fresh failure blinks again while an unchanged one stays still.
+ */
+@keyframes blink-once {
+  0%, 100% { opacity: 1; }
+  20%, 60% { opacity: 0.15; }
+  40%, 80% { opacity: 1; }
+}
+.blink-once {
+  animation: blink-once 900ms ease-in-out 1;
+}
