@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route, X } from 'lucide-react'
+import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route } from 'lucide-react'
 import type { TcpProbeResult, TracerouteHop } from '@shared/ipc-types'
 import type { BinaryLaneClient } from '../../api/client'
 import { useFirewallRules } from '../../api/queries'
+import { Modal } from '../ui/Modal'
 import { explainUnreachablePort, describeRule, type FirewallVerdict } from '../../lib/firewallMatch'
 
 /**
@@ -284,78 +284,49 @@ const TraceDialog: React.FC<{ r: Reachability; ip?: string }> = ({ r, ip }) => {
   const { hops, tracing, clearHops } = r
   const open = r.supported && (tracing || !!hops)
 
-  // Escape closes it, like the shared dialog.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') clearHops()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, clearHops])
-
   if (!open) return null
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 overlay-safe"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) clearHops()
-      }}
-    >
-      <div className="w-full max-w-md max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden">
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
-          <h3 className="font-bold text-sm text-[#212529] dark:text-white flex items-center gap-2">
-            <Route className="w-4 h-4 text-[#017cb6]" />
-            Route from this machine
-          </h3>
-          <button
-            type="button"
-            onClick={clearHops}
-            aria-label="Close"
-            className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto p-4">
-          {tracing && (
-            <p className="flex items-center gap-2 text-xs text-[#6c757d] dark:text-slate-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Tracing to {ip}…
-            </p>
-          )}
-
-          {!tracing && hops && hops.length > 0 && (
-            <table className="text-xs font-mono w-full">
-              <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
-                {hops.map((h) => (
-                  <tr key={h.hop} className="text-[#495057] dark:text-slate-300">
-                    <td className="py-1 pr-3 text-right w-8 text-[#6c757d] dark:text-slate-500">{h.hop}</td>
-                    <td className="py-1 pr-3">{h.timedOut ? '*' : h.host || '—'}</td>
-                    <td className="py-1 text-right whitespace-nowrap">
-                      {h.latencyMs !== undefined ? `${h.latencyMs} ms` : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {!tracing && hops && hops.length === 0 && (
-            <p className="text-xs text-[#6c757d] dark:text-slate-400">
-              Traceroute returned nothing — the system tool may be unavailable here.
-            </p>
-          )}
-        </div>
-
-        <div className="flex-shrink-0 px-4 py-2.5 border-t border-[#ced4da] dark:border-[#373b3e] text-[11px] text-[#6c757d] dark:text-slate-400">
+  return (
+    <Modal
+      title="Route from this machine"
+      icon={Route}
+      headTone="text-[#212529] dark:text-white [&>svg]:text-[#017cb6]"
+      onClose={clearHops}
+      size="sm"
+      labelledBy="trace-title"
+      footer={
+        <div className="px-4 py-2.5 text-[11px] text-[#6c757d] dark:text-slate-400">
           A <span className="font-mono">*</span> is a hop that did not answer, which is normal. Paste this into a
           support ticket to show where the path stops.
         </div>
+      }
+    >
+      <div className="p-4">
+        {tracing && (
+          <p className="flex items-center gap-2 text-xs text-[#6c757d] dark:text-slate-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Tracing to {ip}…
+          </p>
+        )}
+
+        {!tracing && hops && hops.length > 0 && (
+          <table className="text-xs font-mono w-full">
+            <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
+              {hops.map((h) => (
+                <tr key={h.hop} className="text-[#495057] dark:text-slate-300">
+                  <td className="py-1 pr-3 text-right w-8 text-[#6c757d] dark:text-slate-500">{h.hop}</td>
+                  <td className="py-1 pr-3">{h.timedOut ? '*' : h.host || '—'}</td>
+                  <td className="py-1 text-right whitespace-nowrap">{h.latencyMs !== undefined ? `${h.latencyMs} ms` : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {!tracing && hops && hops.length === 0 && (
+          <p className="text-xs text-[#6c757d] dark:text-slate-400">Traceroute returned nothing — the system tool may be unavailable here.</p>
+        )}
       </div>
-    </div>,
-    document.body
+    </Modal>
   )
 }

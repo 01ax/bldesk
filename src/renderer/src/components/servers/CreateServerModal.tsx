@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { Modal } from '../ui/Modal'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -299,19 +299,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
    * inside a scrolling wrapper leaves a strip above itself for content to pass
    * through.
    */
-  return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 overlay-safe">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-5xl max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden"
-      >
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035]">
-          <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add a Cloud Server</h3>
-          <button type="button" onClick={onClose} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+  return (
+    <>
+    <Modal title="Add a Cloud Server" onClose={onClose} size="xl" align="top" as="form" onSubmit={handleSubmit} busy={createServer.isPending} labelledBy="create-server-title">
         {loading ? (
           <div className="p-12 flex items-center justify-center gap-2 text-xs text-[#6c757d]">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading plans and images...
@@ -647,7 +637,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
             </Section>
           </div>
         )}
-      </form>
+    </Modal>
 
       {addKeyOpen && (
         <AddSshKeyDialog
@@ -660,8 +650,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         />
       )}
       {templateDraftOpen && <CloudInitTemplates client={client} servers={[]} initialDraft={{ userData: cloudInit }} onClose={() => setTemplateDraftOpen(false)} />}
-    </div>,
-    document.body
+    </>
   )
 }
 
@@ -795,15 +784,28 @@ const AddSshKeyDialog: React.FC<{
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 overlay-safe">
-      <div className="w-full max-w-md bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl">
-        <div className="flex items-center justify-between p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
-          <h3 className="font-bold text-sm text-[#212529] dark:text-white">Add SSH Key</h3>
-          <button onClick={onCancel} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-            <X className="w-4 h-4" />
+    <Modal title="Add SSH Key" onClose={onCancel} size="sm" z={80} busy={busy} labelledBy="add-key-title"
+      footer={
+        <div className="flex items-center justify-end gap-2 p-4">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-[#6c757d] hover:bg-[#5c636a] text-white transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] hover:bg-[#016594] text-white transition disabled:opacity-50"
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Create
           </button>
         </div>
-        <div className="p-4 space-y-3 text-xs">
+      }
+    >
+      <div className="p-4 space-y-3 text-xs">
           <label className="block space-y-1">
             <span className="text-[#6c757d] dark:text-[#adb5bd]">Name</span>
             <input
@@ -832,24 +834,6 @@ const AddSshKeyDialog: React.FC<{
           </label>
           {err && <div className="text-rose-600 dark:text-rose-400 break-words">{err}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-[#ced4da] dark:border-[#373b3e]">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="px-3 py-1.5 text-xs font-medium rounded bg-[#6c757d] hover:bg-[#5c636a] text-white transition disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#017cb6] hover:bg-[#016594] text-white transition disabled:opacity-50"
-          >
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Create
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

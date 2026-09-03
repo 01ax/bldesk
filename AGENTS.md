@@ -74,12 +74,16 @@ instead:
 
 1. **Never call `window.confirm()` / `confirm()` / `alert()` as a guard.** Use
    `const c = await useConfirm()({...})` from `src/renderer/src/context/ConfirmContext.tsx`.
-2. **Never create a new dialog component for a confirmation.** If the shared
-   dialog lacks something, extend `ConfirmRequest` — it already has `summary`,
-   `notes`, a `changes` before → after table, a line `diff`, `typeToConfirm`,
-   a `reason` picker (select + detail), and `extraAction` (a side button such
-   as "Copy the zone file first"). Cancel Server and Remove DNS Hosting both
-   use it; they are the pattern for anything irreversible.
+2. **One dialog shell, no exceptions.** Every dialog is `<Modal>` from
+   `src/renderer/src/components/ui/Modal.tsx` (title, icon, footer, size,
+   `as="form"`, `busy`); the guard fails any `createPortal` outside that file.
+   - A dialog that *changes* something is `useConfirm()`, which renders on the
+     shell. Never a new confirmation component: extend `ConfirmRequest` — it
+     has `summary`, `notes`, a `changes` table, a line `diff`, `typeToConfirm`,
+     a `reason` picker and `extraAction`. Cancel Server and Remove DNS Hosting
+     are the pattern for anything irreversible.
+   - A read-only dialog (the traceroute viewer, the create-server form) is a
+     `<Modal>` with its own body. Same look, same Escape / backdrop / close.
 3. **Pick the severity honestly.** `normal` (blue), `destructive` (red button:
    power off, migrations, deletes that can be redone), `irreversible` (red +
    the user must type the target's name: rebuild, restore, delete disk / VPC /
