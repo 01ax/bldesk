@@ -204,7 +204,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const handleAction = async (
     actionType: string,
     customPayload: any = {},
-    confirm: Partial<Pick<ConfirmRequest, 'summary' | 'changes' | 'notes' | 'severity'>> = {}
+    confirm: Partial<Pick<ConfirmRequest, 'summary' | 'changes' | 'notes' | 'severity' | 'typeToConfirm'>> = {}
   ) => {
     // Diagnostics change nothing; asking "are you sure?" before a ping is noise.
     let changeId: string | undefined
@@ -749,7 +749,15 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 client={client}
                 server={server}
                 busy={actionInProgress !== null}
-                onApply={(payload, summary, changes) => void handleAction('resize', payload, { summary, changes })}
+                onApply={(payload, summary, changes, confirm) =>
+                  void handleAction('resize', payload, {
+                    // A resize restarts the server; releasing addresses escalates it further (see ChangePlanPanel).
+                    summary: `${summary}. The server restarts to apply it.`,
+                    severity: 'destructive',
+                    changes,
+                    ...confirm
+                  })
+                }
               />
             </div>
           </div>
