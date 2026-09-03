@@ -336,7 +336,13 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
 
 /** BinaryLane publishes one sample set per 5-minute period; polling faster returns the same sample. */
 export const SAMPLE_PERIOD_MS = 5 * 60 * 1000
-const SAMPLE_PUBLISH_SLACK_MS = 20_000
+/**
+ * How long after a period ends its sample set appears on /latest. Measured
+ * 2026-09-03 on a 4-vCPU server: the 07:20–07:25 sample was absent at
+ * 07:26:27 and present at 07:26:41, so publish lag is roughly 80–100 s.
+ * Two minutes keeps the first fetch after the lag rather than before it.
+ */
+const SAMPLE_PUBLISH_SLACK_MS = 120_000
 
 /**
  * When the next sample set can exist: 5 minutes after the newest period end we
