@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
+## [1.0.60-beta.3] - 2026-09-04
+
+### Fixed
+- **Offsite backup frequency surcharge** (*PR #43 by @termau, absorbing PR #42 by @01ax*): The surcharge shipped in beta.2 took the largest rate among the enabled backup frequencies. The web panel, and the API's own description of `offsite_backup_frequency_cost`, apply the rate of the highest *frequency* enabled: daily, else weekly, else monthly. The two only agree while rates are published in that order, so this is invisible today and would have diverged from the panel the moment a rate shipped out of order. Tests now use out-of-order rates so the wrong rule cannot pass, and also pin that the offsite storage term counts raw selected backups without deducting plan inclusions, as the panel does. 46 tests.
+
+---
+ 
 ## [1.0.60-beta.2] - 2026-09-04
 
 ### Fixed
