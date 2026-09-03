@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.54] - 2026-09-03
+
+### Changed
+- **Reachability UI Polish** (FEATURES.md #11, *PR #27 by @01ax*):
+  - **Compact Status Pill**: Folded multi-line reachability explanation into a single neat status pill (`⚠ Port 22 unreachable  ?  ⟳`), keeping header height stable.
+  - **Single-Blink "?" Indicator**: The `?` icon blinks once on new probe failures (keyed by probe sequence) without ongoing visual distraction.
+  - **Accessible Hover Card**: Explanation, firewall link, and traceroute trigger now live in a card reachable via both hover and keyboard `focus-within`, with zero mouse-out dead zones.
+  - **Traceroute Dialog**: Route output now renders inside a dedicated modal dialog with live tracing state, backdrop dismissal, and hop explanations.
+  - **No-Flash Re-check**: Retains previous probe results on screen during manual refresh, spinning only the leading icon.
+
+---
+
 ## [1.0.53] - 2026-09-03
 
 ### Fixed
