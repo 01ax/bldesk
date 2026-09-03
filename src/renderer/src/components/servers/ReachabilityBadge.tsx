@@ -221,9 +221,12 @@ export const ReachabilityChip: React.FC<{
                 * by neither element, so moving the mouse toward the card left the
                 * hover target and it closed before you could reach the link.
                 */}
+              {/* focus-within as well as hover: a hover-only tooltip is
+                  unreachable by keyboard, and the card holds the only route to
+                  the firewall link and the traceroute action. */}
               <span
                 role="tooltip"
-                className="pointer-events-none group-hover:pointer-events-auto invisible group-hover:visible opacity-0 group-hover:opacity-100 transition absolute left-1/2 -translate-x-1/2 top-full pt-2 z-30 w-80"
+                className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition absolute left-1/2 -translate-x-1/2 top-full pt-2 z-30 w-80"
               >
                 <span className="block p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
                 <span className="block">{explanation}</span>
