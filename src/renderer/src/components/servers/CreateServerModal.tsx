@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { recordChange } from '../../lib/changelog'
+import { recordChange, updateChange } from '../../lib/changelog'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { components } from '@shared/api/schema'
@@ -235,20 +235,22 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const daily = showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2
     const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
+    // The form is the review, so this records rather than confirms — and the
+    // id must be resolved either side of the request or History says
+    // "Submitted" forever (#23).
+    const changeId = await recordChange({
+      label: 'Create server',
+      target: { kind: 'server', name: hostname.trim() },
+      severity: 'normal',
+      changes: [
+        { label: 'Region', to: region },
+        { label: 'Size', to: selectedSize.slug },
+        { label: 'Image', to: image.slug }
+      ],
+      source: 'ui'
+    })
     try {
-      const changeId = await recordChange({
-        label: 'Create server',
-        target: { kind: 'server', name: hostname.trim() },
-        severity: 'normal',
-        changes: [
-          { label: 'Region', to: region },
-          { label: 'Size', to: selectedSize.slug },
-          { label: 'Image', to: image.slug }
-        ],
-        source: 'ui'
-      })
-      void changeId
-      await createServer.mutateAsync({
+      const created = await createServer.mutateAsync({
         name: hostname.trim(),
         region,
         size: selectedSize.slug,
@@ -266,9 +268,14 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         },
         user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
       } as any)
+      void updateChange(changeId, {
+        outcome: 'completed',
+        detail: created?.id ? `BinaryLane accepted the request; server #${created.id} is being built.` : 'BinaryLane accepted the request.'
+      })
       onCreated?.()
       onClose()
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err?.message })
       setErrorMsg(err.message || 'Failed to create the server.')
     }
   }
