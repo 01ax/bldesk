@@ -167,9 +167,9 @@ function MainDashboard() {
 
   /*
    * Tell the main process which addresses may be probed (FEATURES.md #11).
-   * reachability.ts refuses anything not on this list, so the probe handlers
-   * cannot be turned into a scanner by page script; the cost is that this has to
-   * be kept in step with the server list.
+   * reachability.ts refuses anything not on this list. Since the renderer sets
+   * the list, this guards against bugs rather than a hostile renderer; the rate
+   * limit in main covers the rest. Kept in step with the server list.
    */
   React.useEffect(() => {
     const ips = apiServers.flatMap((s) => (s.networks?.v4 ?? []).map((n) => n.ip_address).filter(Boolean))

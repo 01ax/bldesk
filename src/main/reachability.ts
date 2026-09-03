@@ -18,9 +18,13 @@
  *    harmless in itself, but accepting one means accepting a string that has to
  *    be proven safe; an IP literal proves itself.
  *
- * 3. **Only the account's own addresses.** The caller passes the IPs it is
- *    allowed to probe and they are checked here. Without that, this module is a
- *    port scanner with a nice UI, and BLDesk would be the thing that ran it.
+ * 3. **Only the account's own addresses, and not many of them.** The renderer
+ *    declares the IPs it may probe and they are checked here. Be honest about
+ *    what that buys: the list is set *by* the renderer, so it guards against
+ *    bugs and stray calls, not against a renderer that has been taken over —
+ *    which already holds the API token and could set any list it likes. The
+ *    rate limit below is what makes even that case a poor scanner: a few dozen
+ *    connects a minute to addresses you already own is not worth hijacking.
  */
 import { spawn } from 'node:child_process'
 import net from 'node:net'
@@ -57,9 +61,22 @@ export function setAllowedTargets(ips: string[]): void {
   allowedTargets = new Set(ips.filter((ip) => isIP(ip) !== 0))
 }
 
+/** Probes allowed per rolling minute, across all kinds. Plenty for a person, useless for a scan. */
+const RATE_LIMIT_PER_MINUTE = 30
+const recentProbes: number[] = []
+
+function underRateLimit(): boolean {
+  const now = Date.now()
+  while (recentProbes.length && now - recentProbes[0] > 60_000) recentProbes.shift()
+  if (recentProbes.length >= RATE_LIMIT_PER_MINUTE) return false
+  recentProbes.push(now)
+  return true
+}
+
 function checkTarget(host: string): string | null {
   if (isIP(host) === 0) return 'not an IP literal'
   if (!allowedTargets.has(host)) return 'not an address on this account'
+  if (!underRateLimit()) return 'too many probes — wait a minute'
   return null
 }
 

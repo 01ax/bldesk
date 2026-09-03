@@ -1,4 +1,8 @@
 import { components } from '@shared/api/schema'
+// One implementation of BinaryLane's firewall semantics, shared with the fleet
+// matrix and the network map, so the audit and this verdict never disagree.
+import { isWorld, portsInclude } from './firewallMatrix'
+import { describeFirewallRule } from './diff'
 
 type Rule = components['schemas']['AdvancedFirewallRule']
 
@@ -20,26 +24,6 @@ export type FirewallVerdict =
   | { kind: 'no-rules' }
   | { kind: 'unknown' }
 
-/** Does a port spec - "22", "20-25", "*", null - cover this port? */
-export function portSpecCovers(spec: string | null | undefined, port: number): boolean {
-  if (spec === null || spec === undefined) return true // null/empty means all ports
-  const s = String(spec).trim()
-  if (s === '' || s === '*') return true
-  const range = s.match(/^([0-9]{1,5})\s*[-:]\s*([0-9]{1,5})$/)
-  if (range) {
-    const lo = Number(range[1])
-    const hi = Number(range[2])
-    return port >= Math.min(lo, hi) && port <= Math.max(lo, hi)
-  }
-  return Number(s) === port
-}
-
-const matchesPort = (rule: Rule, port: number): boolean => {
-  const ports = rule.destination_ports
-  if (!ports || ports.length === 0) return true // empty means all ports
-  return ports.some((p) => portSpecCovers(p, port))
-}
-
 const matchesTcp = (rule: Rule): boolean => rule.protocol === 'tcp' || rule.protocol === 'all'
 
 /**
@@ -54,11 +38,7 @@ const matchesTcp = (rule: Rule): boolean => rule.protocol === 'tcp' || rule.prot
  * We do not know our own public address here, so the conservative reading is the
  * correct one: only a universal accept can shadow.
  */
-const appliesToAnySource = (rule: Rule): boolean => {
-  const src = rule.source_addresses
-  if (!src || src.length === 0) return true
-  return src.some((a) => a === '0.0.0.0/0' || a === '::/0' || a === '*')
-}
+const appliesToAnySource = (rule: Rule): boolean => isWorld(rule.source_addresses)
 
 /**
  * The first dropping rule that would cover this TCP port.
@@ -76,7 +56,7 @@ export function explainUnreachablePort(
 
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
-    if (!matchesTcp(rule) || !matchesPort(rule, port)) continue
+    if (!matchesTcp(rule) || !portsInclude(rule.destination_ports, port)) continue
     // Only a universal accept shadows a later drop; a source-scoped one may
     // not cover this machine.
     if (rule.action === 'accept') {
@@ -88,9 +68,7 @@ export function explainUnreachablePort(
   return { kind: 'no-matching-rule' }
 }
 
-/** One line describing a rule, for pointing at it in the UI. */
+/** One line describing a rule, for pointing at it in the UI — same wording as the matrix and History diffs. */
 export function describeRule(rule: Rule): string {
-  const ports = rule.destination_ports?.length ? rule.destination_ports.join(', ') : 'all ports'
-  const from = rule.source_addresses?.length ? rule.source_addresses.join(', ') : 'any source'
-  return `${rule.action} ${rule.protocol} ${ports} from ${from}`
+  return describeFirewallRule(rule)
 }
