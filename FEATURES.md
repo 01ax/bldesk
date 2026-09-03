@@ -140,7 +140,7 @@ tag add prod wp-*
 
 **Status: done.** All three parts are covered, two of them by BinaryLane itself:
 
-- **Fleet heatmap** — `lib/heatmap.ts` turns live sample sets into capacity ratios (CPU against 100 × vCPUs: `cpu_usage_percent` is the sum across cores, measured at 399% on a pinned 4-vCPU server), fleet-relative rate intensity, and explicit stale, unavailable and inactive states; `api/queries.ts` fetches once per 5-minute sample period, timed to land just after BinaryLane publishes (about 90 s after the period ends), four requests at a time; `components/heatmap/FleetHeatmap.tsx` renders the sortable grid and opens a row's Usage tab.
+- **Fleet heatmap** — `lib/heatmap.ts` turns live sample sets into capacity ratios (CPU against 100 × vCPUs: `cpu_usage_percent` is the sum across cores, measured at 399% on a pinned 4-vCPU server), fleet-relative rate intensity with an absolute floor (about 40 Mbit/s network, 10 MB/s disk) so a quiet fleet stays neutral, and explicit stale, unavailable and inactive states; `api/queries.ts` fetches once per 5-minute sample period, timed to land just after BinaryLane publishes (about 90 s after the period ends), four requests at a time; `components/heatmap/FleetHeatmap.tsx` renders the sortable grid and opens a row's Usage tab.
 - **History** — the API already retains sample sets at day resolution for at least a year, and the Usage tab reads day, week, month and year windows from it. A local ring buffer was proposed on the assumption the API discarded history; it does not, so none is kept client-side.
 - **Alerts** — BinaryLane's own threshold alerts are exposed per server. They are evaluated server-side and fire whether or not BLDesk is running, which local tray rules could not match.
 
