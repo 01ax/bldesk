@@ -42,6 +42,9 @@ export type PowerVerb = keyof typeof POWER_VERBS
 
 /** Every spelling the parser accepts, mapped to its canonical verb. */
 const VERB_ALIASES: Record<string, Verb> = {
+  create: 'create',
+  new: 'create',
+  deploy: 'create',
   reboot: 'reboot',
   restart: 'reboot',
   shutdown: 'shutdown',
@@ -78,7 +81,7 @@ const VERB_ALIASES: Record<string, Verb> = {
   '?': 'help'
 }
 
-export type Verb = PowerVerb | 'snapshot' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'go' | 'help'
+export type Verb = PowerVerb | 'snapshot' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'create' | 'go' | 'help'
 
 export interface VerbSpec {
   verb: Verb
@@ -97,6 +100,7 @@ export const VERB_SPECS: VerbSpec[] = [
   { verb: 'snapshot', usage: 'snapshot <servers> ["label"]', summary: 'Take a temporary snapshot', mutates: true },
   { verb: 'dns', usage: 'dns add <TYPE> <fqdn> <value> [priority]', summary: 'Add a DNS record to a hosted zone', mutates: true },
   { verb: 'tag', usage: 'tag add|remove <name> <servers>', summary: 'Tag servers locally; @name then targets them anywhere', mutates: false },
+  { verb: 'create', usage: 'create <hostname> from <template>', summary: 'New server from a template (opens the create form prefilled)', mutates: true },
   { verb: 'ssh', usage: 'ssh <server|ip>', summary: 'Open native SSH as root', mutates: false },
   { verb: 'console', usage: 'console <server>', summary: 'Open the rescue console', mutates: false },
   { verb: 'open', usage: 'open <server> [subtab]', summary: 'Open a server (overview, network, firewall…)', mutates: false },
@@ -154,6 +158,7 @@ export type ParsedCommand =
   | { kind: 'go'; tab: DeepLinkTab }
   | { kind: 'dns-add'; type: DomainRecordType; fqdn: string; value: string; priority?: number }
   | { kind: 'tag'; op: 'add' | 'remove'; tag: string; targets: string }
+  | { kind: 'create'; hostname: string; template: string }
   | { kind: 'help' }
   /** Verb recognised but arguments missing or wrong; `usage` says what it wanted. */
   | { kind: 'incomplete'; verb: Verb; usage: string; problem?: string }
@@ -263,6 +268,14 @@ export function parseCommand(input: string): ParsedCommand | null {
       const [, tag, ...rest] = args
       if (!tag || rest.length === 0) return incomplete()
       return { kind: 'tag', op: op === 'rm' ? 'remove' : op, tag: tag.replace(/^@/, ''), targets: rest.join(',') }
+    }
+
+    case 'create': {
+      // create web-01 from "CIS-hardened Ubuntu"   |   create web-01 from @starter-docker-host
+      const [hostname, from, ...rest] = args
+      if (!hostname) return incomplete()
+      if (from?.toLowerCase() !== 'from' || rest.length === 0) return incomplete('Say which template: create <hostname> from <template name>')
+      return { kind: 'create', hostname, template: rest.join(' ') }
     }
 
     case 'help':

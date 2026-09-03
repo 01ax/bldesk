@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { X, Loader2, AlertTriangle, Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
@@ -14,8 +14,7 @@ import {
   useAddSshKeyMutation
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
-import { listTemplates } from '../../lib/templates'
-import { CloudInitTemplates, imageSupportsUserData } from './CloudInitTemplates'
+import { listServerTemplates, imageSupportsUserData, TEMPLATES_EVENT, TEMPLATE_KIND, type ServerTemplate, type CreateServerPrefill } from '../../lib/serverTemplates'
 import {
   planMonthlyPrice,
   planUnavailableReason,
@@ -52,10 +51,15 @@ interface CreateServerModalProps {
   isOpen: boolean
   onClose: () => void
   client: BinaryLaneClient | null
-  onCreated?: () => void
+  /** Called once BinaryLane accepts the request; `id` is the new server when the API returned it. */
+  onCreated?: (created: { id?: number; name: string }) => void
+  /** Prefill from a server template (Templates tab). Names are resolved on this account once the lists load. */
+  initial?: CreateServerPrefill | null
+  /** Turn the form as it stands into a template draft in the Templates tab. */
+  onSaveAsTemplate?: (draft: ServerTemplate) => void
 }
 
-export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, onClose, client, onCreated }) => {
+export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, onClose, client, onCreated, initial, onSaveAsTemplate }) => {
   const sizesQuery = useSizes(client)
   const regionsQuery = useRegions(client)
   const imagesQuery = useDistributionImages(client)
@@ -95,8 +99,36 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [agreed, setAgreed] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [addKeyOpen, setAddKeyOpen] = useState(false)
-  const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listTemplates>>>([])
-  const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
+  const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listServerTemplates>>>([])
+
+  // --- template prefill ---
+  // Scalars land when the form opens; image, plan, VPC and keys are stored by
+  // name in a template and resolve as each list arrives (they are cached, so
+  // usually immediately). Memory/disk are consumed by the plan-reset effect
+  // below so the plan's defaults do not overwrite the template's choice.
+  const prefillRef = useRef<CreateServerPrefill | null>(null)
+  useEffect(() => {
+    if (!isOpen) {
+      prefillRef.current = null
+      return
+    }
+    if (!initial) return
+    prefillRef.current = { ...initial }
+    if (initial.hostname !== undefined) setHostname(initial.hostname)
+    if (initial.region) setRegion(initial.region)
+    if (initial.ipCount !== undefined) setIpCount(initial.ipCount)
+    const hasBackupChoice = initial.dailyBackups !== undefined || initial.weeklyBackups !== undefined || initial.monthlyBackups !== undefined
+    if (initial.dailyBackups !== undefined) setDailyBackups(initial.dailyBackups)
+    if (initial.weeklyBackups !== undefined) setWeeklyBackups(initial.weeklyBackups)
+    if (initial.monthlyBackups !== undefined) setMonthlyBackups(initial.monthlyBackups)
+    if (initial.offsiteBackups !== undefined) setOffsiteBackups(initial.offsiteBackups)
+    if (hasBackupChoice || initial.memory !== undefined || initial.disk !== undefined) setShowAll(true)
+    if (initial.cloudInit !== undefined) {
+      setCloudInit(initial.cloudInit)
+      setCloudInitOn(!!initial.cloudInit.trim())
+    }
+    if (initial.sshKeyNames && initial.sshKeyNames.length === 0) setSelectedKeys([])
+  }, [isOpen, initial])
 
   // Distributions present, in web-panel order, with anything unexpected appended
   // rather than dropped.
@@ -123,14 +155,46 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   useEffect(() => {
     if (!isOpen) return
     const refresh = () => {
-      void listTemplates()
-        .then(setTemplates)
-        .catch((err) => setErrorMsg(err.message || 'Could not load cloud-init templates.'))
+      void listServerTemplates()
+        .then((items) => setTemplates(items.filter((i) => !i.error && i.template.spec.cloudInit)))
+        .catch((err) => setErrorMsg(err.message || 'Could not load templates.'))
     }
     refresh()
-    window.addEventListener('bldesk:templates-changed', refresh)
-    return () => window.removeEventListener('bldesk:templates-changed', refresh)
+    window.addEventListener(TEMPLATES_EVENT, refresh)
+    return () => window.removeEventListener(TEMPLATES_EVENT, refresh)
   }, [isOpen])
+
+  // Resolve the template's names against this account's lists.
+  useEffect(() => {
+    const p = prefillRef.current
+    if (!p || !isOpen) return
+    if (p.imageSlug && images.length) {
+      const img = images.find((i) => i.slug === p.imageSlug)
+      if (img?.distribution) {
+        setDistro(img.distribution)
+        setImageSlug(img.slug ?? null)
+      }
+      p.imageSlug = undefined
+    }
+    if (p.sizeSlug && sizes.length) {
+      const sz = sizes.find((x) => x.slug === p.sizeSlug)
+      if (sz) {
+        setPlanType(sz.size_type?.slug || 'vps')
+        setSizeSlug(sz.slug)
+      }
+      p.sizeSlug = undefined
+    }
+    if (p.vpcName && vpcs.length) {
+      const v = vpcs.find((x: any) => x.name === p.vpcName)
+      if (v) setVpcId(v.id)
+      p.vpcName = undefined
+    }
+    if (p.sshKeyNames?.length && sshKeys.length) {
+      const ids = sshKeys.filter((k: any) => p.sshKeyNames!.includes(k.name)).map((k: any) => k.id)
+      if (ids.length) setSelectedKeys(ids)
+      p.sshKeyNames = undefined
+    }
+  }, [isOpen, images, sizes, vpcs, sshKeys])
 
   useEffect(() => {
     if (!acceptsUserData) setCloudInitOn(false)
@@ -192,8 +256,13 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   // Reset plan-derived state whenever the plan changes.
   useEffect(() => {
     if (!selectedSize) return
-    setMemoryMb(selectedSize.memory)
-    setDiskGb(selectedSize.disk)
+    const p = prefillRef.current
+    setMemoryMb(p?.memory ?? selectedSize.memory)
+    setDiskGb(p?.disk ?? selectedSize.disk)
+    if (p) {
+      p.memory = undefined
+      p.disk = undefined
+    }
   }, [selectedSize?.slug])
 
   // Pre-select the account's default SSH key, as the web panel does.
@@ -272,7 +341,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         outcome: 'completed',
         detail: created?.id ? `BinaryLane accepted the request; server #${created.id} is being built.` : 'BinaryLane accepted the request.'
       })
-      onCreated?.()
+      onCreated?.({ id: created?.id, name: hostname.trim() })
       onClose()
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err?.message })
@@ -577,11 +646,11 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                     {cloudInitOn && (
                       <>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <select defaultValue="" onChange={(e) => { const item = templates.find((t) => t.slug === e.target.value); if (item?.template) setCloudInit(item.template.user_data); e.currentTarget.value = '' }} className="px-2.5 py-1.5 text-xs rounded border bg-white dark:bg-[#212529] border-[#ced4da] dark:border-[#373b3e]">
-                            <option value="">Load template…</option>
-                            {templates.filter((item) => item.template).map((item) => <option key={item.slug} value={item.slug}>{item.template?.name}</option>)}
+                          <select defaultValue="" onChange={(e) => { const item = templates.find((t) => t.slug === e.target.value); if (item?.template.spec.cloudInit) setCloudInit(item.template.spec.cloudInit); e.currentTarget.value = '' }} className="px-2.5 py-1.5 text-xs rounded border bg-white dark:bg-[#212529] border-[#ced4da] dark:border-[#373b3e]">
+                            <option value="">Load cloud-init from template…</option>
+                            {templates.map((item) => <option key={item.slug} value={item.slug}>{item.template.name}</option>)}
                           </select>
-                          <button type="button" onClick={() => setTemplateDraftOpen(true)} disabled={!cloudInit.trim()} className="px-2.5 py-1.5 text-xs rounded border border-[#ced4da] dark:border-[#373b3e] disabled:opacity-40">Save as template</button>
+                          <span className="text-[11px] text-[#6c757d] dark:text-slate-400 self-center">Templates with variables are applied from the Templates tab, which fills them in.</span>
                         </div>
                         <textarea
                           value={cloudInit}
@@ -610,6 +679,29 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                   BinaryLane has no minimum contract length and you may cancel your Server any time.
                 </p>
               </div>
+
+              {onSaveAsTemplate && (
+                <button
+                  type="button"
+                  onClick={() => onSaveAsTemplate({
+                    kind: TEMPLATE_KIND,
+                    name: hostname.trim() ? `${hostname.trim()} template` : 'New template',
+                    created_at: new Date().toISOString(),
+                    spec: {
+                      region,
+                      size: selectedSize?.slug,
+                      image: image?.slug ?? undefined,
+                      options: { memory, disk, ipv4_addresses: ipCount, daily_backups: showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2, weekly_backups: showAll ? weeklyBackups : 0, monthly_backups: showAll ? monthlyBackups : 0, offsite_backups: showAll ? offsiteBackups : simpleBackups === 'both' },
+                      vpc: vpcId ? (vpcs.find((v: any) => v.id === vpcId)?.name as string | undefined) : undefined,
+                      sshKeys: selectedKeys.length ? sshKeys.filter((k: any) => selectedKeys.includes(k.id)).map((k: any) => k.name as string) : undefined,
+                      cloudInit: cloudInitOn && cloudInit.trim() ? cloudInit : undefined
+                    }
+                  })}
+                  className="mt-3 text-xs text-[#017cb6] hover:underline"
+                >
+                  Save this form as a template instead
+                </button>
+              )}
 
               <label className="flex items-center gap-2 text-xs mt-3 cursor-pointer">
                 <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
@@ -649,7 +741,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           }}
         />
       )}
-      {templateDraftOpen && <CloudInitTemplates client={client} servers={[]} initialDraft={{ userData: cloudInit }} onClose={() => setTemplateDraftOpen(false)} />}
     </>
   )
 }

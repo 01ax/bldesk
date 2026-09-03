@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.57] - 2026-09-03
+
+### Changed
+- **Server templates, first class** (FEATURES.md #8, replaces the cloud-init-only templates):
+  - A template is a whole server: region, plan + options (memory, disk, IPv4 count, backups), image, VPC and SSH keys by name, firewall rules, local tags, and cloud-init with `{{variables}}` (`{{hostname}}` built in; secrets prompted per apply and never stored).
+  - New **Templates** tab with a library, editor, file/paste import and single/bundle export (`bldesk/server-template@1` YAML). Existing cloud-init templates are read as-is and migrate on first save.
+  - Seven starters shipped read-only: Ubuntu baseline, **CIS-hardened Ubuntu 24.04**, Docker host, WordPress, WireGuard bastion, k3s node, PostgreSQL 16 — real cloud-init, every firewall set ending in an explicit drop.
+  - **New server from this**: variables prompt → create form prefilled (still the review) → after BinaryLane accepts, BLDesk waits for the build, applies the template's firewall rules (recorded in History) and tags the server.
+  - **Save server as template** (server → Cloud-init tab) captures plan, image, region, VPC, firewall rules and user data; **Save this form as a template instead** on the create form.
+  - Palette verb: `create <hostname> from <template>`.
+- `CreateServerModal` gains an `initial` prefill prop and passes the new server's id to `onCreated`.
+
+### Removed
+- `CloudInitTemplates.tsx` and `lib/templates.ts` (superseded; the server list's Templates button now opens the tab).
+
+---
+
 ## [1.0.56] - 2026-09-03
 
 ### Changed

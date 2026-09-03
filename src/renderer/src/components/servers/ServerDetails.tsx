@@ -28,6 +28,7 @@ import {
   useServerMetrics,
   useServerConsole,
   useServerUserData,
+  useVpcs,
   useServerActionMutation,
   useServerDiagnosticMutation,
   useCancelServerMutation
@@ -45,7 +46,8 @@ import { ServerSubTab } from '../layout/Sidebar'
 import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
-import { CloudInitTemplates, imageSupportsUserData } from './CloudInitTemplates'
+import { imageSupportsUserData, templateFromServer, type ServerTemplate } from '../../lib/serverTemplates'
+import { describeApiError } from '../../api/queries'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -59,6 +61,8 @@ interface ServerDetailsProps {
   onOpenTerminal?: (ip: string) => void
   /** The app's server list, forwarded to the Firewall sub-tab (see FirewallManagerProps.servers). */
   servers?: any[]
+  /** Hands a whole-server capture (plan, image, VPC, firewall rules, user data) to the Templates tab. */
+  onSaveAsTemplate?: (draft: ServerTemplate) => void
 }
 
 /**
@@ -134,7 +138,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   activeSubTab = 'overview',
   onSelectSubTab,
   onBack,
-  servers: allServers
+  servers: allServers,
+  onSaveAsTemplate
 }) => {
   const [copiedText, setCopiedText] = useState<string | null>(null)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
@@ -143,7 +148,24 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
   const [linkCopied, setLinkCopied] = useState(false)
-  const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
+  const [capturing, setCapturing] = useState(false)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+
+  const captureTemplate = async () => {
+    if (!client || !onSaveAsTemplate) return
+    setCapturing(true)
+    setCaptureError(null)
+    try {
+      const fw = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', { params: { path: { server_id: server.id } } })
+      if (fw.error) throw new Error(describeApiError(fw.error))
+      const vpcName = server.vpc_id ? ((vpcsForCapture as any[]).find((v) => v.id === server.vpc_id)?.name as string | undefined) : undefined
+      onSaveAsTemplate(templateFromServer(server, { firewallRules: (fw.data as any)?.firewall_rules ?? [], userData: userDataQuery.data ?? null, vpcName }))
+    } catch (err: any) {
+      setCaptureError(err?.message || 'Could not read the server’s firewall rules.')
+    } finally {
+      setCapturing(false)
+    }
+  }
 
   const handleCopyLink = async () => {
     await copyDeepLink({ kind: 'server', serverId: server.id, subTab: activeSubTab })
@@ -171,6 +193,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const metricsQuery = useServerMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
   const userDataQuery = useServerUserData(client, server.id)
+  const vpcsForCapture = useVpcs(client).data ?? []
   const serverAction = useServerActionMutation(client)
   const diagnosticAction = useServerDiagnosticMutation(client, server.id)
   const cancelServer = useCancelServerMutation(client)
@@ -668,14 +691,15 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 </div>
                 <div className="flex gap-2">
                   <button disabled={!userDataQuery.data} onClick={() => userDataQuery.data && handleCopy(userDataQuery.data)} className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs disabled:opacity-40"><Copy className="w-3.5 h-3.5" />Copy</button>
-                  <button disabled={!userDataQuery.data} onClick={() => setTemplateDraftOpen(true)} className="px-3 py-1.5 rounded bg-[#017cb6] text-white text-xs disabled:opacity-40">Save as template</button>
+                  <button disabled={capturing || !onSaveAsTemplate} onClick={() => void captureTemplate()} className="px-3 py-1.5 rounded bg-[#017cb6] text-white text-xs disabled:opacity-40">{capturing ? 'Capturing…' : 'Save server as template'}</button>
                 </div>
               </div>
+              <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mb-3">A template captures this server’s plan, image, region, VPC, firewall rules and user data, so the next one is a fill-in-the-blanks. It opens in the Templates tab for you to review and name.</p>
+              {captureError && <p className="text-xs text-rose-600 mb-3">{captureError}</p>}
               {userDataQuery.isLoading ? <p className="text-xs text-[#6c757d]">Loading…</p> : userDataQuery.isError ? <p className="text-xs text-rose-600">Could not read stored user data.</p> : userDataQuery.data ? <textarea readOnly value={userDataQuery.data} rows={20} spellCheck={false} className="w-full px-3 py-2 text-xs font-mono rounded border bg-[#f8f9fa] dark:bg-[#212529] border-[#ced4da] dark:border-[#495057]" /> : <p className="text-xs text-[#6c757d]">This server has no stored user data.</p>}
             </div>
           </div>
         )}
-        {templateDraftOpen && userDataQuery.data && <CloudInitTemplates client={client} servers={allServers ?? [server]} initialDraft={{ userData: userDataQuery.data, source: { server_id: server.id, server_name: server.name, image_slug: server.image?.slug ?? undefined } }} onClose={() => setTemplateDraftOpen(false)} />}
 
         {/* REMOTE ACCESS TAB */}
         {activeSubTab === 'remote-access' && (
