@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Frameless window had no edge on Linux.** Without the OS frame nothing drew a border or shadow, so the window was a flat rectangle against the desktop. A one-pixel inset border now stands in for the window manager's, Linux only, and disappears when maximised.
+
+---
+
 ## [1.0.53] - 2026-09-03
 
 ### Fixed
