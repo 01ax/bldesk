@@ -368,7 +368,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
           initial={editing.template}
           isNew={!editing.oldSlug}
           onCancel={() => setEditing(null)}
-          onSave={(t) => handleSave(t, editing.oldSlug).catch((err) => setError(err?.message || 'Could not save.'))}
+          onSave={(t) => handleSave(t, editing.oldSlug)}
         />
       )}
 
@@ -531,7 +531,7 @@ const TemplateEditor: React.FC<{
   initial: ServerTemplate
   isNew: boolean
   onCancel: () => void
-  onSave: (t: ServerTemplate) => void
+  onSave: (t: ServerTemplate) => void | Promise<void>
 }> = ({ client, initial, isNew, onCancel, onSave }) => {
   const [t, setT] = useState<ServerTemplate>(initial)
   const [busy, setBusy] = useState(false)
@@ -561,7 +561,11 @@ const TemplateEditor: React.FC<{
     }
     setBusy(true)
     setErr(null)
-    Promise.resolve(onSave({ ...t, name: t.name.trim(), variables: vars.length ? vars : undefined, spec: { ...t.spec, firewallRules: rules.length ? rules : undefined, tags: t.spec.tags?.length ? t.spec.tags : undefined, sshKeys: t.spec.sshKeys?.length ? t.spec.sshKeys : undefined, vpc: t.spec.vpc || undefined, cloudInit: t.spec.cloudInit?.trim() ? t.spec.cloudInit : undefined } })).finally(() => setBusy(false))
+    Promise.resolve(onSave({ ...t, name: t.name.trim(), variables: vars.length ? vars : undefined, spec: { ...t.spec, firewallRules: rules.length ? rules : undefined, tags: t.spec.tags?.length ? t.spec.tags : undefined, sshKeys: t.spec.sshKeys?.length ? t.spec.sshKeys : undefined, vpc: t.spec.vpc || undefined, cloudInit: t.spec.cloudInit?.trim() ? t.spec.cloudInit : undefined } }))
+      // The store can reject a save (invalid document, name clash, unwritable directory);
+      // show that here, in the dialog the user is looking at, not behind it.
+      .catch((x: any) => setErr(x?.message || 'Could not save the template.'))
+      .finally(() => setBusy(false))
   }
 
   return (
