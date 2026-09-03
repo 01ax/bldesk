@@ -52,6 +52,12 @@ export interface LicenceGroup {
    * software from that group is not required". The name is only a fallback.
    */
   optOut: SoftwareLike | null
+  /**
+   * No opt-out member means the API insists on one of the options: it rejects
+   * the whole resize with "One item from the software group 'cPanel' must be
+   * selected". Reachable by moving an unlicensed server onto a cPanel image.
+   */
+  required: boolean
 }
 
 export const isOptOut = (s: SoftwareLike): boolean => s.licence_step_count === -1
@@ -76,15 +82,53 @@ export function splitSoftware(offered: SoftwareLike[]): { groups: LicenceGroup[]
     groups: [...groups.entries()]
       .map(([name, options]) => {
         const sorted = [...options].sort(byCost)
-        return {
-          name,
-          options: sorted,
-          optOut: sorted.find(isOptOut) ?? sorted.find((o) => /\bnot required\b/i.test(o.name)) ?? null
-        }
+        const optOut = sorted.find(isOptOut) ?? sorted.find((o) => /\bnot required\b/i.test(o.name)) ?? null
+        return { name, options: sorted, optOut, required: !optOut }
       })
       .sort((a, b) => a.name.localeCompare(b.name)),
     addons: addons.sort(byCost)
   }
+}
+
+/** The option currently selected within a group, if any. */
+export function selectedInGroup(g: LicenceGroup, selection: LicenceSelection): SoftwareLike | undefined {
+  return g.options.find((o) => (selection[o.id] ?? 0) > 0)
+}
+
+/**
+ * Cheapest real (non-opt-out) member of a group - what a required group falls
+ * back to, mirroring the web panel rather than leaving it blank. On the cPanel
+ * images the cheapest tier is $0, so defaulting costs nothing.
+ */
+export function cheapestOption(g: LicenceGroup): SoftwareLike | undefined {
+  return g.options.filter((o) => !isOptOut(o))[0]
+}
+
+/**
+ * Fill in any required group that has nothing selected.
+ *
+ * Returns the *same* object when nothing needs adding, so callers can use it in
+ * a render or an effect without looping.
+ */
+export function withRequiredDefaults(groups: LicenceGroup[], selection: LicenceSelection): LicenceSelection {
+  let next: LicenceSelection | null = null
+  for (const g of groups) {
+    if (!g.required || selectedInGroup(g, selection)) continue
+    const pick = cheapestOption(g)
+    if (!pick) continue
+    next = next ?? { ...selection }
+    next[pick.id] = pick.minimum_licence_count || 1
+  }
+  return next ?? selection
+}
+
+/**
+ * Required groups still without a choice. Non-empty means the API would reject
+ * the resize, so the submit is held rather than the error discovered after the
+ * confirmation.
+ */
+export function unsatisfiedGroups(groups: LicenceGroup[], selection: LicenceSelection): LicenceGroup[] {
+  return groups.filter((g) => g.required && !selectedInGroup(g, selection))
 }
 
 /** Monthly cost, ex-GST, of a selection. */
@@ -132,10 +176,29 @@ export function selectionsEqual(a: LicenceSelection, b: LicenceSelection): boole
   return true
 }
 
-/** The `change_licenses.licenses` array. */
-export function toLicencePayload(selection: LicenceSelection): Array<{ software_id: number; count: number }> {
+/**
+ * The `change_licenses.licenses` array.
+ *
+ * The opt-out sentinel is filtered out here as well as being cleared by the
+ * group control, because sending it is accepted and then not persisted: the
+ * server comes back with zero licences, so the panel would report a change that
+ * never stuck and offer it again forever. Keeping the rule in one place means a
+ * future caller cannot reintroduce it by building a selection differently.
+ *
+ * `offered` is optional so existing callers keep working; without it the
+ * sentinel cannot be recognised, since only the catalogue carries the step
+ * count.
+ */
+export function toLicencePayload(
+  selection: LicenceSelection,
+  offered: SoftwareLike[] = []
+): Array<{ software_id: number; count: number }> {
   return Object.entries(selection)
-    .filter(([, count]) => count > 0)
+    .filter(([id, count]) => {
+      if (count <= 0) return false
+      const s = offered.find((o) => o.id === Number(id))
+      return !s || !isOptOut(s)
+    })
     .map(([id, count]) => ({ software_id: Number(id), count }))
 }
 
