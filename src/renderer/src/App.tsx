@@ -24,6 +24,7 @@ import { HistoryView } from './components/history/HistoryView'
 import { NetworkMap } from './components/map/NetworkMap'
 import { TemplatesView } from './components/templates/TemplatesView'
 import type { ServerTemplate } from './lib/serverTemplates'
+import { FleetHeatmap } from './components/heatmap/FleetHeatmap'
 import { setChangeLogProfile } from './lib/changelog'
 import { useServers, useBalance, useActionsAwaitingInteraction, useUnpaidInvoices } from './api/queries'
 import { useFleetWatch } from './lib/fleetWatch'
@@ -402,6 +403,19 @@ function MainDashboard() {
                 onDraftConsumed={() => setTemplateDraft(null)}
                 applyRequest={templateApply}
                 onApplyConsumed={() => setTemplateApply(null)}
+              />
+            )}
+
+            {activeTab === 'heatmap' && (
+              <FleetHeatmap
+                client={client}
+                servers={servers}
+                serversLoading={isLoadingServers && servers.length === 0}
+                onSelectServer={(server) => {
+                  handleSelectServer(server)
+                  setActiveServerSubTab('usage')
+                  setActiveTab('servers')
+                }}
               />
             )}
 
