@@ -25,8 +25,7 @@ import {
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
   networkActionMutationKey,
-  actionFailureMessage,
-  useCancelServerMutation
+  actionFailureMessage
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
@@ -39,7 +38,6 @@ type ThresholdAlertRequest = components['schemas']['ThresholdAlertRequest']
 type ThresholdAlertType = components['schemas']['ThresholdAlertType']
 type VmMachineType = components['schemas']['VmMachineType']
 import { visibleFeatures, mergeHiddenFeatures, formatMachineType } from '../../lib/advancedFeatures'
-import { ChangePlanPanel } from './ChangePlanPanel'
 type VideoDevice = components['schemas']['VideoDevice']
 
 interface ServerSettingsProps {
@@ -47,13 +45,11 @@ interface ServerSettingsProps {
   servers: any[]
   client: BinaryLaneClient | null
   server: Server
-  /** Called once the server is gone, so the detail view can step back to the list. */
-  onCancelled?: () => void
 }
 
-type SettingsTab = 'hostname' | 'plan' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
+type SettingsTab = 'hostname' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
 
-export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, onCancelled, servers: allServers }) => {
+export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, servers: allServers }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('hostname')
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -67,7 +63,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   const advancedQuery = useAvailableAdvancedFeatures(client, server.id)
 
   const actionMutation = useServerActionWithHandoff(client, server.id)
-  const cancelServer = useCancelServerMutation(client)
   const { track } = useTrackedActions()
   const confirmAction = useConfirm()
   const mutatingCount = useIsMutating({ mutationKey: networkActionMutationKey(server.id) })
@@ -201,45 +196,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
   }
 
   // --- Handlers ---
-
-  /**
-   * Cancel goes through the same dialog as everything else — irreversible, so
-   * the hostname must be typed — with a reason picker the API forwards to
-   * BinaryLane. Confirming records the History entry, including the reason.
-   */
-  const handleCancelServer = async () => {
-    const monthly = server.size?.price_monthly
-    const c = await confirmAction({
-      title: 'Cancel server',
-      target: { kind: 'server', id: server.id, name: server.name },
-      summary: 'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups and snapshots attached to it go with it.',
-      severity: 'irreversible',
-      notes: [
-        'There is no undo — BinaryLane keeps no copy of a cancelled server.',
-        ...(typeof monthly === 'number' && monthly > 0 ? [`This server currently bills at $${monthly.toFixed(2)}/month.`] : [])
-      ],
-      changes: [
-        { label: 'Plan', from: server.size_slug, to: undefined },
-        { label: 'Public IPv4', from: server.networks?.v4?.find((n) => n.type === 'public')?.ip_address, to: undefined }
-      ],
-      reason: {
-        label: 'Why are you cancelling?',
-        options: ['No longer required', 'Too expensive', 'Moving to another provider', 'Performance did not meet expectations', 'Technical issues', 'Created by mistake / testing', 'Other'],
-        requireDetailFor: ['Other']
-      },
-      confirmLabel: 'Cancel server'
-    })
-    if (!c.ok) return
-    setErrorMsg(null)
-    try {
-      await cancelServer.mutateAsync({ serverId: server.id, reason: c.reason })
-      void updateChange(c.changeId, { outcome: 'completed', detail: 'BinaryLane accepted the cancellation; the server is removed within minutes.' })
-      onCancelled?.()
-    } catch (err: any) {
-      void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
-      setErrorMsg(err?.message || 'Failed to cancel the server.')
-    }
-  }
 
   const handleRename = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -396,7 +352,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   const navTabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'hostname', label: 'Hostname', icon: <Tag className="w-3.5 h-3.5" /> },
-    { id: 'plan', label: 'Change Plan', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
     { id: 'disks', label: 'Disks', icon: <HardDrive className="w-3.5 h-3.5" /> },
     { id: 'advanced', label: 'Advanced', icon: <Cpu className="w-3.5 h-3.5" /> },
     { id: 'alerts', label: 'Alerts', icon: <Bell className="w-3.5 h-3.5" /> },
@@ -544,30 +499,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       )}
 
       {/* 2. DISKS TAB */}
-      {activeTab === 'plan' && (
-        <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4">
-          <div>
-            <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">Change Plan</h3>
-            <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
-              Moves the server to a different plan. The server restarts to apply the change.
-            </p>
-          </div>
-          <ChangePlanPanel
-            client={client}
-            server={server}
-            busy={busy}
-            onApply={(payload, summary, changes) =>
-              void executeAction('Change Plan', payload, {
-                summary: `${summary}. The server restarts to apply it.`,
-                severity: 'destructive',
-                changes,
-                confirmLabel: 'Change plan'
-              })
-            }
-          />
-        </div>
-      )}
-
       {activeTab === 'disks' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden">
@@ -1132,24 +1063,6 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       {/* 7. DANGER ZONE TAB */}
       {activeTab === 'danger' && (
         <div className="space-y-4">
-          {/* Cancel - the only irreversible, untrackable action in the app */}
-          <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-rose-300 dark:border-rose-900 p-5 shadow-sm space-y-3">
-            <h3 className="text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">Cancel Server</h3>
-            <p className="text-xs text-[#495057] dark:text-slate-300">
-              Cancels the Cloud Server service. It is cancelled within five minutes, after which an invoice is generated
-              for usage to date. The server and its data are destroyed and cannot be recovered.
-            </p>
-            <button
-              type="button"
-              onClick={() => void handleCancelServer()}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-rose-600 text-white disabled:opacity-40"
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Cancel Server</span>
-            </button>
-          </div>
-
           {/* Power and Password Reset */}
           <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] p-5 shadow-sm space-y-4">
             <h3 className="text-xs font-bold text-[#212529] dark:text-white uppercase tracking-wider">
