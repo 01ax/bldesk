@@ -334,7 +334,28 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
   })
 }
 
-/** Latest metrics for the active fleet, four requests at a time and at fleet cadence. */
+/** BinaryLane publishes one sample set per 5-minute period; polling faster returns the same sample. */
+export const SAMPLE_PERIOD_MS = 5 * 60 * 1000
+const SAMPLE_PUBLISH_SLACK_MS = 20_000
+
+/**
+ * When the next sample set can exist: 5 minutes after the newest period end we
+ * have seen, plus a little slack for it to be published. Falls back to a plain
+ * 5-minute interval when nothing has been fetched yet, and never sooner than
+ * 30 s so a clock skew cannot turn this into a tight loop.
+ */
+function nextSampleDelay(samples: Map<number, FleetMetricResult> | undefined, now = Date.now()): number {
+  let newest = 0
+  for (const result of samples?.values() ?? []) {
+    const end = result.sample ? Date.parse(result.sample.period.end) : NaN
+    if (Number.isFinite(end) && end > newest) newest = end
+  }
+  if (!newest) return SAMPLE_PERIOD_MS
+  const due = newest + SAMPLE_PERIOD_MS + SAMPLE_PUBLISH_SLACK_MS - now
+  return Math.min(SAMPLE_PERIOD_MS, Math.max(30_000, due))
+}
+
+/** Latest metrics for the active fleet, four requests at a time, once per sample period. */
 function combineAbortSignals(querySignal: AbortSignal, timeoutSignal: AbortSignal): AbortSignal {
   if (typeof AbortSignal.any === 'function') return AbortSignal.any([querySignal, timeoutSignal])
   const controller = new AbortController()
@@ -373,7 +394,7 @@ export function useFleetMetrics(client: BinaryLaneClient | null, serverIds: numb
       return map
     },
     enabled: !!client && serverIds.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: (query) => nextSampleDelay(query.state.data),
     placeholderData: keepPreviousData
   })
 }

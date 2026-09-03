@@ -138,7 +138,7 @@ tag add prod wp-*
 
 ## 9. Metrics with memory
 
-**Status: built** (unreleased at time of writing). `lib/heatmap.ts` turns live sample sets into capacity ratios, fleet-relative rate intensity and explicit stale, unavailable and inactive states; `api/queries.ts` refreshes active servers every 30 seconds, four requests at a time, and a sweep already in flight is not duplicated; `components/heatmap/FleetHeatmap.tsx` renders the sortable grid and links each row to its server's Usage tab. Not yet: local retention beyond what the API keeps, alert thresholds via the tray, or per-cell history sparklines.
+**Status: built** (unreleased at time of writing). `lib/heatmap.ts` turns live sample sets into capacity ratios, fleet-relative rate intensity and explicit stale, unavailable and inactive states; `api/queries.ts` refreshes active servers once per 5-minute sample period (timed to land just after BinaryLane publishes the next one), four requests at a time, and a sweep already in flight is not duplicated; `components/heatmap/FleetHeatmap.tsx` renders the sortable grid and links each row to its server's Usage tab. Not yet: local retention beyond what the API keeps, alert thresholds via the tray, or per-cell history sparklines.
 
 **Today:** `useServerMetrics` polls `/v2/samplesets/{id}/latest` every 5 s; gauges show the current sample only.
 
