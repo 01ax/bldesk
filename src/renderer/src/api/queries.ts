@@ -170,6 +170,8 @@ export function useServerActionMutation(client: BinaryLaneClient | null) {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['servers'] })
       queryClient.invalidateQueries({ queryKey: ['server', variables.serverId] })
+      // A resize can change what the server is licensed for.
+      queryClient.invalidateQueries({ queryKey: ['server-software', variables.serverId] })
     }
   })
 }
@@ -1699,5 +1701,56 @@ export function useActionProceedMutation(client: BinaryLaneClient | null) {
       queryClient.invalidateQueries({ queryKey: ['servers'] })
       queryClient.invalidateQueries({ queryKey: ['serverActions'] })
     }
+  })
+}
+
+// --- LICENSED SOFTWARE ---
+
+/**
+ * The licences an operating system can carry, which is what Change Plan offers.
+ *
+ * Per-OS rather than the whole `/v2/software` catalogue, because the catalogue
+ * lists the same product several times at different prices - "cPanel: Up to 30
+ * Accounts" is $25/mo on cpanel-plus-whm and $65/mo on alma-9 - and the only
+ * thing separating them is `supported_operating_systems`. Asking for the OS
+ * gives the set that actually applies, already deduplicated and priced.
+ */
+export function useOsSoftware(client: BinaryLaneClient | null, osSlug: string | null | undefined) {
+  return useQuery({
+    queryKey: ['software', 'os', osSlug],
+    queryFn: async () => {
+      if (!client || !osSlug) return []
+      const { data, error, response } = await client.GET('/v2/software/operating_system/{operating_system_id_or_slug}', {
+        params: { path: { operating_system_id_or_slug: osSlug } as any, query: { per_page: 200 } as any }
+      })
+      // A 404 here is an image with no licences on offer (every Windows slug,
+      // and any custom image), not a failure worth surfacing. Anything else is:
+      // Change Plan builds `change_licenses` from this list, and an empty list
+      // that really means "the request failed" would read as "drop them all".
+      if (error) {
+        if (response?.status === 404) return []
+        throw new Error(describeApiError(error))
+      }
+      return data?.software || []
+    },
+    enabled: !!client && !!osSlug,
+    staleTime: 300000
+  })
+}
+
+/** The licences a server currently holds, used to prefill the licence controls. */
+export function useServerSoftware(client: BinaryLaneClient | null, serverId: number | null | undefined) {
+  return useQuery({
+    queryKey: ['server-software', serverId],
+    queryFn: async () => {
+      if (!client || !serverId) return []
+      const { data, error } = await client.GET('/v2/servers/{server_id}/software', {
+        params: { path: { server_id: serverId }, query: { per_page: 200 } as any }
+      })
+      if (error) throw new Error(describeApiError(error))
+      return data?.licensed_software || []
+    },
+    enabled: !!client && !!serverId,
+    staleTime: 60000
   })
 }

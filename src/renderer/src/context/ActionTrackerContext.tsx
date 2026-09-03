@@ -247,6 +247,8 @@ export function ActionTrackerProvider({
             // showing what it held before the action ran.
             void queryClient.invalidateQueries({ queryKey: ['serverBackups', resourceId] })
             void queryClient.invalidateQueries({ queryKey: ['serverSnapshots', resourceId] })
+            // Likewise the licences a resize's `change_licenses` just altered.
+            void queryClient.invalidateQueries({ queryKey: ['server-software', resourceId] })
           }
         } catch (err) {
           if (controller.signal.aborted) return
