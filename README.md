@@ -35,6 +35,7 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 * **🌐 VPCs, Firewalls & Load Balancers**: Interactive Inbound/Outbound firewall rule manager, VPC network routing, and load balancer health monitoring.
 * **💾 Snapshots & Automated Backups**: Create point-in-time snapshots, manage scheduled nightly backups, and mount backup images as secondary drives.
 * **🌍 DNS Zone Manager**: Full DNS record management (A, AAAA, CNAME, MX, TXT, SRV, NS, CAA) with real-time propagation checks.
+* **🗺️ Network Map**: the whole account as one schematic — internet, load balancers, VPCs and servers, with each server's internet-reachable ports coloured by the firewall audit; click for details, export as SVG/PNG.
 * **🛡️ Fleet Firewall Matrix**: every server × every rule on one screen with an audit (SSH/RDP open to the world, no rules, shadowed rules), copy a ruleset to many servers behind a per-target diff, and local server groups/tags (`@web`) usable as targets everywhere.
 * **🧾 Change Review & History**: every mutation is confirmed in one dialog that shows what will change (before → after, or a line diff for firewall rule sets), with type-the-name for irreversible actions, and is recorded to a local per-account History with its real outcome.
 * **🔔 Tray / Menu Bar Monitor**: Live running/off/in-progress counts and prepaid credit in the tray, a Quick SSH submenu, native notifications when a server changes state, an action finishes or fails, or credit runs low (each mutable from the tray), close-to-tray and launch-at-login.

@@ -12,6 +12,7 @@ import {
   Terminal,
   Activity,
   History,
+  Waypoints,
   ChevronLeft,
   X, UserCircle} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
@@ -29,6 +30,7 @@ export type ActiveTab =
   | 'billing'
   | 'account'
   | 'history'
+  | 'map'
   | 'terminal'
 
 export type ServerSubTab =
@@ -71,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'vpcs', label: 'VPCs', icon: Network },
     { id: 'firewall', label: 'Firewall', icon: Shield },
     { id: 'loadbalancers', label: 'Load Balancers', icon: Layers },
+    { id: 'map', label: 'Network Map', icon: Waypoints },
     { id: 'dns', label: 'DNS & Domains', icon: Globe },
     { id: 'backups', label: 'Backups', icon: Archive },
     { id: 'keys', label: 'SSH Keys', icon: Key },

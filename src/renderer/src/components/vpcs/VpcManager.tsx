@@ -13,7 +13,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useVpcs, useServers } from '../../api/queries'
+import { useVpcs } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
@@ -22,11 +22,13 @@ import { describeApiError } from '../../api/queries'
 type ServerResponse = components['schemas']['Server']
 
 interface VpcManagerProps {
+  /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
+  servers: any[]
   client: BinaryLaneClient | null
   onSelectServer?: (server: ServerResponse) => void
 }
 
-export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }) => {
+export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, servers }) => {
   const queryClient = useQueryClient()
   const [isCreating, setIsCreating] = useState(false)
   const [vpcName, setVpcName] = useState('')
@@ -40,10 +42,8 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer }
   const [actionServerId, setActionServerId] = useState<number | null>(null)
 
   const vpcsQuery = useVpcs(client)
-  const serversQuery = useServers(client)
 
   const vpcs = vpcsQuery.data || []
-  const servers = serversQuery.data || []
 
   // Create new VPC
   const handleCreateVpc = async (e: React.FormEvent) => {
