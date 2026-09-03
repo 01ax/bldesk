@@ -259,6 +259,12 @@ export async function initMobileBridge(): Promise<void> {
     changelogUpdate: undefined as any,
     changelogList: undefined as any,
     changelogClear: undefined as any,
+    // Cloud-init templates use the renderer library's localStorage fallback.
+    templatesList: undefined as any,
+    templatesGet: undefined as any,
+    templatesSave: undefined as any,
+    templatesRemove: undefined as any,
+    templatesReveal: undefined as any,
     // No tray on Android; the summary has nowhere to go.
     updateTray: async () => {},
     getTraySettings: async () => ({
