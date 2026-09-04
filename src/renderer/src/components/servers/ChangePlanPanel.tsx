@@ -833,11 +833,15 @@ export const ChangePlanPanel: React.FC<{
       <div className="grid gap-4 sm:grid-cols-2 [&>*]:min-w-0">
         <div>
           <label className={labelClass}>IP Addresses</label>
+          {/* Capped rather than full-width: the longest option is about 30
+              characters ("8 IP addresses (+$14.00)"), so stretching it across
+              half the panel just made a short control look oversized. Still
+              w-full underneath, so it shrinks with the column on a phone. */}
           <select
             value={ipCount}
             onChange={(e) => setIpCount(Number(e.target.value))}
             disabled={busy}
-            className={selectClass}
+            className={`${selectClass} max-w-sm`}
           >
             {/* Falls back to the server's own size while no plan is selected:
                 reading only from `selected` showed "+$0.00" for an address that
