@@ -680,9 +680,13 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               return (
                 <div
                   key={idx}
-                  className="p-3 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded-lg flex items-center justify-between text-xs hover:border-[#017cb6] transition"
+                  /* Wraps on a phone. The row is index, action, protocol, port,
+                     source and the controls; at 412px that is ~140px more than
+                     fits, and without wrapping the controls simply spilled out
+                     of the card with no way to reach them. */
+                  className="p-3 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs hover:border-[#017cb6] transition"
                 >
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
                     {/* Index & Reordering */}
                     <div className="flex items-center gap-1 bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] px-1.5 py-0.5 rounded">
                       <span className="font-mono text-[10px] text-[#6c757d] font-bold w-4 text-center">
