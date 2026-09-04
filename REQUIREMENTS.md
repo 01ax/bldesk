@@ -185,10 +185,9 @@ Based on the 94 endpoints, 206 schemas, and 42 server actions in the BinaryLane 
 
 ---
 
-### 3.8 Backups, Snapshots, Images & Storage
-* **Backups & Snapshots**:
+### 3.8 Backups, Images & Storage
+* **Backups**:
   * `GET /v2/servers/{server_id}/backups`: List automatic daily/weekly backups with retention status.
-  * `GET /v2/servers/{server_id}/snapshots`: List manual snapshots.
   * `POST /v2/servers/{server_id}/backups`: Upload external backup image.
 * **Image Registry & Disks**:
   * `GET /v2/images`: Browse base OS distributions, pre-configured application stacks, and custom images.
@@ -223,9 +222,9 @@ Based on the 94 endpoints, 206 schemas, and 42 server actions in the BinaryLane 
 ```mermaid
 graph TD
     subgraph "Desktop Core Integrations"
-        Tray["System Tray / Menu Bar Applet<br/>• Fleet Health Icon (🟢/🟡/🔴)<br/>• Quick Actions (Reboot, Snapshot)<br/>• Background Alert Polling"]
+        Tray["System Tray / Menu Bar Applet<br/>• Fleet Health Icon (🟢/🟡/🔴)<br/>• Quick Actions (Reboot, Backup)<br/>• Background Alert Polling"]
         Palette["Global Command Palette (Cmd+K)<br/>• Fuzzy Search Servers, DNS, VPCs<br/>• Instant Actions & Keyboard Nav"]
-        Notify["Native Desktop Notifications<br/>• High CPU/RAM Alerts<br/>• Backup/Snapshot Completion<br/>• Outage & Action Warnings"]
+        Notify["Native Desktop Notifications<br/>• High CPU/RAM Alerts<br/>• Backup Completion<br/>• Outage & Action Warnings"]
         Vault["SafeStorage Vault<br/>• Hardware/OS Keychain Encryption<br/>• Multi-Account Profile Switching"]
         Terminal["Terminal & Console Superpowers<br/>• Native SSH Launch (WT/iTerm2)<br/>• In-App xterm.js<br/>• Detached VNC Rescue Window"]
     end
@@ -278,7 +277,7 @@ Phase 4: Networking, Firewall, VPC & DNS
  └── IPv4 PTR / IPv6 Reverse DNS Manager
 
 Phase 5: Backups, Images, SSH Keys & Billing
- ├── Backups & Snapshots Manager (Schedule, Restore, Clone, Attach)
+ ├── Backups Manager (Schedule, Restore, Clone, Attach)
  ├── Public SSH Keys Vault (Import from ~/.ssh)
  ├── Image Registry & Disk Downloads
  └── Invoices, Credit Balance & Data Pooling Monitor

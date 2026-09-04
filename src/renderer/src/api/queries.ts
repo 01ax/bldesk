@@ -882,7 +882,7 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
   })
 }
 
-// --- BACKUPS & SNAPSHOTS ---
+// --- BACKUPS ---
 
 export function useServerBackups(client: BinaryLaneClient | null, serverId: number | null) {
   return useQuery({
@@ -899,20 +899,14 @@ export function useServerBackups(client: BinaryLaneClient | null, serverId: numb
   })
 }
 
-export function useServerSnapshots(client: BinaryLaneClient | null, serverId: number | null) {
-  return useQuery({
-    queryKey: ['serverSnapshots', serverId],
-    queryFn: async () => {
-      if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/snapshots', {
-        params: { path: { server_id: serverId } }
-      })
-      if (error) return []
-      return data?.snapshots || []
-    },
-    enabled: !!client && !!serverId
-  })
-}
+/*
+ * There is deliberately no second query beside this one. BinaryLane's
+ * `/v2/servers/{server_id}/snapshots` is documented as "Server snapshots are
+ * not implemented. This will always return 0 results", so asking it was one
+ * request per server view that could never add a row to the list. The
+ * on-demand image BinaryLane does take is a `temporary` backup - the API's own
+ * enum is `BackupSlot` - so backups are the whole of what a server holds.
+ */
 
 export interface TakeBackupParams {
   label?: string
@@ -945,7 +939,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
 
       const p: TakeBackupParams = typeof params === 'string' ? { label: params } : params || {}
       // Default to 'oldest' replacement strategy so that if all slots of this type are occupied,
-      // BinaryLane smoothly replaces/rotates the oldest existing snapshot instead of throwing an error.
+      // BinaryLane smoothly replaces/rotates the oldest existing backup instead of throwing an error.
       const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'oldest')
       const backupType = replacementStrategy === 'specified' ? undefined : (p.backupType || 'temporary')
 
@@ -979,7 +973,6 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serverBackups', serverId] })
-      queryClient.invalidateQueries({ queryKey: ['serverSnapshots', serverId] })
       queryClient.invalidateQueries({ queryKey: ['serverActions', serverId] })
       queryClient.invalidateQueries({ queryKey: ['servers'] })
     }
@@ -1203,7 +1196,7 @@ export interface PollActionOptions {
   intervalMs?: number | ((elapsedMs: number) => number)
   /** Lets a tracker drop an action on profile switch or teardown. */
   signal?: AbortSignal
-  /** Fires on every fresh snapshot, for progress display. */
+  /** Fires on every fresh poll result, for progress display. */
   onProgress?: (action: ServerAction) => void
 }
 
@@ -1225,7 +1218,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** Classify a snapshot, or null if it is genuinely still working. */
+/** Classify a polled action, or null if it is genuinely still working. */
 function classifyAction(action: ServerAction): SettledAction | null {
   // Both checked before status on purpose: a stalled action still says `in-progress`.
   if (action.user_interaction_required) return { state: 'awaiting-interaction', action }
@@ -1401,7 +1394,7 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       // Await the refetch so the mutation lock only releases once the UI has fresh data —
       // whole-list writes (IPv6 reverse nameservers) must never be built from a stale server.
       // refetchType 'all' also refreshes the server query when its tab is currently unmounted,
-      // so a remount never briefly renders the pre-action snapshot.
+      // so a remount never briefly renders the pre-action state.
       // The wait is capped: the refetch GETs have no timeout of their own, and a wedged
       // connection must not hold the UI lock after the action itself has already timed out.
       // The refetch keeps running in the background past the cap.

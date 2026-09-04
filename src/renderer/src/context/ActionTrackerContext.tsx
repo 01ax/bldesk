@@ -173,7 +173,7 @@ export function ActionTrackerProvider({
                 detail: `Blocked by invoice #${settled.action.blocking_invoice_id}, which requires payment.`
               })
             }
-            // No `initial`: pass the stale stalled snapshot back in and it would
+            // No `initial`: pass the stale stalled action back in and it would
             // classify the same way again without ever asking BinaryLane.
             settled = await pollActionToSettled(client, action.id, pollOptions)
           }
@@ -242,11 +242,10 @@ export function ActionTrackerProvider({
           if (settled.action?.resource_id) {
             const resourceId = settled.action.resource_id
             void queryClient.invalidateQueries({ queryKey: ['server', resourceId] })
-            // Backups and snapshots are cached under their own keys, so a
-            // completed take_backup or restore would otherwise leave the list
-            // showing what it held before the action ran.
+            // Backups are cached under their own key, so a completed
+            // take_backup or restore would otherwise leave the list showing
+            // what it held before the action ran.
             void queryClient.invalidateQueries({ queryKey: ['serverBackups', resourceId] })
-            void queryClient.invalidateQueries({ queryKey: ['serverSnapshots', resourceId] })
             // Likewise the licences a resize's `change_licenses` just altered.
             void queryClient.invalidateQueries({ queryKey: ['server-software', resourceId] })
           }

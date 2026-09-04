@@ -4,7 +4,7 @@
  *   restart jumpbox                 reboot one server
  *   shutdown wp-*                   graceful shutdown of every server matching a glob
  *   start wp-web-1-syd,wp-web-2-syd power on a comma-separated list
- *   snapshot wp-web-3-bne "pre-upgrade"
+ *   backup wp-web-3-bne "pre-upgrade"
  *   ssh 43.224                      ssh to the server whose IPv4 starts with 43.224
  *   open jumpbox network            open a server on a sub-tab
  *   console #12345                  rescue console by id
@@ -60,9 +60,13 @@ const VERB_ALIASES: Record<string, Verb> = {
   cycle: 'cycle',
   powercycle: 'cycle',
   'power-cycle': 'cycle',
-  snapshot: 'snapshot',
-  snap: 'snapshot',
-  backup: 'snapshot',
+  backup: 'backup',
+  backups: 'backup',
+  bak: 'backup',
+  // Tolerated spellings from before the rename: the product has no snapshots,
+  // but people's fingers and their recent-commands list still do.
+  snapshot: 'backup',
+  snap: 'backup',
   ssh: 'ssh',
   console: 'console',
   rescue: 'console',
@@ -81,7 +85,7 @@ const VERB_ALIASES: Record<string, Verb> = {
   '?': 'help'
 }
 
-export type Verb = PowerVerb | 'snapshot' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'create' | 'go' | 'help'
+export type Verb = PowerVerb | 'backup' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'create' | 'go' | 'help'
 
 export interface VerbSpec {
   verb: Verb
@@ -97,7 +101,7 @@ export const VERB_SPECS: VerbSpec[] = [
   { verb: 'poweroff', usage: 'poweroff <servers>', summary: 'Hard power off', mutates: true },
   { verb: 'start', usage: 'start <servers>', summary: 'Power on stopped servers', mutates: true },
   { verb: 'cycle', usage: 'cycle <servers>', summary: 'Hard power cycle', mutates: true },
-  { verb: 'snapshot', usage: 'snapshot <servers> ["label"]', summary: 'Take a temporary snapshot', mutates: true },
+  { verb: 'backup', usage: 'backup <servers> ["label"]', summary: 'Take a temporary backup', mutates: true },
   { verb: 'dns', usage: 'dns add <TYPE> <fqdn> <value> [priority]', summary: 'Add a DNS record to a hosted zone', mutates: true },
   { verb: 'tag', usage: 'tag add|remove <name> <servers>', summary: 'Tag servers locally; @name then targets them anywhere', mutates: false },
   { verb: 'create', usage: 'create <hostname> from <template>', summary: 'New server from a template (opens the create form prefilled)', mutates: true },
@@ -119,7 +123,7 @@ export const TARGET_HELP =
 // Tokeniser
 // ---------------------------------------------------------------------------
 
-/** Split on whitespace, honouring "double quotes" so a snapshot label can carry spaces. */
+/** Split on whitespace, honouring "double quotes" so a backup label can carry spaces. */
 export function tokenise(input: string): string[] {
   const out: string[] = []
   let cur = ''
@@ -150,7 +154,7 @@ export function tokenise(input: string): string[] {
 
 export type ParsedCommand =
   | { kind: 'power'; verb: PowerVerb; targets: string }
-  | { kind: 'snapshot'; targets: string; label?: string }
+  | { kind: 'backup'; targets: string; label?: string }
   | { kind: 'ssh'; target: string }
   | { kind: 'console'; target: string }
   | { kind: 'open'; target: string; subTab?: DeepLinkServerSubTab; console?: boolean }
@@ -201,13 +205,13 @@ export function parseCommand(input: string): ParsedCommand | null {
       if (args.length === 0) return incomplete()
       return { kind: 'power', verb, targets: args.join(',') }
 
-    case 'snapshot': {
+    case 'backup': {
       if (args.length === 0) return incomplete()
       // Everything after the first token is the label, so both
-      // `snapshot web "before upgrade"` and `snapshot web before upgrade` work.
+      // `backup web "before upgrade"` and `backup web before upgrade` work.
       const [targets, ...rest] = args
       const label = rest.join(' ').trim() || undefined
-      return { kind: 'snapshot', targets, label }
+      return { kind: 'backup', targets, label }
     }
 
     case 'ssh':
@@ -315,7 +319,6 @@ function normaliseTab(raw: string): DeepLinkTab | undefined {
     'load-balancers': 'loadbalancers',
     domains: 'dns',
     backup: 'backups',
-    snapshots: 'backups',
     ssh: 'keys',
     'ssh-keys': 'keys',
     invoices: 'billing',

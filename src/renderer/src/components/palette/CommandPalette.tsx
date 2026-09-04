@@ -13,7 +13,7 @@ import {
   Power,
   RotateCw,
   Play,
-  Camera,
+  Archive,
   Radio,
   Link2,
   ExternalLink,
@@ -328,7 +328,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
         rows.push({
           id: 'help',
-          title: 'Type a verb: restart, shutdown, start, snapshot, ssh, open, console, link, dns, tag, go — or ? for help',
+          title: 'Type a verb: restart, shutdown, start, backup, ssh, open, console, link, dns, tag, go — or ? for help',
           category: 'Tip',
           icon: HelpCircle,
           tone: 'muted',
@@ -533,12 +533,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       return { rows, header, primary, plan }
     }
 
-    // --- Multi-server mutations: power verbs and snapshot
-    if (parsed.kind === 'power' || parsed.kind === 'snapshot') {
+    // --- Multi-server mutations: power verbs and backup
+    if (parsed.kind === 'power' || parsed.kind === 'backup') {
       const { matches, unmatched } = resolveTargets(parsed.targets)
       const spec = parsed.kind === 'power' ? POWER_VERBS[parsed.verb] : null
-      const label = parsed.kind === 'power' ? spec!.label : `Snapshot${parsed.label ? ` "${parsed.label}"` : ''}`
-      const icon = parsed.kind === 'power' ? POWER_ICON[parsed.verb] : Camera
+      const label = parsed.kind === 'power' ? spec!.label : `Backup${parsed.label ? ` "${parsed.label}"` : ''}`
+      const icon = parsed.kind === 'power' ? POWER_ICON[parsed.verb] : Archive
       const { eligible, skipped } =
         parsed.kind === 'power' ? partitionByStatus(matches, spec!.requires) : { eligible: matches, skipped: [] as Array<TargetMatch & { reason: string }> }
 
@@ -719,7 +719,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            placeholder="Search, or type a command: restart wp-*, ssh jumpbox, snapshot db …"
+            placeholder="Search, or type a command: restart wp-*, ssh jumpbox, backup db …"
             value={query}
             disabled={stage === 'running'}
             readOnly={stage === 'confirm' || stage === 'done'}
