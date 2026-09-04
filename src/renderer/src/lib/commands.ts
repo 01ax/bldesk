@@ -63,6 +63,10 @@ const VERB_ALIASES: Record<string, Verb> = {
   backup: 'backup',
   backups: 'backup',
   bak: 'backup',
+  // Tolerated spellings from before the rename: the product has no snapshots,
+  // but people's fingers and their recent-commands list still do.
+  snapshot: 'backup',
+  snap: 'backup',
   ssh: 'ssh',
   console: 'console',
   rescue: 'console',
