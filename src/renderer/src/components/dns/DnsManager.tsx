@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useEffect, useState } from 'react'
 import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight, ExternalLink} from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -253,6 +254,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       target: { kind: 'domain', name: domain.name },
       summary: `Deletes the DNS zone for ${domain.name}${typeof recordCount === 'number' ? ` and all ${recordCount} record${recordCount === 1 ? '' : 's'} in it` : ' and every record in it'}.`,
       severity: 'irreversible',
+      helpSlug: 'dns#worked-example',
       notes: ['There is no undo. BinaryLane keeps no copy of a deleted zone, so the records cannot be recovered afterwards — they would have to be recreated by hand.'],
       extraAction: domain.zone_file ? { label: 'Copy the zone file first', onClick: () => copy('zone', domain.zone_file) } : undefined,
       confirmLabel: 'Remove DNS hosting'
@@ -323,6 +325,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Flush DNS Cache</span>
         </button>
+        <HelpLink slug="dns" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">

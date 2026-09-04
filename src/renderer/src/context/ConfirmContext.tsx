@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ShieldAlert } from 'lucide-react'
 import { Modal } from '../components/ui/Modal'
+import { HelpLink } from '../components/ui/HelpLink'
 import type { DiffLine, FieldChange } from '../lib/diff'
 import { summariseDiff } from '../lib/diff'
 import { recordChange, type ChangeSeverity, type ChangeTarget } from '../lib/changelog'
@@ -17,6 +18,7 @@ import { recordChange, type ChangeSeverity, type ChangeTarget } from '../lib/cha
  */
 
 export interface ConfirmRequest {
+  helpSlug?: string
   /** Verb phrase: "Reboot server", "Delete firewall rule". */
   title: string
   /** What it applies to, shown in monospace next to the title. */
@@ -208,6 +210,7 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
       busy={busy}
       noSelect
       labelledBy="confirm-title"
+      headerRight={req.helpSlug && !busy ? <HelpLink slug={req.helpSlug} onOpen={() => finish(false)} /> : undefined}
       footer={
         <div className="flex items-center justify-between gap-2 p-4">
           <span className="text-[10px] text-[#6c757d]">

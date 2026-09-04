@@ -34,6 +34,8 @@ import { useDomains, useServerActionMutation, describeApiError } from '../../api
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { launchSsh } from '../../lib/launchSsh'
+import { searchHelp } from '../../lib/help'
+import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags } from '../../lib/serverGroups'
 import {
@@ -95,6 +97,7 @@ interface Outcome {
 type Stage = 'input' | 'confirm' | 'running' | 'done'
 
 const NAV_ROWS: Array<{ tab: ActiveTab; title: string; icon: LucideIcon }> = [
+  { tab: 'help', title: 'Help & Ask BinaryLane', icon: HelpCircle },
   { tab: 'servers', title: 'Go to Virtual Servers', icon: Server },
   { tab: 'vpcs', title: 'Go to VPC Networks', icon: Network },
   { tab: 'firewall', title: 'Go to Firewall Rules', icon: Shield },
@@ -339,7 +342,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
 
     // --- Help
+    if (parsed.kind === 'ask') {
+      header = { icon: HelpCircle, text: 'Ask about published BinaryLane articles. Leave out account details.' }
+      rows.push({ id: 'ask-binarylane', title: parsed.query, category: 'Help', icon: HelpCircle,
+        onEnter: () => { openHelp({ query: parsed.query, ask: true }); close() } })
+      return { rows, header, primary, plan }
+    }
     if (parsed.kind === 'help') {
+      if (parsed.query) {
+        header = { icon: HelpCircle, text: 'Help for BLDesk' }
+        for (const hit of searchHelp(parsed.query).slice(0, 20)) rows.push({
+          id: `help-page-${hit.page.slug}`, title: hit.page.title, subtitle: hit.page.summary,
+          category: 'Help', icon: HelpCircle,
+          onEnter: () => { openHelp({ slug: hit.page.slug, heading: hit.heading }); close() }
+        })
+        return { rows, header, primary, plan }
+      }
       header = { icon: HelpCircle, text: 'Commands. Targets accept names, globs (wp-*), #id, IPv4 prefixes, and comma lists.' }
       for (const spec of VERB_SPECS.filter((s) => s.verb !== 'help')) {
         rows.push({
@@ -362,7 +380,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         text: parsed.problem ?? `Usage: ${parsed.usage}`,
         tone: parsed.problem ? 'bad' : 'muted'
       }
-      const wantsServer = !['go', 'dns', 'help'].includes(parsed.verb)
+      const wantsServer = !['go', 'dns', 'help', 'ask'].includes(parsed.verb)
       if (wantsServer && !parsed.problem) {
         for (const s of servers) {
           rows.push({

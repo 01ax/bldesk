@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useRef } from 'react'
 import {
   Shield,
@@ -261,6 +262,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       target: fwTarget(),
       summary: `Removes every rule. With no rules, BinaryLane's external firewall allows all inbound traffic to ${activeServer?.name || activeServerId}.`,
       severity: 'irreversible',
+      helpSlug: 'firewall#disable-firewall',
       notes: ['Export the rules first if you may want them back — there is no undo on the BinaryLane side.'],
       diff: diffLines(currentRules.map(describeFirewallRule), []),
       confirmLabel: 'Disable firewall'
@@ -467,6 +469,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </button>
           </>
           )}
+          <HelpLink slug="firewall" />
         </div>
       </div>
 

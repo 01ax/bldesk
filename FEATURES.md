@@ -198,6 +198,16 @@ tag add prod wp-*
 
 ---
 
+## 13. Help & Ask BinaryLane
+
+**Status: implemented, desktop- and Android-emulator-verified; not yet released.** One Help tab, one search box, two sources. Local Markdown covers every top-level view and server sub-tab, palette verbs, shortcuts and worked examples. Contextual links and `bldesk://help/<slug>#heading` open the relevant guide. `help <words>` searches locally; `ask <question>` / `??` submits a published-article question. See [verification notes](docs/HELP_VERIFICATION.md).
+
+Ask uses a fixed origin in `src/shared/help-api.ts`, desktop main-process IPC and the Android HTTP bridge, with a 20-second timeout and no ask retries. It does not attach account data. Suggestions, article links and helpful/not-helpful feedback are included; local results remain available on failure. Docs are bundled through the Vite `@help` alias, not fetched at runtime. The help guard enforces coverage and internal links.
+
+Deferred: streaming, chat follow-ups, per-account token quotas and answer caching. Android 36 native bridge and phone layouts passed on a Pixel 7 ARM emulator; physical-device and older-Android coverage remain separate checks.
+
+---
+
 ## Built outside this list
 
 Shipped between v1.0.24 (1 Sep 2026) and v1.0.59 (3 Sep 2026) without being an entry above. Listed so the list above stays honest about what the app already is.

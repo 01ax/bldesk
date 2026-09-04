@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, ExternalLink, Globe, Loader2, Maximize2, Minus, Plus, Search, Terminal, Waypoints, X } from 'lucide-react'
 import { components } from '@shared/api/schema'
@@ -312,6 +313,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
               SVG
             </button>
           </div>
+          <HelpLink slug="map" />
         </div>
       </div>
 
@@ -618,4 +620,3 @@ const Row: React.FC<{ k: string; v: string; mono?: boolean; tone?: 'ok' | 'bad' 
     </span>
   </div>
 )
-

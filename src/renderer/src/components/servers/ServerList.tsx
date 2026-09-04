@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import { launchSsh } from '../../lib/launchSsh'
 import {
@@ -215,6 +216,7 @@ export const ServerList: React.FC<ServerListProps> = ({
             <Plus className="w-4 h-4" />
             <span>Add Server</span>
           </button>
+          <HelpLink slug="servers" />
         </div>
       </div>
 

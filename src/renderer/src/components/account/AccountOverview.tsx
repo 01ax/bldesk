@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React from 'react'
 import {
   UserCircle,
@@ -55,7 +56,8 @@ export const AccountOverview: React.FC<AccountOverviewProps> = ({ client }) => {
       <div>
         <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
           <UserCircle className="w-5 h-5 text-[#017cb6]" />
-          Account Details
+          <span className="flex-1">Account Details</span>
+          <HelpLink slug="account" />
         </h1>
         <p className="text-xs text-[#6c757d] dark:text-[#adb5bd] mt-1">
           Account status and security, as reported by the BinaryLane API.

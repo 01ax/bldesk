@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import {
   Receipt,
@@ -80,7 +81,8 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
       <div>
         <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
           <Receipt className="w-5 h-5 text-[#017cb6]" />
-          <span>Usage, Billing &amp; Invoices</span>
+          <span className="flex-1">Usage, Billing &amp; Invoices</span>
+          <HelpLink slug="billing" />
         </h1>
         <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
           Real-time account balance, pooled bandwidth, and tax invoice history.

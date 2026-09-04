@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useMemo, useState } from 'react'
 import { AlertTriangle, ArrowDown, ArrowUp, ChartNoAxesCombined, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { components } from '@shared/api/schema'
@@ -100,6 +101,7 @@ export const FleetHeatmap: React.FC<Props> = ({ client, servers, serversLoading,
             <button onClick={() => void fleet.refetch()} disabled={fleet.isFetching} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-[#ced4da] dark:border-[#495057] hover:border-[#017cb6] disabled:opacity-50 text-[#212529] dark:text-white">
               <RefreshCw className={`h-3.5 w-3.5 ${fleet.isFetching ? 'animate-spin' : ''}`} /> Refresh
             </button>
+            <HelpLink slug="heatmap" />
           </div>
         </div>
 
