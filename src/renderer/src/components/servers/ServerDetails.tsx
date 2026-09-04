@@ -418,7 +418,14 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               * space to its right. Inline, the line fills and breaks where it
               * runs out, like a sentence.
               */}
-            <div className="text-xs text-[#6c757d] dark:text-slate-400 mt-1 leading-6 [&>*]:align-middle [&>*]:mr-2">
+            {/*
+              * Items stay whole - "2 vCPUs / 4 GB RAM / 60 GB Disk" is one
+              * fact and reads badly broken across a line end - and the row
+              * spreads them to both margins instead, so the leftover width goes
+              * between the items rather than into a block of dead space at the
+              * right.
+              */}
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs text-[#6c757d] dark:text-slate-400 mt-1">
               <span className="font-mono text-[#212529] dark:text-slate-200">{primaryV4}</span>
               <span>•</span>
               <span className="font-mono">#{server.id}</span>
@@ -433,7 +440,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <span>•</span>
               <span>{server.region?.name || server.region?.slug?.toUpperCase()}</span>
               <span>•</span>
-              <span>{server.vcpus} vCPUs / {ramGB} GB RAM / {server.disk} GB Disk</span>
+              <span className="whitespace-nowrap">
+                {server.vcpus} vCPUs / {ramGB} GB RAM / {server.disk} GB Disk
+              </span>
               <span>•</span>
               <span>{server.image?.full_name || server.image?.name}</span>
             </div>

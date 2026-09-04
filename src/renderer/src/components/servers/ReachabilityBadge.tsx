@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route } from 'lucide-react'
+import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route, X } from 'lucide-react'
 import type { TcpProbeResult, TracerouteHop } from '@shared/ipc-types'
 import type { BinaryLaneClient } from '../../api/client'
 import { useFirewallRules } from '../../api/queries'
@@ -233,8 +233,22 @@ export const ReachabilityChip: React.FC<{
                 role="tooltip"
                 className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition pt-2 z-30 w-[min(20rem,calc(100vw-1.5rem))] fixed left-1/2 -translate-x-1/2 top-28 sm:absolute sm:top-full sm:translate-x-[-50%]"
               >
-                <span className="block p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
-                <span className="block">{explanation}</span>
+                <span className="block relative p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
+                {/*
+                  * A touch has no hover to leave. The card opens on focus and
+                  * would otherwise sit there until you found something else to
+                  * tap, so it needs a way out: blurring drops focus-within and
+                  * closes it.
+                  */}
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
+                  className="absolute top-1 right-1 p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white sm:hidden"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <span className="block pr-5">{explanation}</span>
                 <span className="flex items-center gap-3">
                   {onOpenFirewall && r.verdict.kind === 'blocked' && (
                     <button type="button" onClick={onOpenFirewall} className="text-[#017cb6] hover:underline">
