@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
+## [Unreleased]
+
+### Fixed
+- Enabled desktop zoom shortcuts (`Ctrl/Cmd` + plus/minus, with `0` to reset), with an 80–150% range shared by keyboard and View menu (#18).
+- Made desktop navigation and server sub-navigation scroll when the window is short or zoomed in, keeping the lower sections reachable.
+- Added a small UI guard check to typechecking for zoom ownership, shortcut configuration and startup wiring, plus an agent checklist for checking layouts at the supported zoom levels.
+
+---
+
 ## [1.0.60-beta.4] - 2026-09-04
 
 ### Fixed

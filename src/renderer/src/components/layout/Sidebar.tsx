@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
         >
           {/* Logo Header */}
-          <div>
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="h-14 flex items-center justify-center px-3 border-b border-white/10 overflow-hidden">
               {hasSubNav ? (
                 <img src={iconLogo} alt="BinaryLane" className="h-7 w-auto object-contain" />
@@ -189,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="p-2 border-t border-white/10 space-y-1">
+          <div className="p-2 border-t border-white/10 space-y-1 flex-shrink-0">
             <DarkModeToggle collapsed={hasSubNav} />
 
             {!hasSubNav && (
@@ -225,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Server Sub-Navigation Drawer (when a server is selected) */}
         {hasSubNav && (
           <div className="w-40 bg-[#f1f1f1] dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border-r border-[#ced4da] dark:border-[#373b3e] flex flex-col justify-between">
-            <div>
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {/* Server Back Bar */}
               <div className="p-3 border-b border-[#ced4da] dark:border-[#373b3e]">
                 <button
