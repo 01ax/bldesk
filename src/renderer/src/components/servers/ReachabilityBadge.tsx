@@ -150,6 +150,15 @@ export const ReachabilityChip: React.FC<{
   ip?: string
   onOpenFirewall?: () => void
 }> = ({ r, ip, onOpenFirewall }) => {
+  /*
+   * Dismissal has to be state rather than CSS. Android leaves a sticky :hover
+   * after a tap, so `group-hover` holds the card open however focus moves -
+   * blurring alone looked right in a scripted test and did nothing on a finger.
+   *
+   * Declared above the early return: it is a hook.
+   */
+  const [dismissed, setDismissed] = useState(false)
+
   if (!r.supported || !ip) return null
   const { result, busy, port } = r
   const explanation = explainTimeout(r)
@@ -212,10 +221,19 @@ export const ReachabilityChip: React.FC<{
             * and an unchanged one does not.
             */}
           {explanation && (
-            <span key={r.seq} className="relative group inline-flex p-1.5 -m-1.5 blink-once">
+            <span
+              key={r.seq}
+              className="relative group inline-flex p-1.5 -m-1.5 blink-once"
+            >
               <button
                 type="button"
                 aria-label="Why is this unreachable?"
+                onClick={(e) => {
+                  // Focus explicitly: after a dismissal the card needs hover or
+                  // focus to come back, and a tap gives neither reliably.
+                  setDismissed(false)
+                  e.currentTarget.focus()
+                }}
                 className="inline-flex text-current opacity-70 hover:opacity-100"
               >
                 <HelpCircle className="w-3.5 h-3.5" />
@@ -229,6 +247,7 @@ export const ReachabilityChip: React.FC<{
               {/* focus-within as well as hover: a hover-only tooltip is
                   unreachable by keyboard, and the card holds the only route to
                   the firewall link and the traceroute action. */}
+              {!dismissed && (
               <span
                 role="tooltip"
                 className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition pt-2 z-30 w-[min(20rem,calc(100vw-1.5rem))] fixed left-1/2 -translate-x-1/2 top-28 sm:absolute sm:top-full sm:translate-x-[-50%]"
@@ -243,7 +262,10 @@ export const ReachabilityChip: React.FC<{
                 <button
                   type="button"
                   aria-label="Close"
-                  onClick={() => (document.activeElement as HTMLElement | null)?.blur()}
+                  onClick={() => {
+                    setDismissed(true)
+                    ;(document.activeElement as HTMLElement | null)?.blur()
+                  }}
                   className="absolute top-1 right-1 p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white sm:hidden"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -267,6 +289,7 @@ export const ReachabilityChip: React.FC<{
                 </span>
                 </span>
               </span>
+              )}
             </span>
           )}
 

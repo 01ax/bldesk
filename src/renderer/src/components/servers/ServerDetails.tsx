@@ -419,13 +419,15 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               * runs out, like a sentence.
               */}
             {/*
-              * Items stay whole - "2 vCPUs / 4 GB RAM / 60 GB Disk" is one
-              * fact and reads badly broken across a line end - and the row
-              * spreads them to both margins instead, so the leftover width goes
-              * between the items rather than into a block of dead space at the
-              * right.
+              * Left aligned with an even gap. Two other arrangements were worse:
+              * text flow filled the width but broke
+              * "2 vCPUs / 4 GB RAM / 60 GB Disk" across the line end, and
+              * `justify-between` kept the items whole but stretched the gaps
+              * until the row read as unrelated fragments. Whatever is left over
+              * sits at the end of the line, which is what a line of text
+              * normally does.
               */}
-            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs text-[#6c757d] dark:text-slate-400 mt-1">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-[#6c757d] dark:text-slate-400 mt-1">
               <span className="font-mono text-[#212529] dark:text-slate-200">{primaryV4}</span>
               <span>•</span>
               <span className="font-mono">#{server.id}</span>
