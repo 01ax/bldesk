@@ -44,7 +44,7 @@ A PR that reworks the app's architecture to deliver a feature is a different pro
 ### 1. Verification (Always run before committing)
 ```bash
 # Typecheck both Node (main/preload) and Web (renderer) TypeScript projects,
-# then run the mutation-guard check (see "Mutations, confirmation and History"):
+# then run the mutation and UI guard checks:
 npm run typecheck
 
 # Full bundle build:
@@ -122,6 +122,18 @@ instead:
 The check reports the file and line and the fix. A genuine exception (a file
 that must mutate without the dialog) is added to `MUTATION_EXCEPTIONS` in the
 script **with a reason** — not by working around the check.
+
+---
+
+## Zoom and layout
+
+- `src/main/zoom.ts` owns desktop zoom and its **80–150%** range. Route new zoom controls through it; do not add independent zoom setters or Electron's built-in `zoomIn` / `zoomOut` / `resetZoom` menu roles, which bypass these limits.
+- Keep `watchWindowShortcuts` explicitly configured with `zoom: true` and both zoom installers wired into startup. The toolkit default silently disables plus/minus (#18).
+- Preserve scrolling in **both desktop navigation columns**, including `min-h-0` on the shrinking flex children and the non-shrinking footer. A short window must still reach every navigation item. Use the shared `Modal` for dialogs; its body scrolls while its header and footer remain accessible.
+- For changes to navigation, title bar, dialogs or dense tables, check **1024×680 and 1280×840 at 80%, 125% and 150%**. Reach the last navigation item, scroll to the last table column, and verify dialog close/confirm buttons. At 150% the minimum window uses compact navigation; that is expected.
+- Verify actual Electron zoom with Playwright, using isolated user data and API fixtures. CSS scaling or changing the browser viewport alone does not test desktop shortcuts. Use `webContents.sendInputEvent` for keyboard checks: Playwright's browser keyboard injection can bypass Electron's `before-input-event` handler. Also check View-menu limits and reset to 100%.
+
+`scripts/check-ui-guards.mjs` runs with `npm run typecheck` and catches zoom ownership/wiring mistakes. It does **not** verify scrolling or visual fit; the layout checks above are still needed. If the supported zoom range changes, update this section and verify the new endpoints.
 
 ---
 
