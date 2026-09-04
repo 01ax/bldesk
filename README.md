@@ -48,8 +48,12 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 | Shortcut | Action |
 | :--- | :--- |
 | `Cmd + K` / `Ctrl + K` | Open Command Palette (search servers, VPCs, actions) |
+| `Cmd/Ctrl + +` / `Cmd/Ctrl + -` | Zoom in / out (80–150%; `Cmd/Ctrl + =` also zooms in) |
+| `Cmd/Ctrl + 0` | Reset zoom to 100% |
 | `Cmd + R` / `F5` | Refresh & reload current view |
 | `Cmd + Option + I` / `F12` | Toggle Developer Tools Inspector |
+
+Desktop zoom is also available in the **View** menu (press `Alt` to reveal the menu on Windows/Linux). At larger zoom levels, navigation can switch to the compact layout; use the menu button or **More** to reach every section.
 
 ---
 
