@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
+## [1.0.60-beta.4] - 2026-09-04
+
+### Fixed
+- **Change Plan transfer hand-over and narrow layout** (*PR #45 by @01ax*):
+  - Changing base size now resolves transfer to the target plan's included transfer allowance (matching web panel behaviour), and displays the resulting allowance in the before → after review table as a Data row.
+  - Backup retention selectors and option grids no longer overflow in narrow windows (`min-w-0`).
+  - IP Addresses dropdown is constrained to `max-w-sm` instead of stretching across the screen.
+  - Backups view inside a server's page is pinned to that server (`initialServerId`) rather than presenting a redundant server picker.
+  - Standardised terminology across the UI and command palette: BinaryLane creates backups rather than snapshots (`snapshot` / `snap` remain silent palette aliases).
+  - Dropped temporary AI-written unit tests and `vitest` devDependency.
+
+---
+
 ## [1.0.60-beta.3] - 2026-09-04
 
 ### Fixed
