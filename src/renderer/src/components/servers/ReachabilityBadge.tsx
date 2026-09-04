@@ -157,7 +157,12 @@ export const ReachabilityChip: React.FC<{
   const failed = !!result && !result.ok
 
   return (
-    <span className="inline-flex items-center gap-2">
+    /*
+     * `shrink-0` because the title row does not wrap: the hostname truncates to
+     * make room, and the pill has to keep its full width or the "?" and the
+     * re-check control are the first things squeezed out.
+     */
+    <span className="inline-flex shrink-0 items-center gap-2">
       {/* No result yet: the only time the pill is a placeholder. */}
       {!result && busy && (
         <span className={`${pill} bg-[#e9ecef] dark:bg-[#343a40] text-[#6c757d] dark:text-slate-400`}>

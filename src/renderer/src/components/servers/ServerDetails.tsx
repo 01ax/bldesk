@@ -364,14 +364,23 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           {/* Header Info */}
           <div>
             <div className="flex items-center gap-2">
+              {/* An arrow, not a labelled row: it used to take a whole line of
+                  its own above the title. */}
               <button
                 onClick={onBack}
-                className="md:hidden text-xs text-[#017cb6] hover:underline flex items-center gap-1"
+                aria-label="All servers"
+                title="All servers"
+                className="md:hidden shrink-0 -ml-1 p-1 text-[#017cb6] hover:text-[#016594]"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Servers</span>
+                <ArrowLeft className="w-4 h-4" />
               </button>
-              <h1 className="text-base sm:text-lg font-bold text-[#212529] dark:text-white flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+              {/*
+                * Deliberately does not wrap. The hostname truncates instead, so
+                * the power pill and the reachability chip stay on the title row
+                * beside each other - the two together are the answer to "is this
+                * thing up", and splitting them across lines reads as unrelated.
+                */}
+              <h1 className="text-base sm:text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2 min-w-0">
                 <img src={distroIcon} alt="" className="w-5 h-5 object-contain shrink-0" />
                 {/*
                   * No "Server:" label - the distribution icon beside it already
@@ -386,7 +395,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   title={(server as any)._power
                         ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`
                         : 'From the API status field, which may not reflect power state'}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 ${state.pill}`}
+                  className={`shrink-0 px-2 py-0.5 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 ${state.pill}`}
                 >
                   {state.busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
                   {state.label}
