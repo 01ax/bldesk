@@ -440,7 +440,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <select
                 value={selectedKeyPath}
                 onChange={(e) => setSelectedKeyPath(e.target.value)}
-                className="bg-transparent text-xs text-[#212529] dark:text-slate-200 focus:outline-none cursor-pointer max-w-[120px]"
+                className="bg-transparent text-xs text-[#212529] dark:text-slate-200 focus:outline-none cursor-pointer max-w-[84px] sm:max-w-[120px]"
               >
                 <option value="">Default Key</option>
                 {localKeys.map((k) => (
@@ -462,7 +462,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
             >
               <Terminal className="w-3.5 h-3.5" />
-              <span>Launch SSH</span>
+              <span className="sm:hidden">SSH</span>
+              <span className="hidden sm:inline">Launch SSH</span>
             </button>
 
             <button
@@ -481,7 +482,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 <span>Building…</span>
               </span>
             ) : isRunning ? (
-              <>
+              /* One group: these two belong together, and wrapping used to put
+                 reboot on one line and power on the next. */
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   onClick={() => handleAction('reboot')}
                   disabled={!!actionInProgress}
@@ -498,7 +501,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 >
                   <Power className="w-3.5 h-3.5" />
                 </button>
-              </>
+              </div>
             ) : (
               <button
                 onClick={() => handleAction('power_on')}
