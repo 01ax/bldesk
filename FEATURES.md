@@ -63,7 +63,7 @@ Ideas for taking BLDesk from "mPanel in a window" to a fleet tool. Ordered rough
 
 ```
 restart jumpbox
-snapshot wp-web-3-bne
+backup wp-web-3-bne
 open console adamhomenet
 ssh 43.224
 dns add A foo.example.com 203.0.113.9
@@ -108,16 +108,16 @@ tag add prod wp-*
 
 ---
 
-## 7. Snapshot and backup timeline
+## 7. Backup timeline
 
 **Status: part-built.** The third bullet is done for resize; the timeline and fleet view are not.
 
-**Today:** `BackupManager.tsx` lists backups and snapshots per server, supports restore and nightly backup toggling. This week added a slot selector that only offers the retention the server actually has (v1.0.27; PR #35 moves that rule into `lib/backupSlots.ts` so Change Plan's pre-action backup shares it), direct download of snapshot and backup disk images (v1.0.27), automatic rotation of the oldest temporary snapshot, and tracking of every backup action with BinaryLane's own progress detail ("38.5GB of 40.0 GB (310MB/s)") rather than a bare "initiated" toast (v1.0.32). Restore goes through the #5 dialog as irreversible.
+**Today:** `BackupManager.tsx` lists a server's backups, supports restore and nightly backup toggling. This week added a slot selector that only offers the retention the server actually has (v1.0.27; PR #35 moves that rule into `lib/backupSlots.ts` so Change Plan's pre-action backup shares it), direct download of backup disk images (v1.0.27), automatic rotation of the oldest temporary backup, and tracking of every backup action with BinaryLane's own progress detail ("38.5GB of 40.0 GB (310MB/s)") rather than a bare "initiated" toast (v1.0.32). Restore goes through the #5 dialog as irreversible.
 
 **Proposed:**
-- Horizontal timeline per server: nightly backups as ticks, snapshots as pins, hover for size / age, click-to-restore with the #5 confirm flow.
+- Horizontal timeline per server: nightly backups as ticks, on-demand backups as pins, hover for size / age, click-to-restore with the #5 confirm flow.
 - Fleet view: "servers with no backup in the last 7 days" in amber, "backups disabled" in red.
-- ~~One-click "snapshot before I do this" offered from rebuild / resize / restore dialogs.~~ Change Plan's `pre_action_backup` (PR #35) takes a backup into a chosen slot before the resize runs. Rebuild and restore still do not offer it.
+- ~~One-click "back up before I do this" offered from rebuild / resize / restore dialogs.~~ Change Plan's `pre_action_backup` (PR #35) takes a backup into a chosen slot before the resize runs. Rebuild and restore still do not offer it.
 
 **Why it matters:** cheap to build from data already fetched, and it nudges users toward better backup hygiene.
 

@@ -186,7 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One confirm dialog, everywhere.** Cancel Server and Remove DNS Hosting no longer have their own dialogs: both use the shared confirm, which gained a **reason picker** (select + detail, forwarded to BinaryLane and recorded) and an **in-dialog side action** ("Copy the zone file first"). Both are `irreversible`, so the target's name must be typed, and both now land in History with their outcome — Cancel Server previously left no entry at all.
 - **Change Plan shows a before → after table** (plan, memory, storage, monthly cost ex-GST on both sides) instead of a sentence, and says the server restarts.
 - **Guard rails for contributors and agents.** `npm run typecheck` now also runs `scripts/check-mutation-guards.mjs`, which fails CI on a native `confirm()`, a new bespoke confirmation dialog, or any API mutation call whose handler neither confirms nor records to History (per call, not per file; a genuine non-change carries `// history: n/a — reason`). The rules and the fixes are written up in `AGENTS.md` under "Mutations, confirmation and History".
-- **Every create and attach now lands in History too.** The guard found ten silent mutations: take snapshot, add DNS record, add / import SSH key, create load balancer, add a backend, create VPC, attach a server to a VPC, attach / detach a backup drive. Each is recorded before it is submitted and settles to completed or failed.
+- **Every create and attach now lands in History too.** The guard found ten silent mutations: take backup, add DNS record, add / import SSH key, create load balancer, add a backend, create VPC, attach a server to a VPC, attach / detach a backup drive. Each is recorded before it is submitted and settles to completed or failed.
 
 ---
 
@@ -200,7 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Warns when shrinking memory or storage volumes.
 - **Cancel Server Modal** (*thanks @01ax!*):
   - Added guarded `DELETE /v2/servers/{id}` cancellation flow with optional cancellation reason dropdown and free-text input.
-  - Requires typing the exact server hostname to confirm irreversible deletion, displays current billing rate, and warns of attached backup/snapshot removal.
+  - Requires typing the exact server hostname to confirm irreversible deletion, displays current billing rate, and warns of attached backup removal.
 - **Customer-Facing Advanced Features Filter** (*thanks @01ax!*):
   - Filters raw operator-level hypervisor flags (`local-rtc`, `uefi-boot`, etc.) to customer-facing switches with mPanel labels and descriptions.
   - Preserves hidden operator switches when saving (`mergeHiddenFeatures`).
@@ -249,7 +249,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Fleet-wide firewall matrix** (FEATURES.md #2): a "Fleet matrix" view on the Firewall tab — servers down the side, rule signatures (protocol, ports, source) across the top, accept / drop / absent per cell, read from every server four at a time. An audit column flags SSH, RDP, VNC or Docker open to the world (red), database ports open to the world, servers with no rules at all, rules shadowed by a catch-all drop (amber), and sources that are not one of your servers (info). Flagged servers sort first; "Only flagged" narrows to them.
 - **Copy ruleset to N servers** from the matrix, with one combined before → after diff per target in the confirm, servers that already match skipped, and one History entry per server written.
-- **Server groups and tags**, kept locally per account since the API has none. Tag a server from its matrix row or from the palette (`tag add web wp-*`, `tag remove web #101`); a tag is a group, so `@web` works as a target anywhere the palette takes one (`restart @web`, `snapshot @db "nightly"`) and as a scope in the matrix. Saved groups can also be a pattern (`wp-web-*,wp-ha-lb`) that keeps matching new servers.
+- **Server groups and tags**, kept locally per account since the API has none. Tag a server from its matrix row or from the palette (`tag add web wp-*`, `tag remove web #101`); a tag is a group, so `@web` works as a target anywhere the palette takes one (`restart @web`, `backup @db "nightly"`) and as a scope in the matrix. Saved groups can also be a pattern (`wp-web-*,wp-ha-lb`) that keeps matching new servers.
 - **Clone firewall rules now shows a true before → after**: it reads the target's current rules first.
 
 ### Fixed
@@ -307,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Verb-first Command Palette** (FEATURES.md #4): `Cmd+K` now accepts commands, not just nouns.
-  - **Fleet actions with glob targets**: `restart wp-*`, `shutdown jumpbox,db-1`, `start #12345`, `cycle 43.224`, `snapshot web "pre-upgrade"`. Targets accept a name or prefix, a glob (`*`/`?`), `#id`, an IPv4 or IPv4 prefix, or a comma-separated mix.
+  - **Fleet actions with glob targets**: `restart wp-*`, `shutdown jumpbox,db-1`, `start #12345`, `cycle 43.224`, `backup web "pre-upgrade"`. Targets accept a name or prefix, a glob (`*`/`?`), `#id`, an IPv4 or IPv4 prefix, or a comma-separated mix.
   - **Status-aware preview**: servers that can't take the action (already off / already running) are shown as skipped with the reason, and patterns that match nothing are called out, before anything is submitted.
   - **Review step**: every mutating command shows the exact target list and needs a second `Enter` to run; submissions go one at a time and each is handed to the background action tracker, so outcomes arrive as toasts.
   - **Navigation verbs**: `ssh <server|ip>`, `console <server>`, `open <server> [network|firewall|…]`, `link <server>` (copies a `bldesk://` link), `go dns`.
@@ -471,9 +471,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.27] - 2026-09-01
 
 ### Added
-- **Backup & Snapshot Downloads**:
-  - Direct hypervisor disk image downloading and action tracking for snapshots.
-  - Automatic rotation of oldest temporary snapshots.
+- **Backup Downloads**:
+  - Direct hypervisor disk image downloading and action tracking for backups.
+  - Automatic rotation of oldest temporary backups.
 - **OS Distribution Logos**:
   - Added official vector logos for AlmaLinux, Debian, Fedora, FreeBSD, KDE Neon, openSUSE, Rocky Linux, Ubuntu, Windows, and BYO.
 - **Server Details Enhancements**:

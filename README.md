@@ -19,8 +19,8 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 ### ☀️ Cloud Network Firewall (Light Mode)
 ![BLDesk Cloud Network Firewall](docs/screenshots/firewall-light.png)
 
-### ☀️ Server Backups & Disk Snapshots (Light Mode)
-![BLDesk Server Backups & Snapshots](docs/screenshots/backups-light.png)
+### ☀️ Server Backups (Light Mode)
+![BLDesk Server Backups](docs/screenshots/backups-light.png)
 
 ---
 
@@ -33,13 +33,13 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 * **🔒 Hardware-Encrypted Vault**: API tokens and OAuth credentials secured with Electron `safeStorage` (macOS Keychain, Windows DPAPI, Linux Secret Service).
 * **🖥️ Native & Embedded Terminals**: One-click SSH launch in your native terminal (iTerm2, macOS Terminal, Windows Terminal, Alacritty) or inline web terminal via `xterm.js`.
 * **🌐 VPCs, Firewalls & Load Balancers**: Interactive Inbound/Outbound firewall rule manager, VPC network routing, and load balancer health monitoring.
-* **💾 Snapshots & Automated Backups**: Create point-in-time snapshots, manage scheduled nightly backups, and mount backup images as secondary drives.
+* **💾 On-Demand & Automated Backups**: Take a point-in-time backup into a daily, weekly, monthly or temporary slot, manage scheduled nightly backups, and mount backup images as secondary drives.
 * **🌍 DNS Zone Manager**: Full DNS record management (A, AAAA, CNAME, MX, TXT, SRV, NS, CAA) with real-time propagation checks.
 * **🗺️ Network Map**: the whole account as one schematic — internet, load balancers, VPCs and servers, with each server's internet-reachable ports coloured by the firewall audit; click for details, export as SVG/PNG.
 * **🛡️ Fleet Firewall Matrix**: every server × every rule on one screen with an audit (SSH/RDP open to the world, no rules, shadowed rules), copy a ruleset to many servers behind a per-target diff, and local server groups/tags (`@web`) usable as targets everywhere.
 * **🧾 Change Review & History**: every mutation is confirmed in one dialog that shows what will change (before → after, or a line diff for firewall rule sets), with type-the-name for irreversible actions, and is recorded to a local per-account History with its real outcome.
 * **🔔 Tray / Menu Bar Monitor**: Live running/off/in-progress counts and prepaid credit in the tray, a Quick SSH submenu, native notifications when a server changes state, an action finishes or fails, or credit runs low (each mutable from the tray), close-to-tray and launch-at-login.
-* **⌨️ Command Palette (`Cmd+K` / `Ctrl+K`)**: Fuzzy search across servers, IPs and tabs — and verb-first commands with glob targets: `restart wp-*`, `snapshot db "pre-upgrade"`, `ssh 43.224`, `open jumpbox firewall`, `dns add A foo.example.com 203.0.113.9`. Every mutating command previews its targets and needs a second `Enter`.
+* **⌨️ Command Palette (`Cmd+K` / `Ctrl+K`)**: Fuzzy search across servers, IPs and tabs — and verb-first commands with glob targets: `restart wp-*`, `backup db "pre-upgrade"`, `ssh 43.224`, `open jumpbox firewall`, `dns add A foo.example.com 203.0.113.9`. Every mutating command previews its targets and needs a second `Enter`.
 
 ---
 
