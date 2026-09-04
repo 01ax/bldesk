@@ -371,9 +371,17 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Servers</span>
               </button>
-              <h1 className="text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2">
-                <img src={distroIcon} alt="" className="w-5 h-5 object-contain" />
-                <span><span className="text-[#6c757d] dark:text-slate-400 font-normal">Server:</span> {server.name}</span>
+              <h1 className="text-base sm:text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2 min-w-0">
+                <img src={distroIcon} alt="" className="w-5 h-5 object-contain shrink-0" />
+                {/*
+                  * No "Server:" label - the distribution icon beside it already
+                  * says what this is, and on a phone the words cost room a long
+                  * hostname needs. The name itself truncates with the full value
+                  * on hover rather than pushing the status pill off the row.
+                  */}
+                <span className="truncate" title={server.name}>
+                  {server.name}
+                </span>
                 <span
                   title={(server as any)._power
                         ? `Power state from ${(server as any)._power.source === 'diagnostic' ? 'a hypervisor check' : 'performance samples'}${(server as any)._apiStatus !== server.status ? ` (API says ${(server as any)._apiStatus})` : ''}`

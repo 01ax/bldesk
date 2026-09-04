@@ -624,9 +624,13 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-5 space-y-4 flex-1 shadow-sm">
         <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
           <div>
-            <h3 className="text-sm font-bold text-[#212529] dark:text-white flex items-center gap-2">
-              <span>Evaluated Rules for {activeServer?.name || `Server #${activeServerId}`}</span>
-              <span className="text-xs font-normal text-[#6c757d] dark:text-slate-400">
+            <h3 className="text-sm font-bold text-[#212529] dark:text-white flex flex-wrap items-baseline gap-x-2 min-w-0">
+              <span className="min-w-0 break-words">
+                Evaluated Rules for {activeServer?.name || `Server #${activeServerId}`}
+              </span>
+              {/* `whitespace-nowrap`: squeezed into the leftover column it broke
+                  across two lines as "(16" / "rules)". */}
+              <span className="text-xs font-normal whitespace-nowrap text-[#6c757d] dark:text-slate-400">
                 ({currentRules.length} rules)
               </span>
             </h3>
