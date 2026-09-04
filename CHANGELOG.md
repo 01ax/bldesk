@@ -7,12 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 ---
  
-## [Unreleased]
+## [1.0.60-beta.5] - 2026-09-05
 
 ### Fixed
-- Enabled desktop zoom shortcuts (`Ctrl/Cmd` + plus/minus, with `0` to reset), with an 80–150% range shared by keyboard and View menu (#18).
-- Made desktop navigation and server sub-navigation scroll when the window is short or zoomed in, keeping the lower sections reachable.
-- Added a small UI guard check to typechecking for zoom ownership, shortcut configuration and startup wiring, plus an agent checklist for checking layouts at the supported zoom levels.
+- **Desktop zoom shortcuts and scrollable navigation** (#18, *PR #47 by @termau*):
+  - Enabled desktop zoom shortcuts (`Ctrl/Cmd` + plus/minus/equals, and `0` to reset), with an 80–150% bounded range (80%, 90%, 100%, 110%, 125%, 150%) shared by keyboard, View menu, and native `zoom-changed` events.
+  - Allowed both desktop navigation columns (global navigation and server sub-nav) to scroll vertically when the window is short or zoomed in, keeping lower items reachable while maintaining the footer.
+  - Added a lightweight UI source guard to `npm run typecheck` (`scripts/check-ui-guards.mjs`) verifying zoom ownership, shortcut configurations, and menu handler boundaries.
 
 ---
 
