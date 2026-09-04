@@ -705,7 +705,7 @@ export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
             <div className="pt-2 border-t border-[#ced4da] dark:border-[#373b3e] space-y-2">
               <h4 className="text-xs font-bold text-[#212529] dark:text-white flex items-center gap-2">
                 <Activity className="w-3.5 h-3.5 text-[#017cb6]" />
-                <span>Live Telemetry Snapshot</span>
+                <span>Live Telemetry</span>
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                 <div className="bg-[#f8f9fa] dark:bg-[#212529] p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e]">

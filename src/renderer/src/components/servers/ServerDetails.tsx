@@ -290,7 +290,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       title: 'Cancel server',
       target: { kind: 'server', id: server.id, name: server.name },
       summary:
-        'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups and snapshots attached to it go with it.',
+        'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups attached to it go with it.',
       severity: 'irreversible',
       notes: [
         'There is no undo - BinaryLane keeps no copy of a cancelled server.',

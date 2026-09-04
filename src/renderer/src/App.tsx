@@ -197,7 +197,7 @@ function MainDashboard() {
     void window.bldeskApi?.setProbeTargets?.(ips as string[])
   }, [apiServers])
 
-  // `selectedServer` is the object clicked in the list — a snapshot. The
+  // `selectedServer` is the object clicked in the list, copied at click time. The
   // details header reads status from it, so without this a server shut down
   // from the details view said "Running" until you went back and re-opened it.
   const liveSelectedServer = React.useMemo(

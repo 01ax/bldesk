@@ -211,7 +211,7 @@ const InlineEdit: React.FC<{
 // ---------------------------------------------------------------------------
 
 export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: initialServer }) => {
-  // The `server` prop is a snapshot from the list; poll the real thing so edits show up.
+  // The `server` prop is the list's copy; poll the real thing so edits show up.
   const serverQuery = useServer(client, initialServer.id)
   const server: Server = serverQuery.data || initialServer
   const vpcsQuery = useVpcs(client)
