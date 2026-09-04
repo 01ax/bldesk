@@ -22,7 +22,7 @@ Read the [palette grammar](help:palette). A non-mutating navigation action does 
 - Cmd/Ctrl+minus: zoom out.
 - Cmd/Ctrl+0: reset to 100%.
 
-Desktop zoom steps are 80%, 90%, 100%, 110%, 125% and 150%. The View menu uses the same bounds. At high zoom the compact navigation is intentional; scroll to reach lower items. Map zoom changes the map, not the whole application.
+Desktop zoom steps are 80%, 90%, 100%, 110%, 125% and 150%. The View menu uses the same bounds. Below 768 CSS pixels wide, the desktop sidebar is hidden: use the bottom navigation's More button to open the drawer and scroll to other pages. This includes a 1024-pixel-wide window at 150%, but not a 1280-pixel-wide window at 150%. Map zoom changes the map, not the whole application.
 
 ## Dialogs and help
 Escape closes an idle dialog; busy dialogs prevent accidental dismissal. Enter submits forms when valid. Tab and Shift+Tab move focus.

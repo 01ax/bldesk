@@ -15,7 +15,7 @@ BLDesk gives you BinaryLane account controls with desktop conveniences. Add a pr
 Token permissions are enforced by BinaryLane. See [BinaryLane's API guide](https://api.binarylane.com.au/reference/#section/Introduction).
 
 ## The local vault
-Desktop profiles use Electron's operating-system-backed safeStorage when available. The implementation has an encoded fallback when secure storage is unavailable: encoding is not encryption. Protect your OS account and device. Android uses secure storage with a preferences fallback on unsupported environments.
+Desktop profiles use Electron's operating-system-backed safeStorage when available. The implementation has an encoded fallback when secure storage is unavailable: encoding is not encryption. Android attempts secure storage first, but a failed secure-store write falls back to unencrypted Preferences, then localStorage if that also fails. Protect your OS account and device; the fallback is not limited to unsupported platforms.
 
 Removing a saved profile does not cancel cloud resources or revoke its API token. Revoke a compromised token in mPanel.
 

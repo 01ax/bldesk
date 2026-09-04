@@ -13,8 +13,8 @@ Enabling an address through the API does not guarantee that a customised guest i
 Adding or releasing paid IPv4 addresses belongs in [Change Plan](help:server-change-plan), not the interface list.
 
 ## Worked example
-When detaching a server from its VPC, the confirmation warns:
+Choose the public network in the VPC selector and choose Move. For a server named web-01, the confirmation says:
 
-“The server leaves its private network and reverts to the default public network. Anything reaching it over its VPC address will stop working.”
+“Move web-01 to the public network? Its private IP will change and existing private connections will drop.”
 
-Review dependencies first. Changing membership does not update guest routes or application configuration for you. See [VPCs](help:vpcs).
+Your server's name replaces web-01. This is a normal-severity review; the separate VPCs page's Detach action uses different wording. Review dependencies first. Changing membership does not update application configuration for you. See [VPCs](help:vpcs).

@@ -5,7 +5,7 @@ keywords: [cloud-init, user data, provisioning, yaml, bootstrap]
 ---
 
 # Cloud-init
-Use Cloud-init to inspect the provisioning data associated with the server. It describes initial guest setup; it is not a live configuration manager.
+Use Cloud-init to read stored user data and see whether the image supports it. Copy copies the displayed data. Save server as template captures the server's configuration and opens Templates for you to review and name it. The data area is read-only; this tab does not apply cloud-init to an existing guest.
 
 ## Read before reusing
 Cloud-init can contain passwords, keys, package sources and scripts. Treat it as sensitive. Do not paste it into Ask BinaryLane or share an unreviewed capture.

@@ -30,4 +30,4 @@ The confirmation says:
 
 “Nightly backups stop. Existing backups are kept until they age out.”
 
-This is different from deleting a selected image. Neither action is a substitute for exporting a backup you need to retain independently.
+This view has no delete-image action. Disabling the schedule is not a way to retain an image indefinitely; keep an independent copy of data you must preserve.

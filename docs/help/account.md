@@ -5,10 +5,12 @@ keywords: [account, profile, email, status, tax, payment method]
 ---
 
 # Account
-Use Account to inspect information returned for the current BinaryLane account, including its status and account details. A saved profile name is a BLDesk label; it does not rename the remote account.
+Account is a read-only view of email and verification, status, tax code, additional IPv4 limit, two-factor authentication status, configured payment-method types, available credit and unbilled charges.
+
+Update contact information, Configure authenticator app, Change password, Manage API access tokens, Newsletter options and Change billing details open mPanel. They are not inline editors. A saved profile name is a BLDesk label; it does not rename the remote account.
 
 ## Status and access
-If the account is incomplete, under review or locked, read the displayed status and follow up with BinaryLane. Changing a local profile label does not resolve a remote restriction.
+The component recognises Active, Incomplete, Warning and Locked, and displays other API status strings as returned. Read the displayed status; changing a local profile label does not resolve a remote restriction.
 
 Token permissions are enforced by BinaryLane. An authentication failure may mean the token was revoked or lacks the required scope; do not put it in a help search.
 

@@ -137,6 +137,8 @@ script **with a reason** — not by working around the check.
 
 Every new tab, sub-tab or verb ships with its help page; `scripts/check-help-guards.mjs` enforces coverage, front matter, contextual links and palette examples. Help source is `docs/help/*.md`, bundled through Vite's `@help` raw-import alias; update worked examples when confirmation text changes. Ask BinaryLane accepts only visible search text, never account context.
 
+For bundled BLDesk documentation, verify screen instructions against the component and quoted examples against the actual handler (including shared helpers). Verify service semantics against `openapi.json` and, when available, BinaryLane implementation source. Distinguish API/mPanel capabilities from controls BLDesk exposes. Record the checked sources in `docs/HELP_VERIFICATION.md`; coverage/build checks cannot establish content accuracy. This applies to the internal client docs, not the separate Ask BinaryLane answer-generation controls.
+
 ---
 
 ## 🚀 Release & Auto-Update Protocol

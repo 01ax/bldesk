@@ -15,7 +15,7 @@ For an example 20 GB secondary disk labelled data, deleting it warns:
 
 “Permanently deletes the 20 GB secondary disk "data". Everything on it is gone.”
 
-The actual size and label come from the selected disk. Check your backup, type the target name, and confirm only if you intend to destroy it. A normal disk-growth confirmation instead says:
+The actual size and label come from the selected disk. Check your backup and type the disk label (data in this example), not the server name. For an unlabelled disk, type its numeric ID. Confirm only if you intend to destroy it. A normal disk-growth confirmation instead says:
 
 “Grows the disk. The filesystem inside the OS still has to be extended to use the space.”
 

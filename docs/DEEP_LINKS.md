@@ -11,19 +11,20 @@ This also covers the "usability polish" items from FEATURES.md #12 that sit on t
 | Link | Effect |
 |---|---|
 | `bldesk://server/<id>` | Open the server's overview |
-| `bldesk://server/<id>/<subtab>` | Open a sub-tab: `overview`, `remote-access`, `usage`, `network`, `backups`, `firewall`, `settings`, `recovery` |
+| `bldesk://server/<id>/<subtab>` | Open a sub-tab: `overview`, `remote-access`, `usage`, `cloud-init`, `network`, `backups`, `firewall`, `settings`, `recovery`, `change-plan`, `cancel` |
 | `bldesk://console/<id>` | Open the server, then pop the out-of-band rescue console window |
 | `bldesk://ssh/<id>` | Open the server and launch native SSH (`root@<primary IPv4>`) |
-| `bldesk://tab/<name>` | Jump to a top-level tab: `servers`, `vpcs`, `firewall`, `loadbalancers`, `dns`, `backups`, `keys`, `billing`, `terminal` |
+| `bldesk://tab/<name>` | Jump to a top-level tab: `servers`, `templates`, `vpcs`, `firewall`, `loadbalancers`, `dns`, `backups`, `keys`, `billing`, `account`, `history`, `help`, `map`, `heatmap`, `terminal` |
+| `bldesk://help/<slug>#<heading>` | Open bundled help, optionally at a heading; no account lookup or profile switch |
 | `bldesk://home` (or bare `bldesk://`) | Just bring the window to the front |
 
-Any link accepts `?account=<profile name or email>`. If a saved profile matches (case-insensitive on name or email), BLDesk switches to it before routing. If nothing matches it logs a warning and uses the active profile.
+Links other than `bldesk://help/...` accept `?account=<profile name or email>`. If a saved profile matches (case-insensitive on name or email), BLDesk switches to it before routing. If nothing matches it logs a warning and uses the active profile. Help links ignore the account parameter.
 
 ```
 bldesk://server/12345/firewall?account=adam%40mammoth.com.au
 ```
 
-Unknown hosts, non-numeric ids, unknown sub-tabs (silently dropped → overview), and anything not starting with `bldesk:` are rejected by the parser; nothing user-controlled reaches a shell or a file path.
+Unknown hosts, invalid IDs, malformed percent escapes and unknown top-level tabs are rejected. An unknown server sub-tab is dropped and falls back to Overview; it does not reject the link. Help slugs and heading IDs accept lowercase letters, digits and hyphens; an unknown help page displays “Help page not found”. SSH links resolve a server ID before invoking the native SSH launcher.
 
 ---
 
@@ -70,7 +71,7 @@ Unknown hosts, non-numeric ids, unknown sub-tabs (silently dropped → overview)
 
 **Development.** With `npm run dev`, Electron itself is the executable, so `setAsDefaultProtocolClient` is called with `process.execPath` and the script path so the OS launches the right thing. On Windows this writes `HKCU\Software\Classes\bldesk` pointing at `electron.exe`; a packaged install later overwrites it with the real path. On macOS, dev-mode registration only works from a packaged `.app` — test links against `npm run build:unpack` output instead.
 
-**Renderer timing.** The window may not exist, or React may not have mounted, when a link arrives. Main queues it; the renderer calls `getPendingDeepLink` on mount and `deepLinkReady` to flush. The router hook then holds the parsed link in state until the profile has switched (if `?account=` asked for it), a client exists, and the server list has loaded — so a link that cold-starts the app behaves exactly like one clicked while it's open.
+**Renderer timing.** The window may not exist, or React may not have mounted, when a link arrives. Main queues it; the renderer calls `getPendingDeepLink` on mount and `deepLinkReady` to flush. Help routes immediately without account data. Other links first handle any requested profile switch. Home and tab navigation then need no server lookup; server, SSH and console links wait for the client and server data.
 
 ---
 
@@ -110,6 +111,6 @@ Unknown hosts, non-numeric ids, unknown sub-tabs (silently dropped → overview)
 ## Follow-ups
 
 - **Android**: add an `intent-filter` for `bldesk` in `android/app/src/main/AndroidManifest.xml` and wire `@capacitor/app`'s `appUrlOpen` event into `onDeepLink` in `mobile-bridge.ts`. The parser and router are already platform-agnostic.
-- **Command palette**: add "Copy link to <server>" and accept a pasted `bldesk://` URL as a palette query.
+- **Command palette**: already supports `link <server> [subtab]`, a server's Copy link result, and pasted `bldesk://` URLs. Help also supports `help <words>` and `ask <question>`; see [palette help](help/palette.md).
 - **Universal links** (`https://link.binarylane.com.au/server/123` falling back to mPanel if BLDesk isn't installed) need an `apple-app-site-association` / `assetlinks.json` on a BinaryLane domain plus Windows "web-to-app" registration — worth it once the app is public, since a plain `bldesk://` link is a dead click for anyone without the app.
-- **Confirm dialogs**: the context menu's Reboot / Shutdown / Power on reuse the existing `window.confirm` flow in `ServerList.handleAction`; they'll pick up the proper confirm modal (FEATURES.md #5) when that lands.
+- **Confirm dialogs**: server context-menu power actions use the shared confirmation dialog and History. The command palette has its own target-list review. A deep link that merely opens a page does not submit a cloud change.

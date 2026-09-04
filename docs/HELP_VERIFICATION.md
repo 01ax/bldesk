@@ -2,6 +2,64 @@
 
 Implementation branch: `feat/help-and-ask-binarylane`. No version bump or new runtime dependencies.
 
+## Content accuracy review (5 September 2026)
+
+The initial runtime pass below verified rendering and interaction, not sentence-by-sentence factual accuracy. PR #48's review exposed that gap. This follow-up checks bundled BLDesk documentation against the UI handlers and shared helpers, and distinguishes controls offered by BLDesk from capabilities offered by BinaryLane's API and mPanel. It does not audit or change Ask BinaryLane's answer-generation controls.
+
+### Sources checked for each page
+
+Paths below are relative to `src/renderer/src/` unless another root is shown. This is a manual source audit, not a claim that the help guard proves prose correct. Quoted examples were checked against the originating handler and its helpers, including the palette's `POWER_VERBS` labels rather than the shared dialog's text.
+
+| Page in `docs/help/` | Components and helpers checked |
+| --- | --- |
+| account | `components/account/AccountOverview.tsx` — read-only fields and mPanel links |
+| backups | `components/backups/BackupManager.tsx` — slot selection, restore, attach, schedule |
+| billing | `components/billing/BillingOverview.tsx`, `context/ActionTrackerContext.tsx` |
+| confirm-and-history | `context/ConfirmContext.tsx`, `components/palette/CommandPalette.tsx`, `components/servers/CreateServerModal.tsx` |
+| deep-links | `src/shared/deeplink.ts`, `lib/deeplinks.ts`, `src/main/deeplink.ts` |
+| dns | `components/dns/DnsManager.tsx`, `components/palette/CommandPalette.tsx` |
+| firewall | `components/firewall/FirewallManager.tsx`, `FirewallMatrix.tsx`, `lib/firewallMatrix.ts` |
+| getting-started | `components/auth/AuthModal.tsx`, `src/main/safeStorage.ts`, `api/mobile-bridge.ts` |
+| heatmap | `components/heatmap/FleetHeatmap.tsx`, `lib/heatmap.ts` |
+| help | `components/help/HelpView.tsx` — client request triggers, not generated-answer content |
+| history | `components/history/HistoryView.tsx`, `lib/changelog.ts`, `context/ActionTrackerContext.tsx` |
+| keys | `components/keys/SshKeysManager.tsx`, server local-key selector |
+| loadbalancers | `components/loadbalancers/LoadBalancerManager.tsx`; service sources below |
+| map | `components/map/NetworkMap.tsx`, `lib/firewallMatrix.ts` |
+| palette | `components/palette/CommandPalette.tsx`, `lib/commands.ts`; backup semantics below |
+| server-backups | `components/servers/ServerDetails.tsx`, `components/backups/BackupManager.tsx` |
+| server-cancel | `components/servers/ServerDetails.tsx` cancellation handler |
+| server-change-plan | `components/servers/ChangePlanPanel.tsx`, `ServerDetails.tsx` resize handler |
+| server-cloud-init | `components/servers/ServerDetails.tsx` Cloud-init panel and template capture |
+| server-firewall | `components/servers/ServerDetails.tsx`, `components/firewall/FirewallManager.tsx` |
+| server-network | `components/servers/ServerNetwork.tsx` Move handler, not VPC Manager's Detach handler |
+| server-overview | `components/servers/ServerDetails.tsx`, `lib/actionLabels.ts` |
+| server-recovery | `components/servers/ServerDetails.tsx`, `lib/actionLabels.ts` rescue fallback |
+| server-remote-access | `components/servers/ServerDetails.tsx`, `lib/actionLabels.ts` |
+| server-settings | `components/servers/ServerSettings.tsx`, `context/ConfirmContext.tsx` |
+| server-usage | `components/servers/ServerUsage.tsx`, `api/queries.ts` |
+| servers | `components/servers/ServerList.tsx`, `lib/powerState.ts`, `lib/actionLabels.ts` |
+| shortcuts | `components/palette/CommandPalette.tsx`, `components/layout/Sidebar.tsx`, `BottomNav.tsx`, `src/main/zoom.ts` |
+| templates | `components/templates/TemplatesView.tsx`, `components/servers/CreateServerModal.tsx`, `lib/templateJobs.ts`, `src/shared/templates.ts` |
+| terminal | `components/terminal/EmbeddedTerminal.tsx` |
+| tray | `src/main/tray.ts` |
+| troubleshooting | `components/servers/ReachabilityBadge.tsx`, `lib/powerState.ts`, `components/layout/UpdateMenu.tsx`, `scripts/after-pack.cjs`, client help transport |
+| vpcs | `components/vpcs/VpcManager.tsx`, `components/servers/ServerNetwork.tsx` |
+
+### Service facts and review reconciliation
+
+- **Health checks are configurable.** `openapi.json` defines `HealthCheckRequest.path` and `.protocol` in create/update load-balancer requests. The local BinaryLane source checkout confirms mPanel's editable Path field in `product/website/PanelSite/ClientApp/src/pages/loadbalancer/components/Settings.tsx` and persistence in `product/website/WebApi/Services/LoadBalancerApiService.cs`. BLDesk's current component neither displays nor edits those settings. Its help now directs users to mPanel, without presenting this client limitation as an API limitation.
+- **Backup replacement is conditional, not unconditional.** OpenAPI's `BackupReplacementStrategy.oldest` and BinaryLane's `ImageApiService.cs` agree: use a free slot first, otherwise the oldest unlocked, unattached backup of the requested type. The palette requests `temporary`; its help now warns about replacement explicitly.
+- **History and running-action states differ.** History has five outcome labels. Interaction/invoice waits are real states in `ActionTrackerContext`, but are not extra History outcomes. The page now explains that the History entry remains Submitted during those waits.
+- **Disk confirmation uses the disk label or ID.** “Target name” was ambiguous even though it did not explicitly say “server name”; the page now names the required value precisely.
+- **Navigation changes at the width breakpoint.** `hidden md:flex` hides the sidebar below 768 CSS pixels, while `BottomNav` exposes More. A 1024-wide window at 150% crosses that breakpoint; 1280 at 150% does not.
+- **Client help triggers already supported automatic requests.** The internal help page now gives the exact suggestion/answer thresholds and delays. No service prompts, answer filters or output controls were changed.
+- **Templates are not durable jobs.** Tags are local and immediate; firewall work polls every ten seconds for up to fifteen minutes and is lost on renderer reload/quit. Missing names and unsupported user data do not block creation. The page now explains those limitations.
+
+The BinaryLane implementation was consulted read-only. No private implementation code is copied into bundled help. `docs/DEEP_LINKS.md` was also reconciled with the parser/router, including the full tab lists, account-free help routing and already-implemented palette/confirmation behaviour.
+
+Validation for this documentation revision: rerun typecheck (including all three guards), production build, whitespace checks and focused assertions for the corrected palette label, backup strategy, network confirmation, disk label and load-balancer schema. The earlier desktop/Android screenshots are pre-copy-edit evidence of layout and interaction, not screenshots of the revised prose. No new native Android or live cloud workflow is required or claimed for these content-only changes.
+
 ## Architecture and content
 
 - 33 bundled Markdown pages cover 15 top-level tabs, 11 server sub-tabs and all 16 palette verbs. Sources live in `docs/help`, loaded through the renderer's Vite `@help` raw-import alias. Nothing reads the filesystem at runtime.
