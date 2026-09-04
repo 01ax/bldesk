@@ -411,13 +411,20 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             </div>
 
             {/* Breadcrumb Specs */}
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#6c757d] dark:text-slate-400 mt-1">
+            {/*
+              * Text flow, not flex. As flex items each piece was atomic, so
+              * "2 vCPUs / 4 GB RAM / 60 GB Disk" could not fit in what was left
+              * of the first line and wrapped whole - leaving a block of dead
+              * space to its right. Inline, the line fills and breaks where it
+              * runs out, like a sentence.
+              */}
+            <div className="text-xs text-[#6c757d] dark:text-slate-400 mt-1 leading-6 [&>*]:align-middle [&>*]:mr-2">
               <span className="font-mono text-[#212529] dark:text-slate-200">{primaryV4}</span>
               <span>•</span>
               <span className="font-mono">#{server.id}</span>
               <button
                 onClick={handleCopyLink}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-[#6c757d] hover:text-[#017cb6] hover:bg-black/[0.05] dark:hover:bg-white/[0.06] transition"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-[#6c757d] hover:text-[#017cb6] hover:bg-black/[0.05] dark:hover:bg-white/[0.06] transition"
                 title="Copy bldesk:// link to this server"
               >
                 {linkCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Link2 className="w-3 h-3" />}
