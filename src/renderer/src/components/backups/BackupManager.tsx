@@ -14,7 +14,6 @@ import {
 import { BinaryLaneClient } from '../../api/client'
 import {
   useServerBackups,
-  useServerSnapshots,
   useServerActions,
   useTakeBackupMutation,
   useRestoreBackupMutation,
@@ -60,7 +59,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
   // Queries for current server
   const backupsQuery = useServerBackups(client, activeServerId)
-  const snapshotsQuery = useServerSnapshots(client, activeServerId)
   const actionsQuery = useServerActions(client, activeServerId)
 
   // Mutations
@@ -73,13 +71,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const downloadMutation = useImageDownloadMutation(client)
 
   // Form & Action states
-  const [isTakingSnapshot, setIsTakingSnapshot] = useState(false)
-  const [snapshotLabel, setSnapshotLabel] = useState('')
+  const [isTakingBackup, setIsTakingBackup] = useState(false)
+  const [backupLabel, setBackupLabel] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('temporary')
   const [actionProcessingId, setActionProcessingId] = useState<number | null>(null)
 
   const backups = backupsQuery.data || []
-  const snapshots = snapshotsQuery.data || []
   const actions = actionsQuery.data || []
 
   const activeBackupAction = actions.find(
@@ -88,11 +85,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       (a.type === 'take_backup' || a.type === 'restore' || a.type?.includes('backup'))
   )
 
-  const allImages = [...snapshots, ...backups]
   const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
 
-  // Take manual snapshot
-  const handleTakeSnapshot = async (e: React.FormEvent) => {
+  // Take a manual backup
+  const handleTakeBackup = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activeServerId) return
 
@@ -113,12 +109,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       label: 'Take Backup',
       target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
       severity: 'normal',
-      summary: snapshotLabel.trim() ? `Label "${snapshotLabel.trim()}"` : undefined,
+      summary: backupLabel.trim() ? `Label "${backupLabel.trim()}"` : undefined,
       source: 'ui'
     })
     try {
       const queued = await takeBackupMutation.mutateAsync({
-        label: snapshotLabel.trim() || undefined,
+        label: backupLabel.trim() || undefined,
         backupType,
         replacementStrategy,
         backupIdToReplace
@@ -128,11 +124,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       // instead of only that it started.
       if (queued) track(queued, 'Take Backup', activeServer?.name, changeId)
       window.bldeskApi?.sendNotification?.({
-        title: 'Snapshot Initiated',
+        title: 'Backup Initiated',
         body: `Backup started for server #${activeServerId}.`
       })
-      setIsTakingSnapshot(false)
-      setSnapshotLabel('')
+      setIsTakingBackup(false)
+      setBackupLabel('')
       setSelectedSlot('temporary')
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
@@ -141,7 +137,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   }
 
   const confirmAction = useConfirm()
-  // Restore snapshot
+  // Restore from a backup image
   const handleRestore = async (imageId: number, name: string) => {
     if (!activeServerId) return
     const c = await confirmAction({
@@ -150,7 +146,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       summary: `Overwrites the server's current disk with image "${name}" (#${imageId}). Everything written since that image was taken is lost.`,
       severity: 'irreversible',
       changes: [{ label: 'Disk contents', from: 'current', to: `${name} (#${imageId})` }],
-      notes: ['Take a snapshot first if the current state might be needed again.'],
+      notes: ['Take a backup first if the current state might be needed again.'],
       confirmLabel: 'Restore'
     })
     if (!c.ok) return
@@ -201,7 +197,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     }
   }
 
-  // Download snapshot / backup disk image
+  // Download a backup disk image
   const handleDownload = async (imageId: number, name: string) => {
     if (!activeServerId) return
     setActionProcessingId(imageId)
@@ -274,10 +270,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         <div>
           <h1 className="text-xl font-bold text-[#212529] dark:text-white flex items-center gap-2.5">
             <Archive className="w-5 h-5 text-[#017cb6]" />
-            <span>Server Backups & Disk Snapshots</span>
+            <span>Server Backups</span>
           </h1>
           <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
-            Create on-demand point-in-time snapshots or mount backup images as live secondary drives for file recovery.
+            Take an on-demand point-in-time backup, or mount a backup image as a live secondary drive for file recovery.
           </p>
         </div>
 
@@ -300,7 +296,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           )}
 
           <button
-            onClick={() => setIsTakingSnapshot(true)}
+            onClick={() => setIsTakingBackup(true)}
             disabled={!activeServerId || takeBackupMutation.isPending}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-50"
           >
@@ -332,7 +328,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               </div>
               <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
                 {isAutoBackupEnabled
-                  ? 'BinaryLane captures an automated delta snapshot nightly during your scheduled maintenance window.'
+                  ? 'BinaryLane takes an automated nightly backup during your scheduled maintenance window.'
                   : 'Automated backups are currently turned off for this server.'}
               </p>
             </div>
@@ -360,13 +356,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             <div>
               <h4 className="text-xs font-bold text-[#212529] dark:text-white">
                 {activeBackupAction.type === 'take_backup'
-                  ? 'Disk Snapshot in Progress...'
+                  ? 'Backup in Progress...'
                   : activeBackupAction.type === 'restore'
                   ? 'Restoring Disk Image...'
                   : 'Backup Task in Progress...'}
               </h4>
               <p className="text-[11px] text-[#6c757d] dark:text-slate-400">
-                The hypervisor is actively creating your snapshot. It will appear in the table below automatically once ready.
+                The hypervisor is actively creating your backup. It will appear in the table below automatically once ready.
               </p>
             </div>
           </div>
@@ -376,7 +372,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         </div>
       )}
 
-      {/* Snapshots & Backups List */}
+      {/* Backups list */}
       <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-sm overflow-hidden flex flex-col flex-shrink-0">
         <div className="p-3.5 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] flex items-center justify-between">
           <h3 className="font-bold text-xs text-[#495057] dark:text-[#ced4da] flex items-center gap-2">
@@ -393,14 +389,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           </button>
         </div>
 
-        {(backupsQuery.isLoading || snapshotsQuery.isLoading) && (
+        {backupsQuery.isLoading && (
           <div className="p-12 text-center text-xs text-[#6c757d]">
             <Loader2 className="w-6 h-6 animate-spin text-[#017cb6] mx-auto mb-2" />
             <span>Querying disk images...</span>
           </div>
         )}
 
-        {!backupsQuery.isLoading && !snapshotsQuery.isLoading && allImages.length === 0 && (
+        {!backupsQuery.isLoading && backups.length === 0 && (
           <div className="p-12 text-center text-xs text-[#6c757d] space-y-2">
             <Disc className="w-8 h-8 text-[#6c757d]/50 mx-auto" />
             <div className="font-semibold text-[#212529] dark:text-white">No Backups Found</div>
@@ -408,7 +404,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               Take a backup before making configuration changes, so there is something to roll back to.
             </p>
             <button
-              onClick={() => setIsTakingSnapshot(true)}
+              onClick={() => setIsTakingBackup(true)}
               className="mt-2 px-3.5 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"
             >
               Take First Backup
@@ -416,7 +412,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           </div>
         )}
 
-        {!backupsQuery.isLoading && !snapshotsQuery.isLoading && allImages.length > 0 && (
+        {!backupsQuery.isLoading && backups.length > 0 && (
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#ced4da] dark:border-[#373b3e] text-[#6c757d]">
@@ -428,7 +424,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               </tr>
             </thead>
             <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
-              {allImages.map((img) => {
+              {backups.map((img) => {
                 const isProcessing = actionProcessingId === img.id
                 return (
                   <tr key={img.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
@@ -444,7 +440,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#017cb6]/10 text-[#017cb6] uppercase">
-                        {img.type || 'snapshot'}
+                        {img.type || 'backup'}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
@@ -486,18 +482,18 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         )}
       </div>
 
-      {/* Take Snapshot Modal */}
-      {isTakingSnapshot && (
+      {/* Take Backup modal */}
+      {isTakingBackup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
               <h2 className="text-base font-bold text-[#212529] dark:text-white">Take Backup</h2>
-              <button onClick={() => setIsTakingSnapshot(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
+              <button onClick={() => setIsTakingBackup(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleTakeSnapshot} className="space-y-4 text-xs">
+            <form onSubmit={handleTakeBackup} className="space-y-4 text-xs">
               <p className="text-[#6c757d] dark:text-slate-400">
                 Captures a full point-in-time image of the active disk drive for {activeServer?.name}.
               </p>
@@ -513,12 +509,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 >
                   {availableBackupSlots(activeServer?.selected_size_options).map((slot) => (
                     <option key={slot} value={slot}>
-                      {slot === 'temporary' ? 'Temporary Snapshot (Retained for up to 7 days)' : `${BACKUP_SLOT_LABELS[slot]} Backup Slot`}
+                      {slot === 'temporary' ? BACKUP_SLOT_LABELS.temporary : `${BACKUP_SLOT_LABELS[slot]} Backup Slot`}
                     </option>
                   ))}
-                  {allImages.length > 0 && (
+                  {backups.length > 0 && (
                     <optgroup label="Replace Existing Image">
-                      {allImages.map((img) => (
+                      {backups.map((img) => (
                         <option key={img.id} value={`replace:${img.id}`}>
                           Replace: {img.name} (#{img.id})
                         </option>
@@ -530,13 +526,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
               <div>
                 <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Snapshot Name / Description (Optional)
+                  Backup Name / Description (Optional)
                 </label>
                 <input
                   type="text"
                   placeholder="e.g. Pre-upgrade Docker backup"
-                  value={snapshotLabel}
-                  onChange={(e) => setSnapshotLabel(e.target.value)}
+                  value={backupLabel}
+                  onChange={(e) => setBackupLabel(e.target.value)}
                   className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
                 />
               </div>
@@ -544,7 +540,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
                 <button
                   type="button"
-                  onClick={() => setIsTakingSnapshot(false)}
+                  onClick={() => setIsTakingBackup(false)}
                   className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
                 >
                   Cancel
