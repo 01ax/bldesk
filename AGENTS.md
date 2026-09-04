@@ -4,6 +4,21 @@ This guide documents essential commands, build instructions, and release protoco
 
 ---
 
+## 🎯 Scope — read this before building anything
+
+BLDesk is **an API-driven implementation of the BinaryLane website with a few cool usability features.** That is the whole product. Check every PR against that sentence before checking the code.
+
+In scope: anything mPanel can do, done through the public API, plus things a desktop client can do that a web page cannot (native SSH, tray, palette, local History, templates, reachability probes, a network map).
+
+Out of scope, and will be closed rather than reviewed:
+- Permission or policy layers that second-guess the API token (per-entity "safety tiers", request-authorisation inventories, read-only modes). The token's scope is BinaryLane's job. Local protection against mistakes is the confirm dialog + History below, and that is all of it.
+- Moving the API transport out of the renderer, new credential-vault formats, or build-identity systems, unless a maintainer asked for exactly that.
+- Rewrites that arrive inside a feature PR. If a change touches more than the feature needs, split it or drop it.
+
+A PR that reworks the app's architecture to deliver a feature is a different product, however well built.
+
+---
+
 ## 🏗️ Tech Stack & Structure
 
 - **Desktop Framework**: Electron 33 + Vite (`electron-vite`)
