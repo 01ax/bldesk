@@ -371,7 +371,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Servers</span>
               </button>
-              <h1 className="text-base sm:text-lg font-bold text-[#212529] dark:text-white flex items-center gap-2 min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#212529] dark:text-white flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                 <img src={distroIcon} alt="" className="w-5 h-5 object-contain shrink-0" />
                 {/*
                   * No "Server:" label - the distribution icon beside it already
@@ -391,6 +391,13 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   {state.busy && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
                   {state.label}
                 </span>
+                {/*
+                  * Beside the power pill, because the two answer the same
+                  * question from opposite ends: the platform says it is running,
+                  * this says whether it answers from here. Reading them apart
+                  * invites trusting "Running" on its own.
+                  */}
+                <ReachabilityChip r={reach} ip={primaryV4} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
               </h1>
             </div>
 
@@ -418,9 +425,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
           {/* Quick Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Leads the cluster: the buttons beside it are only worth
-                clicking if the port answers from here. */}
-            <ReachabilityChip r={reach} ip={primaryV4} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
             {/* SSH Key Selector */}
             <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] px-2 py-1 border border-[#ced4da] dark:border-[#373b3e] rounded">
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
