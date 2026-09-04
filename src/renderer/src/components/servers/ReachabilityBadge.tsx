@@ -231,7 +231,7 @@ export const ReachabilityChip: React.FC<{
                   the firewall link and the traceroute action. */}
               <span
                 role="tooltip"
-                className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition absolute left-1/2 -translate-x-1/2 top-full pt-2 z-30 w-80"
+                className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition absolute top-full pt-2 z-30 w-[min(20rem,calc(100vw-1.5rem))] right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2"
               >
                 <span className="block p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
                 <span className="block">{explanation}</span>
