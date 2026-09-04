@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
 import {
   ArrowLeft,
@@ -234,6 +235,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     if (!isDiagnostic(actionType)) {
       const c = await confirmAction({
         title: describeActionType(actionType),
+        helpSlug: activeSubTab === 'change-plan' ? 'server-change-plan#worked-example'
+          : activeSubTab === 'recovery' ? 'server-recovery#worked-example' : 'servers#worked-example',
         target: { kind: 'server', id: server.id, name: server.name },
         summary: powerActionSummary(actionType),
         severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal',
@@ -288,6 +291,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     const monthly = server.size?.price_monthly
     const c = await confirmAction({
       title: 'Cancel server',
+      helpSlug: 'server-cancel#worked-example',
       target: { kind: 'server', id: server.id, name: server.name },
       summary:
         'Destroys the server and everything on it. The service is cancelled within five minutes and an invoice is generated for usage to date. Backups attached to it go with it.',
@@ -484,6 +488,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 <span>Power On</span>
               </button>
             )}
+            <HelpLink slug={`server-${activeSubTab}`} />
           </div>
 
         </div>

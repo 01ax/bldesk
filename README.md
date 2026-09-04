@@ -55,6 +55,8 @@ A modern, high-performance, cross-platform desktop management client for [Binary
 
 Desktop zoom is also available in the **View** menu (press `Alt` to reveal the menu on Windows/Linux). At larger zoom levels, navigation can switch to the compact layout; use the menu button or **More** to reach every section.
 
+Open **Help** in the sidebar or click a page's circled **?** for bundled BLDesk documentation. In the palette, `?` lists commands, `help firewall` searches local topics, and `ask how do I enable ipv6` searches BinaryLane's published articles. Local results work offline; remote questions send only the search-box text, so leave account details and secrets out. The documentation source is [docs/help](docs/help), bundled with each app version.
+
 ---
 
 ## 🚀 Getting Started

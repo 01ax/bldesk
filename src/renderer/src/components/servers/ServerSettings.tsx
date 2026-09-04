@@ -153,7 +153,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
    * before → after table, warnings, and how bad getting it wrong is.
    */
   const executeAction = async (label: string, payload: any, req: Omit<ConfirmRequest, 'title' | 'target'>): Promise<boolean> => {
-    const c = await confirmAction({ title: label, target: { kind: 'server', id: server.id, name: server.name }, ...req })
+    const c = await confirmAction({ title: label, helpSlug: 'server-settings#worked-example', target: { kind: 'server', id: server.id, name: server.name }, ...req })
     if (!c.ok) return false
     setErrorMsg(null)
     setNotice(null)
@@ -337,6 +337,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       { type: 'rebuild', image: rebuildImage.trim() },
       {
         summary: `Erases the disk and reinstalls from image "${rebuildImage.trim()}". Every file on the server is destroyed; the IP addresses are kept.`,
+        helpSlug: 'server-settings#rebuild-and-password-reset',
         severity: 'irreversible',
         notes: ['Take a backup first if anything on this server matters.'],
         changes: [{ label: 'Image', from: server.image?.slug || server.image?.name || undefined, to: rebuildImage.trim() }],

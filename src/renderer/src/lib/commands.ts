@@ -82,10 +82,12 @@ const VERB_ALIASES: Record<string, Verb> = {
   goto: 'go',
   tab: 'go',
   help: 'help',
+  ask: 'ask',
+  '??': 'ask',
   '?': 'help'
 }
 
-export type Verb = PowerVerb | 'backup' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'create' | 'go' | 'help'
+export type Verb = PowerVerb | 'backup' | 'ssh' | 'console' | 'open' | 'link' | 'dns' | 'tag' | 'create' | 'go' | 'help' | 'ask'
 
 export interface VerbSpec {
   verb: Verb
@@ -110,7 +112,8 @@ export const VERB_SPECS: VerbSpec[] = [
   { verb: 'open', usage: 'open <server> [subtab]', summary: 'Open a server (overview, network, firewall…)', mutates: false },
   { verb: 'link', usage: 'link <server> [subtab]', summary: 'Copy a bldesk:// link', mutates: false },
   { verb: 'go', usage: 'go <tab>', summary: 'Jump to a tab (servers, dns, firewall…)', mutates: false },
-  { verb: 'help', usage: '?', summary: 'Show this list', mutates: false }
+  { verb: 'help', usage: 'help [words]', summary: 'Show commands or search BLDesk help', mutates: false },
+  { verb: 'ask', usage: 'ask <question>', summary: 'Ask BinaryLane using published articles', mutates: false }
 ]
 
 const SPEC_BY_VERB = new Map(VERB_SPECS.map((s) => [s.verb, s]))
@@ -163,7 +166,8 @@ export type ParsedCommand =
   | { kind: 'dns-add'; type: DomainRecordType; fqdn: string; value: string; priority?: number }
   | { kind: 'tag'; op: 'add' | 'remove'; tag: string; targets: string }
   | { kind: 'create'; hostname: string; template: string }
-  | { kind: 'help' }
+  | { kind: 'help'; query?: string }
+  | { kind: 'ask'; query: string }
   /** Verb recognised but arguments missing or wrong; `usage` says what it wanted. */
   | { kind: 'incomplete'; verb: Verb; usage: string; problem?: string }
 
@@ -283,7 +287,9 @@ export function parseCommand(input: string): ParsedCommand | null {
     }
 
     case 'help':
-      return { kind: 'help' }
+      return { kind: 'help', query: args.join(' ') || undefined }
+    case 'ask':
+      return args.length ? { kind: 'ask', query: args.join(' ') } : incomplete()
   }
 }
 
@@ -329,7 +335,9 @@ function normaliseTab(raw: string): DeepLinkTab | undefined {
     topology: 'map',
     heatmap: 'heatmap',
     utilisation: 'heatmap',
-    utilization: 'heatmap'
+    utilization: 'heatmap',
+    docs: 'help',
+    support: 'help'
   }
   const tab = aliases[s] ?? s
   return (TOP_TABS as readonly string[]).includes(tab) ? (tab as DeepLinkTab) : undefined

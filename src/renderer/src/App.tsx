@@ -21,6 +21,8 @@ import { ActionToasts } from './components/actions/ActionToasts'
 import { ActionTrackerProvider } from './context/ActionTrackerContext'
 import { ConfirmProvider } from './context/ConfirmContext'
 import { HistoryView } from './components/history/HistoryView'
+import { HelpView } from './components/help/HelpView'
+import { HELP_OPEN_EVENT, type HelpLocation } from './lib/helpNavigation'
 import { NetworkMap } from './components/map/NetworkMap'
 import { TemplatesView } from './components/templates/TemplatesView'
 import type { ServerTemplate } from './lib/serverTemplates'
@@ -89,6 +91,12 @@ function FleetWatch({
 
 function MainDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
+  const [helpLocation, setHelpLocation] = useState<HelpLocation>({})
+  useEffect(() => {
+    const open = (event: Event) => { setHelpLocation({ ...(event as CustomEvent<HelpLocation>).detail }); setActiveTab('help') }
+    window.addEventListener(HELP_OPEN_EVENT, open)
+    return () => window.removeEventListener(HELP_OPEN_EVENT, open)
+  }, [])
   // Templates tab hand-offs: a capture to edit, or a palette "create X from Y".
   const [templateDraft, setTemplateDraft] = useState<ServerTemplate | null>(null)
   const [templateApply, setTemplateApply] = useState<{ template: string; hostname: string } | null>(null)
@@ -436,6 +444,9 @@ function MainDashboard() {
             {activeTab === 'history' && (
               <HistoryView profileId={activeProfile?.id} profileName={activeProfile?.name} />
             )}
+            {activeTab === 'help' && <HelpView location={helpLocation} contextHint={selectedServer
+              ? [selectedServer.image?.distribution, selectedServer.region?.name].filter(Boolean).join(', ')
+              : undefined} />}
           </main>
         </div>
 

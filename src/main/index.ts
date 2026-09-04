@@ -10,6 +10,7 @@ import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
 import { ChangeLogStore } from './changelog'
 import { TemplateStore } from './templates'
+import { registerHelpHandlers } from './help'
 import { installWindowZoom, installZoomMenu } from './zoom'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
@@ -233,6 +234,7 @@ function createTray(): void {
 }
 
 function registerIpcHandlers(): void {
+  registerHelpHandlers()
   // Vault & Auth
   ipcMain.handle('vault:getProfiles', async () => VaultManager.getProfiles())
   ipcMain.handle('vault:getActiveProfile', async () => VaultManager.getActiveProfile())

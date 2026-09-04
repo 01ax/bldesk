@@ -135,6 +135,8 @@ script **with a reason** — not by working around the check.
 
 `scripts/check-ui-guards.mjs` runs with `npm run typecheck` and catches zoom ownership/wiring mistakes. It does **not** verify scrolling or visual fit; the layout checks above are still needed. If the supported zoom range changes, update this section and verify the new endpoints.
 
+Every new tab, sub-tab or verb ships with its help page; `scripts/check-help-guards.mjs` enforces coverage, front matter, contextual links and palette examples. Help source is `docs/help/*.md`, bundled through Vite's `@help` raw-import alias; update worked examples when confirmation text changes. Ask BinaryLane accepts only visible search text, never account context.
+
 ---
 
 ## 🚀 Release & Auto-Update Protocol

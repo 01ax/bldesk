@@ -146,6 +146,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
 
     const c = await confirmAction({
       title: 'Copy firewall rules',
+      helpSlug: 'firewall#copy-a-ruleset',
       target: { kind: 'server', name: `${targets.length} server${targets.length === 1 ? '' : 's'}` },
       summary: `Replaces the rule list on each selected server with the ${after.length} rule${after.length === 1 ? '' : 's'} from ${source?.name ?? sourceId}.${
         unchanged.length ? ` ${unchanged.length} already match and will be skipped.` : ''
