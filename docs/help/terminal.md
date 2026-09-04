@@ -8,9 +8,9 @@ keywords: [terminal, ssh, xterm, shell, native, private key]
 The Terminal view currently provides a terminal-style display and native SSH handoff. It is not a persistent embedded SSH session, a broadcast console or a remote file manager.
 
 ## Connect to a server
-Choose the server and a local key, then launch SSH. The actual session runs in your platform's terminal. Authentication prompts and session history belong there.
+Enter User (root by default) and Host, choose a local key or the default SSH identity, then choose Launch Native SSH. There is no server chooser in this view. The actual session runs in your platform's terminal; authentication prompts and commands belong there.
 
 Your private key stays on your device; the account's public-key list is separate. See [SSH keys](help:keys).
 
 ## Limits
-Do not expect commands typed in the display to execute on a server unless you have opened the native session. Closing BLDesk does not make its terminal display a saved transcript of that session. Use the rescue console from [Remote access](help:server-remote-access) if the guest's network path is broken.
+The display is a static connection-information banner, not a shell or a transcript of the native session. Clear Terminal Screen clears that display only. Use the rescue console from [Remote access](help:server-remote-access) if the guest's network path is broken.

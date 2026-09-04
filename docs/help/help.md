@@ -8,9 +8,9 @@ keywords: [search, articles, suggestions, offline, feedback]
 Use one search box for two sources: bundled BLDesk documentation first, then Ask BinaryLane's generated answer from published articles.
 
 ## Search
-Local results update as you type. Suggestions come from the help service after a short pause. Use Up and Down to choose a suggestion, then Enter to put it in the box.
+Local results update as you type. Once the trimmed text has at least three characters, it is sent for suggestions after a 200 ms pause, without Enter. Use Up and Down to choose a suggestion, then Enter to put it in the box.
 
-An answer starts after you pause on a question of at least three words, or press Enter for a shorter query. The optional distribution and region chip adds only the displayed words when you click it. Nothing is appended automatically.
+An answer request is sent after a 600 ms pause on a question of at least three words, without Enter. Press Enter to submit a shorter query. The optional distribution and region chip adds only the displayed words when you click it. Nothing is appended automatically.
 
 ## Read and check
 Open a local result to learn the client workflow. Check the source articles beneath a BinaryLane answer before acting: answers can be incomplete or out of date. Thumbs up or down sends feedback for that answer; Thanks confirms it was accepted.

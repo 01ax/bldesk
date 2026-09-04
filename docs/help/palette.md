@@ -26,7 +26,7 @@ cycle jumpbox
 Aliases include restart; stop/halt; power-off/kill; boot/poweron/power-on; and powercycle/power-cycle, respectively. See [power-state caveats](help:servers).
 
 ## Backups
-Take a temporary backup, optionally supplying a quoted label. This does not restore an image or change purchased retention.
+Take a temporary backup, optionally supplying a quoted label. The command uses replacement_strategy: oldest. It uses a free temporary slot first; if none is free, BinaryLane replaces the oldest unlocked, unattached temporary backup. This can destroy an existing image. Use the Backups form if you need to choose a specific slot or replacement. The command does not restore an image or change purchased retention.
 
 ```
 backup db "before upgrade"
@@ -85,10 +85,10 @@ ask how do I enable ipv6
 Go aliases: goto, tab. Help search does not submit a cloud mutation. Keep account details out of an Ask question.
 
 ## Worked example
-For a mutating command, the first Enter opens the review; the second runs it when required fields are complete. Check the expanded targets, severity and any diff before that second Enter. Navigation commands run directly; Create uses the create form as its review.
+For a mutating command, the first Enter opens the palette's own review panel; the second runs it. Check the command and every expanded target. This panel does not show the shared dialog's severity, change table or diff. Navigation commands run directly; Create uses the create form as its review.
 
-For Shutdown, the confirmation says:
+For Shutdown matching one server, the panel heading is:
 
-“Sends an ACPI shutdown signal. The OS decides whether to honour it — BinaryLane reports the signal delivered, not the server off.”
+“Confirm: Shutdown (graceful) on 1 target”
 
-After confirming, inspect History and the actual power state. Two Enter presses are a review workflow, not evidence that the guest obeyed the action.
+The target list appears below it. Run submits the action; Esc · Back returns to input. The shared dialog's ACPI warning is not displayed here. After confirming, inspect History and the actual power state: submission is not evidence that the guest obeyed the signal.

@@ -5,14 +5,14 @@ keywords: [confirm, destructive, irreversible, type to confirm, audit]
 ---
 
 # Confirm and History
-Cloud changes use a shared review dialog with the target, a plain-language summary, and a change table or diff where appropriate. Read the target even when you reached it from a search.
+Most page-level cloud changes use a shared review dialog with the target, a plain-language summary, and a change table or diff where appropriate. The command palette uses its own target-list review, and Create Server uses its form. Read the target even when you reached it from a search.
 
 ## Three severities
 - Normal: a routine change with a blue confirmation button.
 - Destructive: a disruptive change with a red button, such as hard power off or replacing firewall rules.
 - Irreversible: a red action requiring you to type the target name, such as restore, rebuild or cancellation.
 
-Escape, the close button or Cancel dismisses a review before submission. The question mark opens the worked example and cancels the current review; return to the action to review it again.
+Escape, the close button or Cancel dismisses a review before submission. Where a question mark is present, it opens contextual help and cancels the current review; return to the action to review it again. Not every confirmation has a help link.
 
 ## Worked example
 For a restore, the dialog title is “Restore from backup”. Its note says:

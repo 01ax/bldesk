@@ -11,11 +11,11 @@ Use Overview to check that you have the right server before acting. The header s
 Select a local SSH key and launch native SSH, or open the rescue console. A failed reachability probe is a reason to investigate, not proof that the VM is off. Power actions and diagnostics have different effects; [Servers](help:servers) explains the distinction.
 
 ## Worked example
-If you choose a hard Power off, the confirmation says:
+The shared header offers Reboot and Graceful Shutdown when the server is considered running, or Power On otherwise. Graceful Shutdown says:
 
-“Cuts power at the hypervisor. Equivalent to pulling the plug: anything unsaved in the guest is lost.”
+“Sends an ACPI shutdown signal. The OS decides whether to honour it — BinaryLane reports the signal delivered, not the server off.”
 
-Cancel if you intended a clean shutdown. Submitted actions continue in the background; [History](help:history) records their outcome.
+There is no hard Power Off button in this header. Check the resulting power state; a submitted shutdown signal does not prove the guest stopped. [History](help:history) records action outcomes.
 
 ## Next steps
 Use Usage for historical graphs, Network for interface settings, Settings for disks and hypervisor options, and Change Plan for billing-affecting resource changes. Opening these tabs changes nothing.

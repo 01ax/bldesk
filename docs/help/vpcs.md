@@ -1,14 +1,14 @@
 ---
 title: VPCs
-summary: Manage private networks, membership and routing with explicit reviews.
-keywords: [vpc, private network, subnet, routes, attach, detach, mtu]
+summary: Create private networks, inspect members and detach servers.
+keywords: [vpc, private network, subnet, attach, detach]
 ---
 
 # VPCs
-Use VPCs to create private networks, inspect member servers and manage network membership and routes. Check the region and address range before creating or attaching resources.
+Use VPCs to create private networks with a name and an IP range, inspect member servers, detach a member or delete a network. The create form has no region selector, route editor or MTU control. To move a server into a VPC, use its [Network tab](help:server-network).
 
 ## Guest networking
-A cloud membership change does not update all guest routes or application dependencies for you. BinaryLane determines VPC behaviour; start with [what is a VPC](https://support.binarylane.com.au/support/solutions/articles/11000050498-what-is-a-vpc-do-i-need-one-). Verify guest addressing and MTU where required.
+Before detaching a member, identify anything using its private address. BLDesk's membership controls do not edit application configuration inside the guest. For the service's networking behaviour, see [what is a VPC](https://support.binarylane.com.au/support/solutions/articles/11000050498-what-is-a-vpc-do-i-need-one-).
 
 ## Worked example
 Before detaching a server, the confirmation warns:

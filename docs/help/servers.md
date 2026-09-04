@@ -10,6 +10,8 @@ Browse the active account's servers, filter the list, and switch between grid an
 ## Power is not reachability
 BinaryLane's server status does not reliably report a powered-off VM. BLDesk infers power from performance sample freshness and follows power actions with a hypervisor check. Old samples are evidence, not proof: collection or connectivity problems can also make them stale. See the [API's server diagnostics](https://api.binarylane.com.au/reference/#tag/ServerActions).
 
+The fleet sample sweep runs every two minutes. A newest sample older than 15 minutes is inferred as off; a missing timestamp is unknown. After a tracked power action settles, BLDesk waits eight seconds before one is_running diagnostic. Its verdict takes precedence over samples for 20 minutes. These are client inference rules, not a guarantee of guest health.
+
 The reachability badge checks a port from your device. It does not prove that the application is healthy. See [port 22 unreachable](help:troubleshooting#port-22-unreachable).
 
 ## Worked example
