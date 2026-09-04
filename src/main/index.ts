@@ -10,6 +10,7 @@ import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
 import { ChangeLogStore } from './changelog'
 import { TemplateStore } from './templates'
+import { installWindowZoom, installZoomMenu } from './zoom'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
 
 // Linux sandbox note: Chromium decides how to sandbox before this file runs,
@@ -367,9 +368,11 @@ if (!gotTheLock) {
     electronApp.setAppUserModelId('com.termau.bldesk')
 
     app.on('browser-window-created', (_, window) => {
-      optimizer.watchWindowShortcuts(window)
+      optimizer.watchWindowShortcuts(window, { zoom: true, escToCloseWindow: false })
+      installWindowZoom(window)
     })
 
+    installZoomMenu()
     registerIpcHandlers()
     createWindow()
     createTray()
