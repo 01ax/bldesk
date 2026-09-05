@@ -1,7 +1,7 @@
 ---
 title: Server network
 summary: Inspect interfaces and change IPv6, port blocking or VPC membership.
-keywords: [ipv6, interfaces, port blocking, vpc, ddos, reverse dns]
+keywords: [ipv6, interfaces, port blocking, vpc, ddos, reverse dns, ip address, ipv4, ipv6, add ip]
 ---
 
 # Server network

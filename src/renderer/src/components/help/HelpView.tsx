@@ -27,6 +27,7 @@ export function HelpView({ location, contextHint }: { location: HelpLocation; co
   const [answer, setAnswer] = useState<HelpAnswer | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [feedback, setFeedback] = useState<'idle' | 'sending' | 'thanks' | 'error'>('idle')
+  const [showAll, setShowAll] = useState(false)
   const [recent, setRecent] = useState<string[]>(() => {
     try { const value = JSON.parse(localStorage.getItem(RECENTS) ?? '[]'); return Array.isArray(value) ? value.filter(v => typeof v === 'string').slice(0, 5) : [] } catch { return [] }
   })
@@ -82,7 +83,7 @@ export function HelpView({ location, contextHint }: { location: HelpLocation; co
     return () => { clearTimeout(timer); requestId.current++ }
   }, [question, submitted, submission])
 
-  const edit = (value: string) => { requestId.current++; setQuery(value); setSubmitted(null); setAnswer(null); setStatus('idle') }
+  const edit = (value: string) => { requestId.current++; setShowAll(false); setQuery(value); setSubmitted(null); setAnswer(null); setStatus('idle') }
   const submit = () => {
     if (!question) return
     setFocused(false); setSubmitted(question); setSubmission(n => n + 1)
@@ -137,11 +138,6 @@ export function HelpView({ location, contextHint }: { location: HelpLocation; co
       </aside>
       <div ref={content} data-help-content className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4 lg:p-6">
         {question ? <div className="max-w-4xl mx-auto space-y-5">
-          <section aria-label="BLDesk help results"><h2 className="text-base font-semibold mb-3">Help for BLDesk</h2>
-            {results.length ? <div className="space-y-2">{results.slice(0, 12).map(hit => <button key={hit.page.slug} onClick={() => openHelp({ slug: hit.page.slug, heading: hit.heading })} className="block w-full text-left bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-3 hover:border-[#017cb6]">
-              <span className="text-sm font-semibold text-[#017cb6] dark:text-sky-400">{hit.page.title}</span><span className="block text-xs text-[#6c757d] dark:text-slate-400 mt-1">{hit.page.summary}</span>
-            </button>)}</div> : <p className="text-sm text-[#6c757d] dark:text-slate-400">No local help matched. Try “firewall”, “backup” or “Change Plan”.</p>}
-          </section>
           {status !== 'idle' && <section aria-label="Ask BinaryLane" className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 space-y-4">
             <div><h2 className="text-base font-semibold">Ask BinaryLane <span className="text-[10px] font-normal rounded bg-sky-100 dark:bg-sky-900 px-1.5 py-0.5 text-[#017cb6] dark:text-sky-300">beta</span></h2><p className="text-xs text-[#6c757d] dark:text-slate-400 mt-1">Answers are generated from published articles and may be incomplete or out of date; check the linked article.</p></div>
             {status === 'loading' && <div role="status" aria-label="Searching BinaryLane articles" className="space-y-3 animate-pulse motion-reduce:animate-none">{[100, 92, 98, 70].map((w, i) => <div key={i} style={{ width: `${w}%` }} className="h-3 rounded bg-slate-200 dark:bg-slate-600" />)}</div>}
@@ -155,6 +151,11 @@ export function HelpView({ location, contextHint }: { location: HelpLocation; co
               </div>
             </>}
           </section>}
+          <section aria-label="BLDesk help results"><h2 className="text-base font-semibold mb-3">Help for BLDesk</h2>
+            {results.length ? <div className="space-y-2">{(showAll ? results : results.slice(0, 5)).map(hit => <button key={hit.page.slug} onClick={() => openHelp({ slug: hit.page.slug, heading: hit.heading })} className="block w-full text-left bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-3 hover:border-[#017cb6]">
+              <span className="text-sm font-semibold text-[#017cb6] dark:text-sky-400">{hit.page.title}</span><span className="block text-xs text-[#6c757d] dark:text-slate-400 mt-1">{hit.page.summary}</span>
+            </button>)}{results.length > 5 && <button type="button" onClick={() => setShowAll(v => !v)} className="text-xs text-[#017cb6] dark:text-sky-400 hover:underline">{showAll ? 'Show fewer' : `Show all ${results.length} topics`}</button>}</div> : <p className="text-sm text-[#6c757d] dark:text-slate-400">No local help matched. Try “firewall”, “backup” or “Change Plan”.</p>}
+          </section>
           {status === 'idle' && <p className="text-xs text-[#6c757d] dark:text-slate-400">Press Enter to ask BinaryLane, or type a question of at least three words.</p>}
         </div> : page ? <div className="max-w-5xl mx-auto flex flex-col xl:flex-row gap-6">
           <article aria-label={page.title} className="min-w-0 flex-1 bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 lg:p-6 text-sm space-y-4">{renderHelpMarkdown(page.body)}</article>
