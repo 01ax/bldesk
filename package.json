@@ -123,10 +123,6 @@
     }
   },
   "dependencies": {
-    "@aparajita/capacitor-secure-storage": "^8.0.0",
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/core": "^8.5.0",
-    "@capacitor/preferences": "^8.0.1",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@tanstack/react-query": "^5.60.5",
@@ -143,6 +139,10 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/preferences": "^8.0.1",
     "@capacitor/cli": "^8.5.0",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",

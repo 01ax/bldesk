@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.60-beta.5] - 2026-09-05
+
 ### Fixed
 - **Desktop zoom shortcuts and scrollable navigation** (#18, *PR #47 by @termau*):
   - Enabled desktop zoom shortcuts (`Ctrl/Cmd` + plus/minus/equals, and `0` to reset), with an 80–150% bounded range (80%, 90%, 100%, 110%, 125%, 150%) shared by keyboard, View menu, and native `zoom-changed` events.

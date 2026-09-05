@@ -2,7 +2,7 @@
 
 Ideas for taking BLDesk from "mPanel in a window" to a fleet tool. Ordered roughly by how much each one changes what the app *is*. Each entry notes what already exists in the codebase that it builds on.
 
-**Scorecard (v1.0.59, 4 Sep 2026):** #2, #3, #4, #5, #8, #9, #10 and #11 are built and released. #7 and #12 are part-built. #1 and #6 are untouched. Everything shipped in the same week that was *not* on this list is under [Built outside this list](#built-outside-this-list).
+**Scorecard (v1.0.60-beta.6, 5 Sep 2026):** #2, #3, #4, #5, #8, #9, #10, #11 and #13 are built and released. #7 and #12 are part-built. #1 and #6 are untouched. Everything shipped in the same week that was *not* on this list is under [Built outside this list](#built-outside-this-list).
 
 ---
 
@@ -200,17 +200,25 @@ tag add prod wp-*
 
 ## 13. Help & Ask BinaryLane
 
-**Status: implemented, desktop- and Android-emulator-verified; not yet released.** One Help tab, one search box, two sources. Local Markdown covers every top-level view and server sub-tab, palette verbs, shortcuts and worked examples. Contextual links and `bldesk://help/<slug>#heading` open the relevant guide. `help <words>` searches locally; `ask <question>` / `??` submits a published-article question. See [verification notes](docs/HELP_VERIFICATION.md).
+**Status: built and released (v1.0.60-beta.6, PR #48).** Desktop- and Android-emulator-verified. One Help tab, one search box, two sources. Local Markdown covers every top-level view and server sub-tab, palette verbs, shortcuts and worked examples. Contextual links and `bldesk://help/<slug>#heading` open the relevant guide. `help <words>` searches locally; `ask <question>` / `??` submits a published-article question. See [verification notes](docs/HELP_VERIFICATION.md).
 
-Ask uses a fixed origin in `src/shared/help-api.ts`, desktop main-process IPC and the Android HTTP bridge, with a 20-second timeout and no ask retries. It does not attach account data. Suggestions, article links and helpful/not-helpful feedback are included; local results remain available on failure. Docs are bundled through the Vite `@help` alias, not fetched at runtime. The help guard enforces coverage and internal links.
+- `lib/help.ts` — pure local search index over bundled Markdown pages (`docs/help/*.md`), YAML frontmatter metadata, slug/heading anchor resolution, and suggestion matching.
+- `components/help/HelpView.tsx` — dedicated Help tab with reader, search query parser (`help`, `ask`, `??`, keyword filter), related articles, question feedback (helpful / not helpful), and worked examples.
+- `components/help/HelpLink.tsx` — contextual `?` help links across every top-level view and active server sub-tab, wired so clicking deep links straight to the relevant documentation section without nested button traps.
+- `shared/help-api.ts` — fixed-origin unauthenticated transport (`https://api.binarylane.com.au/api/v2/articles/ask`) sending only visible question text, with desktop IPC (`main/help.ts`) and Android Capacitor HTTP bridge (`api/mobile-bridge.ts`). 20-second timeout, no retries, offline fallback.
+- `scripts/check-help-guards.mjs` — CI guard running in `npm run typecheck` that fails if any tab, server sub-tab, or command palette verb lacks a corresponding help page, or if any `help:` markdown anchor link points to a non-existent slug or heading.
 
-Deferred: streaming, chat follow-ups, per-account token quotas and answer caching. Android 36 native bridge and phone layouts passed on a Pixel 7 ARM emulator; physical-device and older-Android coverage remain separate checks.
+**Before:** No in-app documentation, no contextual links, and no way to query BinaryLane articles or procedures without opening an external browser.
+
+**Deferred:** Streaming responses, conversational follow-ups, per-account token quotas, and local answer caching. Android 36 native bridge and phone layouts passed on a Pixel 7 ARM emulator; physical-device and older-Android coverage remain separate checks.
+
+**Why it matters:** Users can troubleshoot unreachable servers, firewall rules, VPCs, backups, and command palette actions without context-switching to a browser or documentation site.
 
 ---
 
 ## Built outside this list
 
-Shipped between v1.0.24 (1 Sep 2026) and v1.0.59 (3 Sep 2026) without being an entry above. Listed so the list above stays honest about what the app already is.
+Shipped between v1.0.24 (1 Sep 2026) and v1.0.60-beta.6 (5 Sep 2026) without being an entry above. Listed so the list above stays honest about what the app already is.
 
 - **Server Details parity with mPanel** (v1.0.27): a **Network** tab (interfaces, IPv6, port blocking, VPC membership, Edge DDoS status), a **Settings** tab covering the full mPanel settings suite, and a **Usage** tab with the PanelSite-style metrics graphs (paged sample sets, independent per-metric scaling, live-telemetry fallback cards, day/week/month/year windows).
 - **Change Plan and Cancel Server** (v1.0.45; full size options in v1.0.56): `ChangePlanPanel.tsx` sends the whole `resize` — plan, memory, storage, IPv4 count with named releases, backup retention, offsite — with a before → after table, the primary address never offered for release, and an address release confirmed as irreversible. PR #35 adds the rest of the action: licensed software (cPanel tiers, CloudLinux, KernelCare, retained Remote Desktop SAL), reinstall onto another image as part of the move, a pre-action backup, and a real monthly cost comparison from `lib/serverPricing.ts`, which the create form shares.
@@ -221,6 +229,8 @@ Shipped between v1.0.24 (1 Sep 2026) and v1.0.59 (3 Sep 2026) without being an e
 - **Android** (v1.0.33–v1.0.44): API requests routed through the native Capacitor HTTP bridge (mutations included, v1.0.44), the API token in the hardware-backed Keystore instead of cleartext, safe-area insets on every modal and drawer, a touch-friendly section picker, and the create form and plan table fitting a phone.
 - **Desktop chrome** (v1.0.29–v1.0.58): version badge in the title bar and sidebar, one set of window chrome per platform (native traffic lights overlaid on macOS, app-drawn elsewhere), a one-pixel inset border on Linux's frameless window, and an AppImage that starts on Ubuntu 24.04's user-namespace sandbox.
 - **Contributor guard rails** (v1.0.46): `AGENTS.md`, the mutation-guard CI check, and release notes extracted from `CHANGELOG.md` at publish time.
+- **Desktop zoom shortcuts and scrollable navigation** (v1.0.60-beta.5, #18, PR #47): `Ctrl/Cmd` + plus/minus/0 zoom bounded between 80% and 150%, shared across keyboard shortcuts, the View menu, and native `zoom-changed` events; both navigation columns scroll vertically so all items remain reachable when zoomed in; guarded by `scripts/check-ui-guards.mjs`.
+- **Android offline detection** (v1.0.60-beta.6, PR #48): `ACCESS_NETWORK_STATE` declared in `AndroidManifest.xml` so offline help detects disconnected networks immediately instead of failing network timeouts.
 
 ---
 

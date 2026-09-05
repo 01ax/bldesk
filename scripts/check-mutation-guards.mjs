@@ -63,7 +63,7 @@ const warnings = []
 
 for (const file of walk(SRC)) {
   const rel = relative(SRC, file).replace(/\\/g, '/')
-  const src = readFileSync(file, 'utf8')
+  const src = readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
   // Blank out comments but keep line numbers: block comments may span lines.
   const lines = src.split('\n')
   const stripped = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '')
