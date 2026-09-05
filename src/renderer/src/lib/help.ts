@@ -19,13 +19,19 @@ export const HELP_PAGES: HelpPage[] = Object.entries(documents).map(([path, raw]
   return { slug: path.split('/').pop()!.replace(/\.md$/, ''), title: meta.title, summary: meta.summary, keywords: meta.keywords, body, headings: helpHeadings(body) }
 }).sort((a, b) => a.title.localeCompare(b.title))
 
+// Question words carry no signal; "how do I add an IP address" should rank
+// on "add", "ip" and "address", not on every page that contains "how".
+const STOP_WORDS = new Set(['a', 'an', 'and', 'are', 'can', 'do', 'does', 'for', 'had', 'has', 'have', 'how', 'i', 'in', 'is', 'it', 'my', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'what', 'where', 'why', 'with', 'you', 'your'])
+
 export function searchHelp(query: string): HelpHit[] {
-  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
+  const all = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
+  const meaningful = all.filter(w => !STOP_WORDS.has(w))
+  const words = meaningful.length ? meaningful : all
   if (!words.length) return []
   return HELP_PAGES.map(page => {
     const title = page.title.toLowerCase(), keywords = page.keywords.join(' ').toLowerCase()
     const heading = page.headings.find(h => words.every(w => h.text.toLowerCase().includes(w)))
     const score = words.reduce((sum, word) => sum + (title.includes(word) ? 12 : 0) + (keywords.includes(word) ? 8 : 0) + (page.headings.some(h => h.text.toLowerCase().includes(word)) ? 5 : 0) + (page.summary.toLowerCase().includes(word) ? 3 : 0) + (page.body.toLowerCase().includes(word) ? 1 : 0), 0)
     return { page, score, heading: heading?.id }
-  }).filter(hit => hit.score > 0).sort((a, b) => b.score - a.score || a.page.title.localeCompare(b.page.title))
+  }).filter(hit => hit.score > 0 && (words.length < 2 || hit.score > words.length)).sort((a, b) => b.score - a.score || a.page.title.localeCompare(b.page.title))
 }

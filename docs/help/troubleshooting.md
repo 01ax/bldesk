@@ -29,4 +29,4 @@ No token, no profile id, no server ids, no History, no ticket text is attached b
 The optional chip appends only the displayed distribution and region when you click it. Feedback sends the answer's ID and a helpful boolean. The service searches published articles; it cannot diagnose your account or read your fleet.
 
 ## Help is offline or unavailable
-Local help still works. The error appears below intact local results; a failed question is not automatically retried. Check your connection and submit again when ready. Questions time out after 20 seconds. Answer text is not persisted; the last few submitted searches are kept locally on this device.
+Local help still works. The error appears above intact local results; a failed question is not automatically retried. Check your connection and submit again when ready. Questions time out after 20 seconds. Answer text is not persisted; the last few submitted searches are kept locally on this device.

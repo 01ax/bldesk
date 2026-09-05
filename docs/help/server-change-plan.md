@@ -1,7 +1,7 @@
 ---
 title: Change Plan
 summary: Review resources, licences, backups, costs and irreversible address releases.
-keywords: [resize, plan, ip release, address, cost, licence, reinstall, transfer]
+keywords: [resize, plan, ip release, address, cost, licence, reinstall, transfer, ip address, add ip, ipv4, extra address]
 ---
 
 # Change Plan
