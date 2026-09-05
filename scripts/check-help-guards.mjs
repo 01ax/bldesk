@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const read = path => readFileSync(resolve(root, path), 'utf8')
+const read = path => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n')
 const errors = []
 const fail = (file, message) => errors.push(`${file}: ${message}`)
 const navigation = read('src/shared/deeplink.ts')

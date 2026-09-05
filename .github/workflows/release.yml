@@ -83,6 +83,10 @@ jobs:
             const notes = sectionLines.join("\n").replace(/^---$/gm, "").trim();
             if (notes) {
               fs.writeFileSync("release-notes.md", notes);
+              const tagStr = process.env.GITHUB_REF_NAME || "";
+              const topicMatch = notes.match(/\*\*(.*?)\*\*/);
+              const title = topicMatch ? `${tagStr} - ${topicMatch[1]}` : tagStr;
+              fs.writeFileSync("release-title.txt", title);
               console.log("Extracted release notes for " + tag + ":\n" + notes);
             }
           '
@@ -98,6 +102,16 @@ jobs:
           # Developer ID certificate is configured.
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npx electron-builder --publish always
+
+      - name: Update GitHub Release title and notes
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f release-notes.md ]; then
+            TITLE="$(cat release-title.txt 2>/dev/null || echo "$GITHUB_REF_NAME")"
+            gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file release-notes.md || true
+          fi
 
       # --- PACKAGE ONLY (manual runs) ---
       - name: Package (no publish)
