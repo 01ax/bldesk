@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import {
   Archive,
@@ -142,6 +143,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
     const c = await confirmAction({
       title: 'Restore from backup',
+      helpSlug: 'backups#worked-example',
       target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
       summary: `Overwrites the server's current disk with image "${name}" (#${imageId}). Everything written since that image was taken is lost.`,
       severity: 'irreversible',
@@ -303,6 +305,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             {takeBackupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             <span>Take Backup</span>
           </button>
+          <HelpLink slug="backups" />
         </div>
       </div>
 

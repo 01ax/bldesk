@@ -18,10 +18,11 @@ export const DEEP_LINK_SCHEME = 'bldesk'
 export const SERVER_SUB_TABS = ['overview', 'remote-access', 'usage', 'cloud-init', 'network', 'backups', 'firewall', 'settings', 'recovery', 'change-plan', 'cancel'] as const
 export type DeepLinkServerSubTab = (typeof SERVER_SUB_TABS)[number]
 
-export const TOP_TABS = ['servers', 'templates', 'vpcs', 'firewall', 'loadbalancers', 'dns', 'backups', 'keys', 'billing', 'account', 'history', 'map', 'heatmap', 'terminal'] as const
+export const TOP_TABS = ['servers', 'templates', 'vpcs', 'firewall', 'loadbalancers', 'dns', 'backups', 'keys', 'billing', 'account', 'history', 'help', 'map', 'heatmap', 'terminal'] as const
 export type DeepLinkTab = (typeof TOP_TABS)[number]
 
 export type DeepLink =
+  | { kind: 'help'; slug: string; heading?: string; account?: string }
   | { kind: 'server'; serverId: number; subTab?: DeepLinkServerSubTab; account?: string }
   | { kind: 'console'; serverId: number; account?: string }
   | { kind: 'ssh'; serverId: number; account?: string }
@@ -50,12 +51,19 @@ export function parseDeepLink(raw: string): DeepLink | null {
   // `bldesk://server/123/network` → host "server", path "/123/network".
   // Also accept `bldesk:///server/123` and `bldesk:server/123`, both of which
   // some launchers produce, by folding host back into the path.
-  const segments = [url.hostname, ...url.pathname.split('/')].map((s) => decodeURIComponent(s).trim().toLowerCase()).filter(Boolean)
+  let segments: string[], heading: string | undefined
+  try {
+    segments = [url.hostname, ...url.pathname.split('/')].map((s) => decodeURIComponent(s).trim().toLowerCase()).filter(Boolean)
+    heading = url.hash ? decodeURIComponent(url.hash.slice(1)) : undefined
+  } catch { return null }
   const account = url.searchParams.get('account')?.trim() || undefined
   const withAccount = <T extends DeepLink>(link: T): T => (account ? { ...link, account } : link)
 
   const [head, a, b] = segments
   switch (head) {
+    case 'help':
+      if (segments.length > 2 || (a && !/^[a-z0-9-]+$/.test(a)) || (heading && !/^[a-z0-9-]+$/.test(heading))) return null
+      return { kind: 'help', slug: a || 'getting-started', heading }
     case undefined:
     case 'home':
       return withAccount({ kind: 'home' })
@@ -86,6 +94,8 @@ export function parseDeepLink(raw: string): DeepLink | null {
 export function formatDeepLink(link: DeepLink): string {
   let path: string
   switch (link.kind) {
+    case 'help':
+      return `${DEEP_LINK_SCHEME}://help/${encodeURIComponent(link.slug)}${link.heading ? `#${encodeURIComponent(link.heading)}` : ''}`
     case 'home':
       path = 'home'
       break

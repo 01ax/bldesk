@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import {
   Layers,
@@ -196,6 +197,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       target: { kind: 'loadbalancer', id: lbId, name },
       summary: 'Traffic distribution stops immediately and the load balancer\'s address is released. There is no undo.',
       severity: 'irreversible',
+      helpSlug: 'loadbalancers#worked-example',
       confirmLabel: 'Delete load balancer'
     })
     if (!c.ok) return
@@ -234,6 +236,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
           <Plus className="w-4 h-4" />
           <span>Deploy Load Balancer</span>
         </button>
+        <HelpLink slug="loadbalancers" />
       </div>
 
       {/* Loading State */}

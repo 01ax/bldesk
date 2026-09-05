@@ -42,6 +42,7 @@ export default defineConfig({
      */
     server: {
       port: Number(process.env.BLDESK_DEV_PORT) || 5173,
+      fs: { allow: [resolve('.')] },
       strictPort: false
     },
     define: {
@@ -50,6 +51,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
+        '@help': resolve('docs/help'),
         '@shared': resolve('src/shared')
       }
     },

@@ -564,6 +564,7 @@ export const ChangePlanPanel: React.FC<{
     reinstalling || ipsToRemove.length
       ? {
           severity: 'irreversible' as const,
+          helpSlug: 'server-change-plan#worked-example',
           typeToConfirm: server.name,
           notes: [
             ...(reinstalling

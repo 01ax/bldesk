@@ -12,6 +12,7 @@ import {
   Terminal,
   Activity,
   History,
+  CircleHelp,
   Waypoints,
   ChartNoAxesCombined,
   ChevronLeft,
@@ -32,6 +33,7 @@ export type ActiveTab =
   | 'billing'
   | 'account'
   | 'history'
+  | 'help'
   | 'map'
   | 'heatmap'
   | 'terminal'
@@ -88,6 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'billing', label: 'Billing & Invoices', icon: Receipt },
     { id: 'account', label: 'Account Details', icon: UserCircle },
     { id: 'history', label: 'History', icon: History },
+    { id: 'help', label: 'Help', icon: CircleHelp },
     { id: 'terminal', label: 'Embedded Shell', icon: Terminal }
   ]
 

@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutTemplate,
@@ -277,6 +278,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
           <button className={btn} onClick={handleExportAll}><Download className="w-3.5 h-3.5" />Export all</button>
           {canReveal && <button className={btn} onClick={reveal} title="Show the template files on disk"><FolderOpen className="w-3.5 h-3.5" /></button>}
           <button className={btnPrimary} onClick={() => setEditing({ template: emptyTemplate() })}><Plus className="w-3.5 h-3.5" />New template</button>
+          <HelpLink slug="templates" />
         </div>
       </div>
 

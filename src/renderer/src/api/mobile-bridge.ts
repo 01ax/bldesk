@@ -1,10 +1,39 @@
 import { Preferences } from '@capacitor/preferences'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { HELP_API_ORIGIN, HELP_TIMEOUT_MS, helpQuestion, helpFeedbackBody, readHelpAnswer, readHelpSuggestions } from '@shared/help-api'
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import { AccountProfile, IpcApi, UpdateChannel, UpdaterState } from '@shared/ipc-types'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
 const PROFILES_KEY = 'bldesk_profiles_v1'
 const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
+
+// No account client, token, profile id, server ids, History or ticket text.
+async function helpRequest(path: string, body?: { id: number; helpful: boolean }): Promise<unknown> {
+  const url = `${HELP_API_ORIGIN}${path}`
+  if (Capacitor.isNativePlatform()) {
+    // Native connect/read timeouts are separate. Bound the total wait too;
+    // a late native completion is ignored, never retried.
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    const response = await Promise.race([CapacitorHttp.request({
+      url, method: body ? 'POST' : 'GET',
+      headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      data: body, connectTimeout: HELP_TIMEOUT_MS, readTimeout: HELP_TIMEOUT_MS,
+      disableRedirects: true
+    }), new Promise<never>((_resolve, reject) => {
+      deadline = setTimeout(() => reject(new Error('Could not reach BinaryLane help.')), HELP_TIMEOUT_MS)
+    })]).finally(() => clearTimeout(deadline))
+    if (response.status < 200 || response.status >= 300) throw new Error('Could not reach BinaryLane help.')
+    return body ? undefined : typeof response.data === 'string' ? JSON.parse(response.data) : response.data
+  }
+  const response = await fetch(url, {
+    method: body ? 'POST' : 'GET', credentials: 'omit', redirect: 'error',
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(HELP_TIMEOUT_MS)
+  })
+  if (!response.ok) throw new Error('Could not reach BinaryLane help.')
+  return body ? undefined : response.json()
+}
 
 const mobileUpdaterListeners = new Set<(state: UpdaterState) => void>()
 
@@ -172,6 +201,9 @@ export async function initMobileBridge(): Promise<void> {
   }
 
   const mobileApi: IpcApi = {
+    helpAsk: async question => readHelpAnswer(await helpRequest(`/api/help?q=${encodeURIComponent(helpQuestion(question))}`)),
+    helpSuggest: async prefix => readHelpSuggestions(await helpRequest(`/api/help/suggest?q=${encodeURIComponent(helpQuestion(prefix))}`)),
+    helpFeedback: async (id, helpful) => { await helpRequest('/api/help/feedback', helpFeedbackBody(id, helpful)) },
     getProfiles: async (): Promise<Omit<AccountProfile, 'token'>[]> => {
       const list = await getStoredProfiles()
       return list.map(({ token: _, ...rest }) => rest)
