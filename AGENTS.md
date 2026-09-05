@@ -125,6 +125,12 @@ script **with a reason** — not by working around the check.
 
 ---
 
+## User-facing text must be true
+
+Anything a user reads inside the app — help pages, worked examples, tooltips, confirm summaries, README — is checked against the code before it ships, sentence by sentence. The test for each sentence is: point at the line of TSX that renders it. Quoted dialog text is copied from the `confirmAction({ title, summary, notes })` call, never written from memory. Where BinaryLane's API or mPanel can do something BLDesk does not expose, say so and point at mPanel; do not describe a control BLDesk lacks. Guards prove that a page exists and links resolve; they cannot prove a page is true, so a PR that adds or changes user-facing text records which component each page was checked against (see `docs/HELP_VERIFICATION.md`).
+
+---
+
 ## Zoom and layout
 
 - `src/main/zoom.ts` owns desktop zoom and its **80–150%** range. Route new zoom controls through it; do not add independent zoom setters or Electron's built-in `zoomIn` / `zoomOut` / `resetZoom` menu roles, which bypass these limits.
