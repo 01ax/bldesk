@@ -6,7 +6,7 @@ import { renderHelpMarkdown, openHelpHref } from '../../lib/helpMarkdown'
 import { openHelp, type HelpLocation } from '../../lib/helpNavigation'
 import { HelpLink } from '../ui/HelpLink'
 
-const ERROR = "Couldn't reach BinaryLane help. Your local help results are above."
+const ERROR = "Couldn't reach BinaryLane help. Your local help results are below."
 const RECENTS = 'bldesk_help_searches'
 const GROUPS: Array<[string, (slug: string) => boolean]> = [
   ['Getting started', s => ['getting-started', 'help'].includes(s)],
