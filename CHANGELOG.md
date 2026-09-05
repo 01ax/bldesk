@@ -5,18 +5,19 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
----
- 
-## [Unreleased]
+## [1.0.60-beta.6] - 2026-09-05
 
 ### Added
-- **Help & Ask BinaryLane**: bundled, searchable documentation for every tab, server sub-tab and palette verb; contextual question-mark links, worked examples and help deep links. The same search box shows answers and source articles from BinaryLane's published-article service, with suggestions, feedback and offline-safe local results. Questions use a fixed-origin, unauthenticated transport and contain only the visible search text.
-- Help coverage and internal-link guards run with `npm run typecheck`. No new runtime dependencies or version bump.
+- **Help & Ask BinaryLane** (*PR #48 by @termau*):
+  - Bundled, searchable documentation for every tab, server sub-tab and palette verb; contextual question-mark links, worked examples and help deep links.
+  - Ask BinaryLane answers and source articles from BinaryLane's published-article service directly in the search box, with suggestions, feedback and offline-safe local results. Questions use a fixed-origin, unauthenticated transport and contain only the visible search text.
+  - Help coverage and internal-link guards run with `npm run typecheck` (`scripts/check-help-guards.mjs`).
 
 ### Fixed
-- Android WebView now declares the read-only `ACCESS_NETWORK_STATE` permission, so offline help detects disconnected Wi-Fi/mobile data instead of attempting a request. Verified with the installed APK on an Android 36 ARM emulator, including native HTTP answers, suggestions, feedback, keyboard and rotation.
+- **Android offline detection**:
+  - Android WebView now declares the read-only `ACCESS_NETWORK_STATE` permission, so offline help detects disconnected Wi-Fi/mobile data instead of attempting a request. Verified with the installed APK on an Android 36 ARM emulator, including native HTTP answers, suggestions, feedback, keyboard and rotation.
 
-## [1.0.60-beta.5] - 2026-09-05
+---
 
 ### Fixed
 - **Desktop zoom shortcuts and scrollable navigation** (#18, *PR #47 by @termau*):
