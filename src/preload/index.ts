@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IpcApi, UpdaterState } from '../shared/ipc-types'
 
 const api: IpcApi = {
+  helpAsk: (question) => ipcRenderer.invoke('help:ask', question),
+  helpSuggest: (prefix) => ipcRenderer.invoke('help:suggest', prefix),
+  helpFeedback: (id, helpful) => ipcRenderer.invoke('help:feedback', id, helpful),
   // Vault & Auth
   getProfiles: () => ipcRenderer.invoke('vault:getProfiles'),
   getActiveProfile: () => ipcRenderer.invoke('vault:getActiveProfile'),

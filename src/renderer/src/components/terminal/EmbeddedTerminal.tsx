@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
@@ -147,6 +148,7 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({ initialHost 
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
+          <HelpLink slug="terminal" />
         </div>
       </div>
 

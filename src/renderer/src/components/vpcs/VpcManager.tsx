@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import {
   Network,
@@ -174,6 +175,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       target: { kind: 'vpc', id: vpcId, name: vpcName },
       summary: 'The private network and its address range are removed. There is no undo.',
       severity: 'irreversible',
+      helpSlug: 'vpcs#worked-example',
       confirmLabel: 'Delete VPC'
     })
     if (!c.ok) return
@@ -221,6 +223,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
           <Plus className="w-4 h-4" />
           <span>Create VPC</span>
         </button>
+        <HelpLink slug="vpcs" />
       </div>
 
       {/* Loading state */}

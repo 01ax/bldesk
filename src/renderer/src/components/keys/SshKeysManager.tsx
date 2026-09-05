@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
 import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -134,6 +135,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
           <Plus className="w-4 h-4" />
           <span>Add SSH Key</span>
         </button>
+        <HelpLink slug="keys" />
       </div>
 
       {/* Local Auto-Discovery Card */}

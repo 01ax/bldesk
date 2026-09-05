@@ -5,6 +5,7 @@ import { DeepLink, formatDeepLink, parseDeepLink } from '@shared/deeplink'
 import { BinaryLaneClient } from '../api/client'
 import { ActiveTab, ServerSubTab } from '../components/layout/Sidebar'
 import { launchSsh } from './launchSsh'
+import { openHelp, LOCAL_DEEP_LINK_EVENT } from './helpNavigation'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -54,7 +55,6 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
   // Subscribe once
   useEffect(() => {
     const api = window.bldeskApi
-    if (!api?.onDeepLink) return
 
     const accept = (url: string | null) => {
       if (!url) return
@@ -66,10 +66,12 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
       setPending(link)
     }
 
-    const unsub = api.onDeepLink(accept)
-    api.getPendingDeepLink?.().then(accept).catch(() => {})
-    api.deepLinkReady?.().catch(() => {})
-    return unsub
+    const local = (event: Event) => accept((event as CustomEvent<string>).detail)
+    window.addEventListener(LOCAL_DEEP_LINK_EVENT, local)
+    const unsub = api?.onDeepLink?.(accept)
+    api?.getPendingDeepLink?.().then(accept).catch(() => {})
+    api?.deepLinkReady?.().catch(() => {})
+    return () => { unsub?.(); window.removeEventListener(LOCAL_DEEP_LINK_EVENT, local) }
   }, [])
 
   // Resolve whenever the link or the state it depends on changes
@@ -77,6 +79,12 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
     if (!pending || busyRef.current) return
     const d = depsRef.current
     const link = pending
+
+    if (link.kind === 'help') {
+      openHelp({ slug: link.slug, heading: link.heading })
+      setPending(null)
+      return
+    }
 
     // 1. Account switch requested?
     if (link.account) {

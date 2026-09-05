@@ -1,3 +1,4 @@
+import { HelpLink } from '../ui/HelpLink'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { History, Search, Trash2, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, Loader2, HelpCircle, Zap, MousePointerClick } from 'lucide-react'
 import { CHANGELOG_EVENT, clearChanges, listChanges, type ChangeEntry, type ChangeOutcome } from '../../lib/changelog'
@@ -118,6 +119,7 @@ export const HistoryView: React.FC<{ profileId?: string; profileName?: string }>
         >
           <Trash2 className="w-3.5 h-3.5" /> Clear
         </button>
+        <HelpLink slug="history" />
       </div>
 
       <div className="relative">

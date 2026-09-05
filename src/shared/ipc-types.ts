@@ -1,3 +1,5 @@
+import type { HelpApi } from './help-api'
+
 export interface AccountProfile {
   id: string
   name: string
@@ -155,7 +157,7 @@ export interface TracerouteHop {
   timedOut: boolean
 }
 
-export interface IpcApi {
+export interface IpcApi extends HelpApi {
   // Vault & Auth
   getProfiles: () => Promise<Omit<AccountProfile, 'token'>[]>
   getActiveProfile: () => Promise<AccountProfile | null>
