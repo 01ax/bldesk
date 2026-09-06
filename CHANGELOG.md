@@ -5,15 +5,19 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
-## [Unreleased]
+## [1.0.61-beta.3] - 2026-09-06
 
 ### Added
-- Per-profile, per-server local SSH key-path associations, editable in Remote Access and the server header, with embedded-session learning after ten seconds live or a normal non-255 exit. No private-key contents are read or retained by BLDesk.
-- Connect-picker key-source labels and per-host broadcast key previews, including explicit skips for missing associated keys.
+- **Per-server SSH Key Associations**:
+  - Per-profile, per-server local SSH key-path associations, editable in Remote Access and the server details header, with embedded-session learning after ten seconds live or a normal non-255 exit. No private-key contents are read or retained by BLDesk.
+  - Connect-picker key-source labels (`associated`, `last used`, `ssh default`) and per-host broadcast key previews, including explicit skips for missing associated keys.
 
 ### Fixed
-- SSH entry points now resolve the server association, then the profile's last working key, then OpenSSH defaults instead of selecting the first discovered key. Broadcast resolves identities independently for each host.
-- Explicit SSH keys now include `IdentitiesOnly=yes` so unrelated agent identities do not crowd out the selected key; default-identity connections retain their existing OpenSSH behaviour.
+- **SSH Multi-Key Fleet Resolution**:
+  - SSH entry points now resolve the server association, then the profile's last working key, then OpenSSH defaults instead of selecting the first discovered key. Broadcast resolves identities independently for each host.
+  - Explicit SSH keys now include `IdentitiesOnly=yes` so unrelated agent identities do not crowd out the selected key; default-identity connections retain their existing OpenSSH behaviour.
+- **Server Overview Formatting**:
+  - Aligned Disk Storage card formatting with Memory card (used percentage large, with capacity and NVMe description beside it).
 
 ## [1.0.61-beta.2] - 2026-09-06
 

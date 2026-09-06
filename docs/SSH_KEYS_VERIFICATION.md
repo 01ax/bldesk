@@ -1,6 +1,6 @@
 # SSH key association verification
 
-Follow-up to [SSH_KEYS_SPEC.md](SSH_KEYS_SPEC.md), tested on macOS on 6 September 2026. Unreleased; package version remains 1.0.61-beta.2.
+Follow-up to [SSH_KEYS_SPEC.md](SSH_KEYS_SPEC.md), tested on macOS on 6 September 2026. Package version: 1.0.61-beta.3.
 
 ## Automated checks
 
