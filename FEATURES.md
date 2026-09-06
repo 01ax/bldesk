@@ -45,7 +45,7 @@ The original numbers are retained because code comments and older discussions re
 
 ### 1. Real embedded terminal (pty)
 
-**Unreleased key-selection follow-up:** per-profile/server local key-path associations, manual selection and embedded-session learning, associated → last working → SSH-default resolution, explicit-key `IdentitiesOnly=yes`, and per-host broadcast key previews/missing-key skips. No private-key contents are retained. See [SSH key verification](docs/SSH_KEYS_VERIFICATION.md).
+**Done (v1.0.61-beta.3):** per-profile/server local key-path associations, manual selection and embedded-session learning, associated → last working → SSH-default resolution, explicit-key `IdentitiesOnly=yes`, and per-host broadcast key previews/missing-key skips. No private-key contents are retained. See [SSH key verification](docs/SSH_KEYS_VERIFICATION.md).
 
 **Done (v1.0.61-beta.2; confirmed against live BinaryLane servers on 6 September 2026).** SSH-only PTYs on desktop, persistent tabs, scrollback search, opt-in reopen after restart, parallel broadcast with shared destructive review and per-host outcomes, native preference/override, and a 32-process cap. Interactive splits, serial broadcast and recording remain out of scope by design. See [terminal verification](docs/TERMINAL_VERIFICATION.md) for what was tested and the Windows/Linux release-leg checks.
 
