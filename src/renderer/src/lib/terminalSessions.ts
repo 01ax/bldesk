@@ -3,9 +3,10 @@ import type { components } from '@shared/api/schema'
 import { validateSshTarget } from '@shared/ssh'
 import { matchServers, partitionByStatus } from './commands'
 import { expandGroupRefs, type ServerGroup, type TagMap } from './serverGroups'
+import { setKeyAssociation } from './sshKeyAssociations'
 
 export type RememberedSession = Pick<PtySessionInfo, 'serverId' | 'serverName' | 'host' | 'username'>
-export interface TerminalSession extends PtySessionInfo { options?: PtyOpenOptions; error?: string }
+export interface TerminalSession extends PtySessionInfo { options?: PtyOpenOptions; profileId?: string; error?: string }
 const STORAGE_KEY = 'bldesk_terminal_tabs_v1'
 export function rememberOpenSessions(sessions: RememberedSession[]): void {
   try {
@@ -43,6 +44,18 @@ const output = new Map<string, string>()
 const dataListeners = new Map<string, Set<(data: string) => void>>()
 const exits = new Map<string, { exitCode: number; signal?: number }>()
 const closing = new Set<string>()
+const learningTimers = new Map<string, ReturnType<typeof setTimeout>>()
+function cancelLearning(id: string): void {
+  clearTimeout(learningTimers.get(id)); learningTimers.delete(id)
+}
+function learn(session: TerminalSession | undefined): void {
+  if (!session?.profileId || !session.serverId || !session.options?.privateKeyPath) return
+  const { profileId, serverId } = session
+  const path = session.options.privateKeyPath
+  void window.bldeskApi.getLocalSshKeys().then((keys) => {
+    setKeyAssociation(profileId, serverId, path, 'learned', keys)
+  }).catch(() => {})
+}
 let started = false
 let initialization: Promise<void> | undefined
 let remember = false
@@ -71,7 +84,9 @@ export function initializeTerminals(): Promise<void> {
     dataListeners.get(id)?.forEach((cb) => cb(chunk))
   })
   api.onExit((id, exitCode, signal) => {
+    cancelLearning(id)
     if (closing.delete(id)) { output.delete(id); exits.delete(id); return }
+    if (exitCode !== 255 && !signal) learn(snapshot.find((s) => s.id === id))
     exits.set(id, { exitCode, signal })
     snapshot = snapshot.map((s) => s.id === id ? { ...s, status: 'exited', exitCode, signal } : s)
     emit()
@@ -94,20 +109,29 @@ export function subscribeTerminalOutput(id: string, cb: (data: string) => void):
   if (buffered) cb(buffered)
   return () => { set.delete(cb); if (!set.size) dataListeners.delete(id) }
 }
-export async function createTerminal(options: PtyOpenOptions): Promise<string> {
+export async function createTerminal(options: PtyOpenOptions, profileId?: string): Promise<string> {
   await initializeTerminals()
   const api = window.bldeskApi.pty
   if (!api) throw new Error('Embedded SSH is available on desktop only.')
   // Pending tabs are visible while the main process resolves/spawns SSH.
   const pendingId = `connecting-${crypto.randomUUID()}`
   const base: TerminalSession = { id: pendingId, serverId: options.serverId, serverName: options.serverName || options.host,
-    host: options.host, username: options.username || 'root', status: 'connecting', options, broadcast: options.remoteCommand !== undefined }
+    host: options.host, username: options.username || 'root', status: 'connecting', options, profileId, broadcast: options.remoteCommand !== undefined }
   snapshot = [...snapshot, base]
   emit()
   try {
     const { id } = await api.open(options)
     const exited = exits.get(id)
     snapshot = snapshot.map((s) => s.id === pendingId ? { ...base, id, status: exited ? 'exited' : 'live', ...exited } : s)
+    if (exited) {
+      if (exited.exitCode !== 255 && !exited.signal) learn(base)
+    } else if (profileId && options.serverId && options.privateKeyPath) {
+      learningTimers.set(id, setTimeout(() => {
+        learningTimers.delete(id)
+        const session = snapshot.find((s) => s.id === id)
+        if (session?.status === 'live' && !closing.has(id)) learn(session)
+      }, 10000))
+    }
     emit()
     return id
   } catch (error) {
@@ -117,6 +141,7 @@ export async function createTerminal(options: PtyOpenOptions): Promise<string> {
   }
 }
 export async function closeTerminal(id: string): Promise<void> {
+  cancelLearning(id)
   if (snapshot.some((s) => s.id === id && s.status !== 'exited')) closing.add(id)
   try { await window.bldeskApi.pty?.close(id) }
   catch (e) { closing.delete(id); throw e }

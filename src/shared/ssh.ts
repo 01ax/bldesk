@@ -133,7 +133,7 @@ export function sshArgv(options: TerminalLaunchOptions, remoteCommand?: string):
   const host = normaliseSshHost(options.host) ?? options.host.trim()
   const argv = ['ssh']
   if (options.port) argv.push('-p', String(options.port))
-  if (options.privateKeyPath) argv.push('-i', options.privateKeyPath)
+  if (options.privateKeyPath) argv.push('-i', options.privateKeyPath, '-o', 'IdentitiesOnly=yes')
   argv.push(`${user}@${host}`)
   // OpenSSH sends this to the remote login shell only AFTER authentication.
   // Its exit status is the remote command's status (255 for SSH errors).
