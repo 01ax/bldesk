@@ -44,6 +44,30 @@ const commands = load(resolve(root, 'src/renderer/src/lib/commands.ts'))
 const registry = load(resolve(root, 'src/renderer/src/lib/terminalSessions.ts'))
 const owner = load(resolve(root, 'src/main/pty.ts'))
 async function main() {
+  // Run metadata handling with Windows path semantics, without any file-read API.
+  const winPath = 'D:\\Team Keys\\production-access.pem'
+  stubs.path = require('node:path').win32
+  stubs.fs = { statSync: (path) => { if (path !== winPath) throw new Error('missing'); return { isFile: () => true } } }
+  const files = load(resolve(root, 'src/main/sshKeyFiles.ts'))
+  assert.deepEqual(files.existingKeyFiles([winPath, winPath]), [{ name: 'production-access.pem', privateKeyPath: winPath, publicKey: '' }])
+  assert.deepEqual(files.existingKeyFiles(['D:\\missing']), [])
+  assert.throws(() => files.existingKeyFiles(['relative-key']), /Invalid/)
+  assert.throws(() => files.existingKeyFiles(['D:\\bad\nkey']), /Invalid/)
+  stubs.fs.statSync = () => ({ isFile: () => false })
+  assert.deepEqual(files.existingKeyFiles([winPath]), [], 'directories are not key files')
+  stubs.fs.statSync = () => ({ isFile: () => true })
+  let picker, canceled = false
+  const mainSource = readFileSync(resolve(root, 'src/main/index.ts'), 'utf8')
+  const pickerSource = mainSource.slice(mainSource.indexOf("  ipcMain.handle('vault:chooseSshKeyFile'"), mainSource.indexOf("  ipcMain.handle('vault:getLocalSshKeys'"))
+  const pickerCode = ts.transpileModule(pickerSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+  new Function('ipcMain', 'mainWindow', 'dialog', 'existingKeyFiles', pickerCode)(
+    { handle: (_, fn) => { picker = fn } }, { webContents: renderer },
+    { showOpenDialog: async () => ({ canceled, filePaths: canceled ? [] : [winPath] }) }, files.existingKeyFiles)
+  const pickerEvent = { sender: renderer, senderFrame: renderer.mainFrame }
+  assert.equal((await picker(pickerEvent)).privateKeyPath, winPath)
+  canceled = true; assert.equal(await picker(pickerEvent), null)
+  await assert.rejects(picker({ sender: {}, senderFrame: {} }), /restricted/)
+  delete stubs.fs; delete stubs.path
   const options = { host: '127.0.0.1', username: 'root', privateKeyPath: '/tmp/key with spaces', port: 2222, cols: 80, rows: 24 }
   const command = 'printf "%s\\n" "$(hostname)"; exit 7'
   assert.deepEqual(ssh.sshArgv(options, command), ['ssh', '-p', '2222', '-i', '/tmp/key with spaces', '-o', 'IdentitiesOnly=yes', 'root@127.0.0.1', command])

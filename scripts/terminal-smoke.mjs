@@ -3,7 +3,7 @@
 // The server implements a small deterministic command set, NOT a VPS shell.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, copyFileSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -326,6 +326,51 @@ try {
     await page.getByRole('button', { name: 'Close broadcast', exact: true }).click()
   }
   report.hostOverride = 'custom alias: 0/0; cleared with identities unchanged: 0/255'
+  const externalKey = join(dir, 'Team key arbitrary filename.pem')
+  copyFileSync(key, externalKey) // Only the fixture copies its generated key; BLDesk does not.
+  const restoreDiscovery = () => app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('vault:getLocalSshKeys')
+    ipcMain.handle('vault:getLocalSshKeys', global.showcase.productionKeyDiscovery)
+  })
+  await restoreDiscovery()
+  await app.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }) }, externalKey)
+  await deep('bldesk://server/8100/remote-access')
+  await page.getByRole('button', { name: 'Browse…', exact: true }).click()
+  await until(async () => await page.getByLabel('Key for this server', { exact: true }).inputValue() === externalKey)
+  await page.getByText(`Key file: ${externalKey}`, { exact: true }).waitFor()
+  for (const [width, height] of [[1024, 680], [1280, 840]]) for (const zoom of [0.8, 1.25, 1.5]) {
+    await app.evaluate(({ BrowserWindow }, { width, height, zoom }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, height); w.webContents.setZoomFactor(zoom) }, { width, height, zoom })
+    await reachable(page.getByRole('button', { name: 'Browse…', exact: true }), 'browse key button')
+    await reachable(page.getByText(`Key file: ${externalKey}`, { exact: true }), 'selected filename and path')
+  }
+  await app.evaluate(({ dialog, BrowserWindow }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
+    const w = BrowserWindow.getAllWindows()[0]; w.setSize(1280, 840); w.webContents.setZoomFactor(1)
+  })
+  await page.getByRole('button', { name: 'Browse…', exact: true }).click()
+  await until(async () => await page.getByRole('button', { name: 'Browse…', exact: true }).isEnabled())
+  assert.equal(await page.getByLabel('Key for this server', { exact: true }).inputValue(), externalKey)
+  await app.close(); app = undefined
+  await launch(); await restoreDiscovery()
+  await page.getByLabel('SSH server', { exact: true }).selectOption('8100')
+  await until(async () => await page.getByLabel('SSH key', { exact: true }).inputValue() === externalKey)
+  await page.getByLabel('SSH port', { exact: true }).fill(String(port))
+  await page.getByRole('button', { name: 'Broadcast', exact: true }).click()
+  await page.getByLabel('Broadcast targets').fill('#8100')
+  await page.getByLabel('Broadcast command').fill('hostname')
+  await page.getByRole('cell', { name: 'Team key arbitrary filename.pem', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Run broadcast', exact: true }).click()
+  await page.getByRole('button', { name: /Run on all targets/ }).click()
+  await page.getByText('exit 0', { exact: true }).waitFor()
+  await until(() => page.evaluate((path) => JSON.parse(localStorage.getItem('bldesk_ssh_keys_showcase-demo')).lastWorking === path, externalKey))
+  await page.getByRole('button', { name: 'Close broadcast', exact: true }).click()
+  renameSync(externalKey, `${externalKey}.moved`)
+  await page.getByRole('button', { name: 'Broadcast', exact: true }).click()
+  await page.getByLabel('Broadcast targets').fill('#8100')
+  await until(async () => (await page.getByLabel('Target preview').innerText()).includes('key missing'))
+  assert.equal(await page.getByRole('button', { name: 'Run broadcast', exact: true }).isDisabled(), true)
+  renameSync(`${externalKey}.moved`, externalKey)
+  report.browsedKey = 'exact arbitrary filename outside .ssh, no .pub; cancel preserved; restart resolved; broadcast 0; moved file skipped'
   assert.deepEqual(errors, [])
   console.log('PASS', JSON.stringify(report))
 } catch (error) {
