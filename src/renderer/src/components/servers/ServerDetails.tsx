@@ -40,7 +40,9 @@ import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
 import { useReachability, ReachabilityChip } from './ReachabilityBadge'
 import { ChangePlanPanel } from './ChangePlanPanel'
-import { openSsh } from '../../lib/openSsh'
+import { openServerSsh } from '../../lib/openServerSsh'
+import { validateSshTarget } from '@shared/ssh'
+import { resolveConnection, serverConnectAddress, setServerConnectAddress, defaultSshAddress, type ConnectMode } from '../../lib/sshKeyAssociations'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
 import { ServerSubTab } from '../layout/Sidebar'
@@ -152,11 +154,15 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
   const [keySource, setKeySource] = useState<string>('')
+  const [, refreshAddress] = useState(0)
+  const connectAddress = serverConnectAddress(profileId, server.id)
+  const resolvedConnection = resolveConnection(profileId, server, localKeys)
   const chooseKey = (path: string) => {
     setKeyAssociation(profileId, server.id, path || null, 'manual', localKeys)
   }
   useEffect(() => {
     const refresh = () => {
+      refreshAddress((n) => n + 1)
       setSelectedKeyPath(loadKeyAssociations(profileId)[server.id] || '')
       setKeySource(keyAssociationSource(profileId, server.id) || '')
     }
@@ -424,7 +430,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {/* Leads the cluster: the buttons beside it are only worth
                 clicking if the port answers from here. */}
-            <ReachabilityChip r={reach} ip={primaryV4} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
+            <ReachabilityChip r={reach} ip={primaryV4} sshHost={resolvedConnection.origin.host !== 'public' ? resolvedConnection.host : undefined} onOpenFirewall={() => onSelectSubTab?.('firewall')} />
             {/* SSH Key Selector */}
             <div className="flex items-center gap-1 bg-[#f8f9fa] dark:bg-[#212529] px-2 py-1 border border-[#ced4da] dark:border-[#373b3e] rounded">
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
@@ -446,11 +452,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
 
             <button
               onClick={() =>
-                openSsh({
-                  profileId, serverId: server.id, serverName: server.name,
-                  host: primaryV4,
-                  username: 'root',
-                })
+                openServerSsh(server, profileId)
               }
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
             >
@@ -733,6 +735,18 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 Open SSH using the selected local key. Desktop sessions open in BLDesk unless you prefer a native terminal; Android hands off to an SSH app.
               </p>
               {window.bldeskApi?.pty && <div className="mb-4 space-y-2 text-xs">
+                <label className="block">Connect to
+                  <select aria-label="Connect to" className="block mt-1 p-2 rounded border max-w-full bg-white dark:bg-[#212529]" value={connectAddress?.mode || ''} onChange={(e) => setServerConnectAddress(profileId, server.id, e.target.value ? { mode: e.target.value as ConnectMode, host: connectAddress?.host || '' } : null)}>
+                    <option value="">Use profile default ({defaultSshAddress(profileId) === 'name' ? 'server name' : 'public address'})</option>
+                    <option value="public">Public address ({server.networks?.v4?.find((n) => n.type === 'public')?.ip_address || 'none'})</option>
+                    <option value="name">Server name ({server.name})</option>
+                    <option value="custom">Custom…</option>
+                  </select>
+                </label>
+                {connectAddress?.mode === 'custom' && <label className="block">Custom SSH host<input aria-label="Custom SSH host" className="block w-full mt-1 p-2 rounded border bg-white dark:bg-[#212529]" placeholder="server.tailnet.example or ssh-config-alias" value={connectAddress.host || ''} onChange={(e) => setServerConnectAddress(profileId, server.id, { mode: 'custom', host: e.target.value })} /></label>}
+                <p>SSH buttons, the palette, the tray and broadcast use this address. The reachability badge still checks the public address.</p>
+                <p>Resolved SSH address: {resolvedConnection.host || 'none'}</p>
+                {(resolvedConnection.warning || validateSshTarget({ host: resolvedConnection.host })) && <p role="status" className="text-amber-600">{resolvedConnection.warning || validateSshTarget({ host: resolvedConnection.host })}</p>}
                 <label className="block">Key for this server
                   <select aria-label="Key for this server" className="block mt-1 p-2 rounded border max-w-full bg-white dark:bg-[#212529]" value={selectedKeyPath} onChange={(e) => chooseKey(e.target.value)}>
                     <option value="">Use default</option>
@@ -746,11 +760,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() =>
-                    openSsh({
-                      profileId, serverId: server.id, serverName: server.name,
-                      host: primaryV4,
-                      username: 'root',
-                    })
+                    openServerSsh(server, profileId)
                   }
                   className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-2 shadow-sm"
                 >

@@ -8,7 +8,9 @@ keywords: [port 22 unreachable, running but down, apparmor, macos, update, offli
 Start by separating the guest, the cloud API and this device. A successful API request does not prove that a guest service is working.
 
 ## Port 22 unreachable
-The badge tests the server's SSH port from your device. Check your network or VPN, the target address and configured SSH port, external firewall order, guest firewall and whether sshd is listening. A server can be running while SSH is unreachable. Use the rescue console to inspect the guest when needed.
+The badge tests port 22 at the public address from your device, not your custom SSH destination or connect-bar port. Check your network or VPN, the target address and configured SSH port, external firewall order, guest firewall and whether sshd is listening. A server can be running while SSH is unreachable. Use the rescue console to inspect the guest when needed.
+
+If your company blocks public SSH and uses a tailnet, WireGuard or a bastion instead, a red public-address badge may be expected. In [Remote access](help:server-remote-access#connect-to), set Connect to → Custom… to your private hostname, IP or existing SSH-config alias (or Server name when it already matches). Connect the required VPN first. Desktop BLDesk uses system OpenSSH; it does not set up Tailscale or change your firewall. The badge continues to test the public address even when SSH works through the private route.
 
 [Firewall help](help:firewall) explains the cloud controls. BinaryLane's [external firewall article](https://support.binarylane.com.au/support/solutions/articles/11000033088-external-firewall) distinguishes external filtering from the guest firewall.
 

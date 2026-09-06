@@ -22,13 +22,18 @@ export function recallOpenSessions(): RememberedSession[] {
   } catch { return [] }
 }
 
-export function broadcastTargets(expression: string, servers: components['schemas']['Server'][], tags: TagMap, groups: ServerGroup[]) {
+export function broadcastTargets(expression: string, servers: components['schemas']['Server'][], tags: TagMap, groups: ServerGroup[], hostFor?: (server: components['schemas']['Server']) => string) {
   const expanded = expandGroupRefs(expression, groups, servers, tags)
   const result = matchServers(servers, expanded.expression)
   const { eligible, skipped } = partitionByStatus(result.matches, 'active')
   // Also surface known-but-empty groups; otherwise a partial fan-out is invisible.
   const empty = expression.split(',').map((s) => s.trim()).filter((s) => s.startsWith('@') && !expandGroupRefs(s, groups, servers, tags).expression)
   const withIp = eligible.filter(({ server }) => {
+    if (hostFor) {
+      if (!validateSshTarget({ host: hostFor(server) })) return true
+      skipped.push({ server, pattern: expression, reason: 'invalid connect address' })
+      return false
+    }
     if (server.networks?.v4?.some((n) => n.type === 'public' && n.ip_address)) return true
     skipped.push({ server, pattern: expression, reason: 'no public IPv4 address' })
     return false
