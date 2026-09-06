@@ -16,15 +16,18 @@ const dir = mkdtempSync(join(tmpdir(), 'bldesk-terminal-smoke-'))
 const key = join(dir, 'identity')
 execFileSync('/usr/bin/ssh-keygen', ['-t', 'ed25519', '-N', '', '-f', key, '-q'])
 const publicKey = utils.parseKey(readFileSync(`${key}.pub`))
+const secondKey = join(dir, 'identity-second')
+execFileSync('/usr/bin/ssh-keygen', ['-t', 'ed25519', '-N', '', '-f', secondKey, '-q'])
+const secondPublicKey = utils.parseKey(readFileSync(`${secondKey}.pub`))
 const clients = new Set()
 const report = { connections: 0, authenticated: 0, passwords: 0, commands: [], sizes: [], output: dir }
-const fixture = new Server({ hostKeys: [readFileSync(key)] }, (client) => {
+const makeFixture = (identity, acceptedKey) => new Server({ hostKeys: [readFileSync(identity)] }, (client) => {
   report.connections++
   clients.add(client)
   client.on('error', () => {}).on('close', () => clients.delete(client))
   client.on('authentication', (ctx) => {
     if (ctx.username === 'password' && ctx.method === 'password' && ctx.password === 'smoke-password') { report.passwords++; ctx.accept(); return }
-    if (ctx.username !== 'password' && ctx.method === 'publickey' && ctx.key.data.equals(publicKey.getPublicSSH()) && (!ctx.signature || publicKey.verify(ctx.blob, ctx.signature) === true)) { ctx.accept(); return }
+    if (ctx.username !== 'password' && ctx.method === 'publickey' && ctx.key.data.equals(acceptedKey.getPublicSSH()) && (!ctx.signature || acceptedKey.verify(ctx.blob, ctx.signature) === true)) { ctx.accept(); return }
     ctx.reject(ctx.username === 'password' ? ['password'] : ['publickey'])
   }).on('ready', () => {
     report.authenticated++
@@ -59,8 +62,12 @@ const fixture = new Server({ hostKeys: [readFileSync(key)] }, (client) => {
     })
   })
 })
+const fixture = makeFixture(key, publicKey)
+const secondFixture = makeFixture(secondKey, secondPublicKey)
 await new Promise((r) => fixture.listen(0, '127.0.0.1', r))
 const port = fixture.address().port
+await new Promise((resolve, reject) => { secondFixture.once('error', reject); secondFixture.listen(0, '127.0.0.1', resolve) })
+const secondPort = secondFixture.address().port
 const config = join(dir, 'ssh-config')
 writeFileSync(config, `Host *\n  HostName 127.0.0.1\n  Port ${port}\n  IdentityFile ${key}\n  IdentitiesOnly yes\n  IdentityAgent none\n  UserKnownHostsFile ${join(dir, 'known_hosts')}\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking ask\n  ForwardAgent no\n  ClearAllForwardings yes\n  ConnectTimeout 5\n`)
 const bin = join(dir, 'bin'); mkdirSync(bin)
@@ -208,6 +215,63 @@ try {
   await page.waitForTimeout(500)
   assert.equal(report.connections, before)
   assert.equal((await current()).length, 0)
+  await page.getByRole('button', { name: 'Dismiss', exact: true }).click()
+  // Same real OpenSSH client and production IPC, two loopback hosts accepting
+  // different generated keys. The second key is present locally throughout the
+  // positive and negative cases; only the associations differ.
+  // macOS exposes only 127.0.0.1 by default. Route the second documentation
+  // address to a second port; leave identity arguments entirely untouched.
+  writeFileSync(join(bin, 'ssh'), `#!/bin/sh\nfor arg do\n  if [ "$arg" = 'root@192.0.2.21' ]; then\n    exec /usr/bin/ssh -p ${secondPort} -F '${config}' "$@"\n  fi\ndone\nexec /usr/bin/ssh -F '${config}' "$@"\n`, { mode: 0o755 })
+  writeFileSync(join(dir, 'known_hosts'), `[127.0.0.1]:${port} ${readFileSync(`${key}.pub`, 'utf8')}[127.0.0.1]:${secondPort} ${readFileSync(`${secondKey}.pub`, 'utf8')}`)
+  await app.evaluate(({ ipcMain }, paths) => {
+    ipcMain.removeHandler('vault:getLocalSshKeys')
+    ipcMain.handle('vault:getLocalSshKeys', () => paths.map((privateKeyPath, i) => ({ name: `Loopback key ${i + 1}`, privateKeyPath, publicKey: '' })))
+  }, [key, secondKey])
+  for (const [serverId, path] of [[8100, key], [8101, secondKey]]) {
+    await deep(`bldesk://server/${serverId}/remote-access`)
+    await page.getByLabel('Key for this server', { exact: true }).selectOption(path)
+    await page.getByText('Set by hand', { exact: true }).waitFor()
+    for (const [width, height] of [[1024, 680], [1280, 840]]) for (const zoom of [0.8, 1.25, 1.5]) {
+      await app.evaluate(({ BrowserWindow }, { width, height, zoom }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, height); w.webContents.setZoomFactor(zoom) }, { width, height, zoom })
+      await reachable(page.getByLabel('Key for this server', { exact: true }), 'per-server key selector')
+    }
+  }
+  await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(1280, 840); w.webContents.setZoomFactor(1) })
+  // Associations survive a full Electron restart, not just a React rerender.
+  await app.close(); app = undefined
+  await launch()
+  await app.evaluate(({ ipcMain }, paths) => {
+    ipcMain.removeHandler('vault:getLocalSshKeys')
+    ipcMain.handle('vault:getLocalSshKeys', () => paths.map((privateKeyPath, i) => ({ name: `Loopback key ${i + 1}`, privateKeyPath, publicKey: '' })))
+  }, [key, secondKey])
+  await page.getByLabel('SSH server', { exact: true }).selectOption('8101')
+  await until(async () => (await page.getByLabel('SSH key', { exact: true }).inputValue()) === secondKey)
+  assert.ok((await page.getByLabel('SSH key', { exact: true }).locator('..').innerText()).includes('Key (associated)'))
+  await page.getByLabel('SSH port', { exact: true }).fill(String(port))
+  await page.getByRole('button', { name: 'Broadcast', exact: true }).click()
+  await page.getByLabel('Broadcast targets').fill('#8100,#8101')
+  await page.getByLabel('Broadcast command').fill('hostname')
+  await page.getByRole('cell', { name: 'Loopback key 1', exact: true }).waitFor()
+  await page.getByRole('cell', { name: 'Loopback key 2', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Run broadcast', exact: true }).click()
+  await page.getByRole('button', { name: /Run on all targets/ }).click()
+  await until(async () => await page.getByText('exit 0', { exact: true }).count() === 2)
+  await until(() => page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem('bldesk_ssh_keys_showcase-demo') || '{}')
+    return stored.sources?.[8100] === 'learned' && stored.sources?.[8101] === 'learned'
+  }))
+  // Clear associations AND last-working fallback, but leave both keys available.
+  await page.getByRole('button', { name: 'Close broadcast', exact: true }).click()
+  await page.evaluate(() => { localStorage.removeItem('bldesk_ssh_keys_showcase-demo'); window.dispatchEvent(new Event('bldesk:ssh-key-associations')) })
+  await page.getByRole('button', { name: 'Broadcast', exact: true }).click()
+  await page.getByLabel('Broadcast targets').fill('#8100,#8101')
+  await page.getByLabel('Broadcast command').fill('hostname')
+  assert.equal(await page.getByRole('cell', { name: 'ssh default', exact: true }).count(), 2)
+  await page.getByRole('button', { name: 'Run broadcast', exact: true }).click()
+  await page.getByRole('button', { name: /Run on all targets/ }).click()
+  await page.getByText('exit 255', { exact: true }).waitFor()
+  await page.getByText('exit 0', { exact: true }).waitFor()
+  report.twoKeyBroadcast = 'associated: 0/0; cleared with both keys present: 0/255'
   assert.deepEqual(errors, [])
   console.log('PASS', JSON.stringify(report))
 } catch (error) {
@@ -220,5 +284,5 @@ try {
 } finally {
   if (app) await app.close()
   for (const client of clients) client.end()
-  await new Promise((r) => fixture.close(r))
+  await Promise.all([new Promise((r) => fixture.close(r)), new Promise((r) => secondFixture.close(r))])
 }

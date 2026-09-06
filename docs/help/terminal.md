@@ -10,20 +10,30 @@ Embedded SSH runs your device's OpenSSH client inside BLDesk. Each session has i
 ## Connect to a server
 Choose + Connect. Pick a server to fill its primary public IPv4, or enter Host yourself. Set User (root by default), Port (22 by default) and Key, then choose Connect in BLDesk. Default SSH identities leaves identity selection to OpenSSH.
 
+Picking a server also fills Key using its profile-specific association, then the profile's last working key, then SSH defaults. The label shows associated, last used, or ssh default. You can override it before connecting. Server buttons, the map, tray and palette use the same resolution order. No first-local-key fallback is used.
+
+With an explicit key, BLDesk passes -i and -o IdentitiesOnly=yes to OpenSSH. The latter prevents unrelated agent identities from crowding out the selected key. Without an explicit key it adds neither option, preserving your normal agent/configuration behaviour. Other IdentityFile entries in your SSH configuration may still apply.
+
 Your private key stays on your device; the account's public-key list is separate. See [SSH keys](help:keys).
 
 Answer password, passphrase and host-key prompts inside the terminal. BLDesk does not bypass host verification. Connecting means the SSH process is being created; live means it is running, not necessarily authenticated. Exit 255 usually means an SSH error; other codes can come from the remote shell/command. Reconnect starts a new connection; Close ends the local SSH process.
 
+For an explicit key and known server, embedded SSH remembers the path after ten seconds live, or a normal exit other than 255, for the profile that opened the session. Early exit 255, a launch failure, or manually closing a short session does not teach a key. An exit 255 after the ten-second threshold does not undo an already learned association. This is a process-lifetime heuristic, not proof of authentication. Only the path is retained: BLDesk never reads or stores private-key contents. See [Remote access](help:server-remote-access) to change or clear an association.
+
 ## Native alternative
 The connect bar and connection-error message offer Open in native terminal. Prefer native terminal changes the default for server buttons, map/context-menu access, tray SSH, deep links and palette SSH. Connect in BLDesk remains explicit. Use ssh jumpbox --native in the [palette](help:palette) to force native launch without changing the preference.
+
+Native launches use the resolved or explicitly selected key, but do not learn: BLDesk cannot observe that terminal's SSH lifetime or exit status.
 
 ## Search and reopen
 Ctrl/Cmd+F while the terminal has focus opens scrollback search. Use Find next, Previous, or Escape to return to the session. Each terminal keeps up to 5,000 scrollback lines in memory, not a recording.
 
-On restart, the terminal view offers Reopen or Dismiss for previously open interactive tabs. Nothing connects automatically. Only server names, usernames, hosts and server IDs are remembered; no key paths, custom ports, commands or output. Reopen uses default SSH configuration/identities; use the connect bar instead when a custom port/key is required. Renderer reload can recover running connections, but not old scrollback.
+On restart, the terminal view offers Reopen or Dismiss for previously open interactive tabs. Nothing connects automatically. The tab list remembers only server names, usernames, hosts and server IDs, not key paths, custom ports, commands or output. Key associations are stored separately. Reopen resolves each key for the active profile and uses the default port; use the connect bar when a custom port is required. Renderer reload can recover running connections, but not old scrollback.
 
 ## Broadcast
-Choose Broadcast, enter a target expression such as wp-*, @web or #123,#456, and inspect Eligible, Skipped and Unmatched. Building/archived servers and servers without a public IPv4 are skipped. Other status labels do not prove SSH is reachable. User, port and key come from the connect bar.
+Choose Broadcast, enter a target expression such as wp-*, @web or #123,#456, and inspect Eligible, Skipped and Unmatched. Building/archived servers and servers without a public IPv4 are skipped. Other status labels do not prove SSH is reachable. User and port come from the connect bar; its key selection is not shared across the fleet.
+
+The target preview shows each server's resolved key: its association, the profile's last working key, or ssh default. A server whose associated key is no longer available is skipped with key missing; update or clear that association before retrying. Each host gets its own key when launched, and learns independently under the same rule as an interactive session.
 
 Run broadcast opens the shared destructive confirmation with the expression, command and every host. More than five eligible hosts requires typing the expression. After confirmation, SSH runs the command on all eligible hosts in parallel, after each authenticates. Answer prompts separately in each output pane. Results show running/authentication, launch failure, or exit status. Exit 0 is green; non-zero exits/signals are red. Up to 32 SSH processes may run across interactive and broadcast sessions combined; excess launches fail visibly.
 

@@ -1,5 +1,14 @@
 # Help verification
 
+## SSH key association follow-up (6 September 2026, unreleased)
+
+- `help/server-remote-access.md`: checked control names and manual/learned labels against `ServerDetails.tsx`; resolution and pruning against `lib/sshKeyAssociations.ts`; lifetime/exit conditions against `lib/terminalSessions.ts`.
+- `help/terminal.md`: checked picker source labels and reopen behaviour against `TerminalView.tsx`, per-host preview/skips and confirmation wording against `BroadcastPanel.tsx`, entry-point resolution against `lib/openSsh.ts`, and conditional identity options against `src/shared/ssh.ts`.
+- `help/keys.md`: checked discovery against `vault:getLocalSshKeys` in `src/main/index.ts`: reads `.pub` contents, tests private-path existence, does not read private-key contents. Connection selectors filter to entries with a private path. Association storage contains paths/source metadata, not private-key material.
+- Corrected the previous statements that broadcast shares the connect-bar key and reopen always uses SSH defaults. Documented the ten-second rule as a heuristic, native non-learning, and the distinction between individual fallback and broadcast missing-key skips. `IdentitiesOnly=yes` excludes unrelated agent identities; it does not erase other configured `IdentityFile` entries.
+
+See [SSH key verification](SSH_KEYS_VERIFICATION.md) for automated results and the outstanding packaged, real-server acceptance test. Earlier verification records below describe their original feature passes.
+
 Implementation branch: `feat/help-and-ask-binarylane`. No version bump or new runtime dependencies.
 
 ## Content accuracy review (5 September 2026)
