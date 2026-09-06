@@ -1,6 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
-import { openSsh } from '../../lib/openSsh'
+import { openServerSsh } from '../../lib/openServerSsh'
 import {
   Server as ServerIcon,
   Play,
@@ -126,10 +126,9 @@ export const ServerList: React.FC<ServerListProps> = ({
     }
   }
 
-  const handleOpenSsh = (ip: string, e: React.MouseEvent) => {
+  const handleOpenSsh = (server: ServerResponse, e: React.MouseEvent) => {
     e.stopPropagation()
-    const server = servers.find((s) => s.networks?.v4?.some((n) => n.ip_address === ip))
-    void openSsh({ host: ip, username: 'root', serverId: server?.id, serverName: server?.name })
+    void openServerSsh(server)
   }
 
   const filteredServers = [...servers].sort(compareByBuildingFirst).filter((s) => {
@@ -405,9 +404,9 @@ export const ServerList: React.FC<ServerListProps> = ({
                         >
                           {copiedLinkId === server.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Link2 className="w-3.5 h-3.5" />}
                         </button>
-                        {publicIps[0]?.ip_address && (
+                        {(
                           <button
-                            onClick={(e) => handleOpenSsh(publicIps[0].ip_address, e)}
+                            onClick={(e) => handleOpenSsh(server, e)}
                             className="flex items-center gap-1 px-2.5 py-1 bg-[#017cb6] hover:bg-[#016594] text-white rounded text-xs font-medium transition shadow-sm"
                             title="Open SSH"
                           >
@@ -539,9 +538,9 @@ export const ServerList: React.FC<ServerListProps> = ({
                   <span className="text-[11px] text-[#6c757d] dark:text-slate-400">
                     {server.region?.name || server.region?.slug?.toUpperCase()}
                   </span>
-                  {primaryIp && (
+                  {(
                     <button
-                      onClick={(e) => handleOpenSsh(primaryIp, e)}
+                      onClick={(e) => handleOpenSsh(server, e)}
                       className="px-2.5 py-1 bg-[#017cb6] hover:bg-[#016594] text-white rounded text-xs font-medium transition flex items-center gap-1"
                     >
                       <Terminal className="w-3 h-3" />
@@ -561,7 +560,7 @@ export const ServerList: React.FC<ServerListProps> = ({
           state={contextMenu}
           onClose={() => setContextMenu(null)}
           onOpen={(s) => onSelectServer(s)}
-          onSsh={(ip) => { const server = contextMenu.server; void openSsh({ host: ip, username: 'root', serverId: server.id, serverName: server.name }) }}
+          onSsh={() => { void openServerSsh(contextMenu.server) }}
           onCopyLink={(id) => handleCopyLink(id)}
           onAction={(id, type) => handleAction(id, type, { stopPropagation: () => {} } as React.MouseEvent)}
           actionInProgress={actionInProgressServerId !== null}

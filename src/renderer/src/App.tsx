@@ -9,6 +9,7 @@ import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { TerminalView } from './components/terminal/TerminalView'
 import { openSsh } from './lib/openSsh'
+import { openServerSsh } from './lib/openServerSsh'
 import { VpcManager } from './components/vpcs/VpcManager'
 import { DnsManager } from './components/dns/DnsManager'
 import { SshKeysManager } from './components/keys/SshKeysManager'
@@ -222,7 +223,9 @@ function MainDashboard() {
   }
 
   const handleOpenTerminalForIp = (ip: string) => {
-    void openSsh({ host: ip, username: 'root' })
+    const server = servers.find((s) => s.networks?.v4?.some((n) => n.ip_address === ip))
+    if (server) void openServerSsh(server, activeProfile?.id)
+    else void openSsh({ host: ip, username: 'root', profileId: activeProfile?.id })
   }
 
   const handleSelectTab = (tab: ActiveTab) => {
