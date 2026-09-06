@@ -202,7 +202,8 @@ export interface IpcApi extends HelpApi {
   openRescueConsole: (options: ConsoleWindowOptions) => Promise<{ success: boolean }>
   
   // SSH Keys & Local FS
-  getLocalSshKeys: () => Promise<LocalSshKey[]>
+  getLocalSshKeys: (selectedPaths?: string[]) => Promise<LocalSshKey[]>
+  chooseSshKeyFile?: () => Promise<LocalSshKey | null>
 
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>

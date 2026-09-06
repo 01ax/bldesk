@@ -5,6 +5,11 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [Unreleased]
+
+### Added
+- Browse for an existing per-server SSH private-key file with any filename or location, without requiring a neighbouring `.pub` file. Retains only the exact path including filename; no private-key copying/content reads or passphrase storage. Selected files are checked by metadata and supported across launchers, reopen, learning and broadcast.
+
 ## [1.0.61-beta.7] - 2026-09-06
 
 ### Fixed

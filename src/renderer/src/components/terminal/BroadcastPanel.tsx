@@ -6,7 +6,7 @@ import { updateChange } from '../../lib/changelog'
 import { loadGroups, loadTags, GROUPS_EVENT } from '../../lib/serverGroups'
 import { broadcastTargets, createTerminal, closeTerminal, subscribeTerminals, terminalSnapshot } from '../../lib/terminalSessions'
 import { TerminalTab } from './TerminalTab'
-import { loadKeyAssociations, resolveConnection, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
+import { loadKeyAssociations, resolveConnection, availableSshKeys, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 type Result = { name: string; id?: string; error?: string }
 export function BroadcastPanel({ servers, profileId, connection, onClose }: {
@@ -34,7 +34,7 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
     let alive = true
     const refresh = () => {
       setKeysReady(false)
-      void window.bldeskApi.getLocalSshKeys().then((available) => { if (alive) { setKeys(available); setKeysReady(true) } })
+      void availableSshKeys(profileId).then((available) => { if (alive) { setKeys(available); setKeysReady(true) } })
         .catch((error) => { if (alive) setNotice(String(error)) })
     }
     refresh()

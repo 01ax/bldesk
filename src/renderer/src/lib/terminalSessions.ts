@@ -3,7 +3,7 @@ import type { components } from '@shared/api/schema'
 import { validateSshTarget } from '@shared/ssh'
 import { matchServers, partitionByStatus } from './commands'
 import { expandGroupRefs, type ServerGroup, type TagMap } from './serverGroups'
-import { setKeyAssociation } from './sshKeyAssociations'
+import { setKeyAssociation, availableSshKeys } from './sshKeyAssociations'
 
 export type RememberedSession = Pick<PtySessionInfo, 'serverId' | 'serverName' | 'host' | 'username'>
 export interface TerminalSession extends PtySessionInfo { options?: PtyOpenOptions; profileId?: string; error?: string }
@@ -57,7 +57,7 @@ function learn(session: TerminalSession | undefined): void {
   if (!session?.profileId || !session.serverId || !session.options?.privateKeyPath) return
   const { profileId, serverId } = session
   const path = session.options.privateKeyPath
-  void window.bldeskApi.getLocalSshKeys().then((keys) => {
+  void availableSshKeys(profileId, [path]).then((keys) => {
     setKeyAssociation(profileId, serverId, path, 'learned', keys)
   }).catch(() => {})
 }

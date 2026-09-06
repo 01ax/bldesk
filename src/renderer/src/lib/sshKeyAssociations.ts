@@ -37,6 +37,12 @@ export function keyAssociationSource(profileId: string | undefined, serverId: nu
   return read(profileId).sources[serverId]
 }
 export function lastWorkingKey(profileId?: string): string | undefined { return read(profileId).lastWorking }
+/** Include explicitly chosen filenames outside discovery's ~/.ssh + .pub convention. */
+export function availableSshKeys(profileId?: string, extraPaths: string[] = []): Promise<LocalSshKey[]> {
+  const store = read(profileId)
+  const paths = [...new Set([...Object.values(store.associations), ...(store.lastWorking ? [store.lastWorking] : []), ...extraPaths])]
+  return window.bldeskApi.getLocalSshKeys(paths)
+}
 export function setKeyAssociation(profileId: string | undefined, serverId: number, path: string | null,
   source: Source = 'manual', localKeys?: LocalSshKey[]): void {
   if (!profileId || !Number.isSafeInteger(serverId) || serverId <= 0) return
