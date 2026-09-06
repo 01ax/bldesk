@@ -8,21 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.61-beta.5] - 2026-09-06
 
 ### Added
-- **Per-Server SSH Connect Address & Tailscale/VPN Support**:
+- **Per-Server SSH Connect Address & Tailscale/VPN Support** (addresses #56):
   - Configurable per-server connection target under Remote Access: **Public address** (default), **Server name** (resolves Tailscale MagicDNS / local DNS short names), or **Custom…** (arbitrary hostname, Tailscale 100.x IP, FQDN, or `~/.ssh/config` Host alias). Resolves issue #56.
   - Per-profile default connect address setting (**Default SSH address**) in the Terminal header (Public address or Server name).
   - Unified SSH resolution (`openServerSsh`) across all entry points: Server List row button, Server Details header & Remote Access, Network Map, Command Palette, Context Menu, Tray menu, Deep Links (`bldesk://ssh/...`), Terminal tab reopen, and Broadcast panel.
   - Profile fallback logic ensures callers without explicit profile context resolve the active profile's preferences rather than ignoring overrides.
   - Broadcast panel execution preview displays the resolved target host per server and skips any server with an invalid or missing connect address with a clear `invalid connect address` reason.
   - Reachability badge tooltip clarifies *"Checks the public address"* when an override is active so users know ping checks the public IP even when SSH connects over a private tailnet.
+  - System OpenSSH architecture: delegates hostname/alias resolution to the OS and system OpenSSH binary without embedding VPN credentials or altering local configuration.
   - Updated Help documentation (`server-remote-access.md`, `terminal.md`, `troubleshooting.md`) with setup guides for firewalled public SSH, Tailscale MagicDNS, WireGuard, and `~/.ssh/config` host aliases.
 
 ## [1.0.61-beta.4] - 2026-09-06
 
 ### Fixed
-- **macOS Unsigned Auto-Update**:
+- **macOS Unsigned Auto-Update Engine**:
   - Bypassed Squirrel.Mac on macOS to allow unsigned application builds to auto-update without hitting `SQRLCodeSignatureErrorDomain` ("code object is not signed at all").
-  - Direct universal zip download with real-time progress, in-place atomic application bundle swap on restart or quit, and automatic quarantine (`xattr -cr`) clearance.
+  - Direct universal zip download streaming with real-time transfer progress, in-place atomic application bundle swap on restart or quit via detached helper script, and automatic Gatekeeper quarantine (`xattr -cr`) clearance.
   - Added structural updater guard suite (`scripts/check-updater-guards.mjs`) to verify auto-update invariants on every build.
   - *Note for macOS users on beta.2/beta.3*: Install this build once manually (via DMG or Zip) to upgrade to the new self-updating engine; subsequent updates will install automatically.
 
