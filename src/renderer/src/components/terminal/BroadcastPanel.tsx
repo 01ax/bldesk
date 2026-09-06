@@ -3,11 +3,10 @@ import type { components } from '@shared/api/schema'
 import type { TerminalLaunchOptions, LocalSshKey } from '@shared/ipc-types'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
-import { primaryIpv4 } from '../../lib/deeplinks'
 import { loadGroups, loadTags, GROUPS_EVENT } from '../../lib/serverGroups'
 import { broadcastTargets, createTerminal, closeTerminal, subscribeTerminals, terminalSnapshot } from '../../lib/terminalSessions'
 import { TerminalTab } from './TerminalTab'
-import { loadKeyAssociations, resolveKeyFor, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
+import { loadKeyAssociations, resolveConnection, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 type Result = { name: string; id?: string; error?: string }
 export function BroadcastPanel({ servers, profileId, connection, onClose }: {
@@ -25,12 +24,12 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
   const [, refreshGroups] = useState(0)
   const run = useRef<{ changeId?: string; profileId: string; results: Result[]; starting: boolean; settled: boolean }>()
   const alive = useRef(true)
-  const targets = broadcastTargets(expression, servers, loadTags(profileId), loadGroups(profileId))
+  const targets = broadcastTargets(expression, servers, loadTags(profileId), loadGroups(profileId), (server) => resolveConnection(profileId, server, keys).host)
   const associations = loadKeyAssociations(profileId)
   const missing = targets.eligible.filter(({ server }) => associations[server.id] && !keys.some((k) => k.privateKeyPath === associations[server.id]))
   targets.eligible = targets.eligible.filter((target) => !missing.includes(target))
   targets.skipped.push(...missing.map((target) => ({ ...target, reason: 'key missing' })))
-  const hosts = targets.eligible.map(({ server }) => ({ serverId: server.id, serverName: server.name, host: primaryIpv4(server)!, privateKeyPath: resolveKeyFor(profileId, server.id, keys) }))
+  const hosts = targets.eligible.map(({ server }) => { const resolved = resolveConnection(profileId, server, keys); return { serverId: server.id, serverName: server.name, host: resolved.host, privateKeyPath: resolved.privateKeyPath } })
   useEffect(() => {
     let alive = true
     const refresh = () => {
@@ -127,7 +126,7 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
     <label className="block">Targets<input aria-label="Broadcast targets" disabled={busy} className="block w-full rounded bg-[#343a40] p-2" placeholder="wp-*, @web, #123" value={expression} onChange={(e) => setExpression(e.target.value)} /></label>
     <div aria-label="Target preview" className="max-h-28 overflow-auto break-words">
       <p>Eligible ({targets.eligible.length}): {targets.eligible.map((s) => s.server.name).join(', ') || 'none'}</p>
-      <table className="w-full text-left"><thead><tr><th>Server</th><th>Key</th></tr></thead><tbody>{hosts.map((s) => <tr key={s.serverId}><td>{s.serverName}</td><td className="break-all">{s.privateKeyPath ? keys.find((k) => k.privateKeyPath === s.privateKeyPath)?.name || s.privateKeyPath : 'ssh default'}</td></tr>)}</tbody></table>
+      <table className="w-full text-left"><thead><tr><th>Server</th><th>Host</th><th>Key</th></tr></thead><tbody>{hosts.map((s) => <tr key={s.serverId}><td>{s.serverName}</td><td className="break-all">{s.host}</td><td className="break-all">{s.privateKeyPath ? keys.find((k) => k.privateKeyPath === s.privateKeyPath)?.name || s.privateKeyPath : 'ssh default'}</td></tr>)}</tbody></table>
       <p>Skipped ({targets.skipped.length}): {targets.skipped.map((s) => `${s.server.name} (${s.reason})`).join(', ') || 'none'}</p>
       <p>Unmatched: {targets.unmatched.join(', ') || 'none'}</p>
     </div>

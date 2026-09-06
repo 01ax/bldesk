@@ -33,7 +33,7 @@ import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useServerActionMutation, describeApiError } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
-import { openSsh } from '../../lib/openSsh'
+import { openServerSsh } from '../../lib/openServerSsh'
 import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
@@ -193,14 +193,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }
 
   const sshTo = async (s: ServerResponse, native = false) => {
-    const ip = primaryIpv4(s)
-    if (!ip) {
-      setNotice(`${s.name} has no IPv4 address to SSH to.`)
-      return
-    }
     rememberCommand(query)
     close()
-    await openSsh({ host: ip, username: 'root', serverId: s.id, serverName: s.name }, native)
+    await openServerSsh(s, profileId, native)
   }
 
   const consoleFor = async (s: ServerResponse) => {

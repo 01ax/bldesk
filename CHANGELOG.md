@@ -5,6 +5,12 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [Unreleased]
+
+### Added
+- Per-profile Default SSH address and per-server Connect to preferences: public IPv4, server name or a custom hostname/IP/SSH-config alias. SSH buttons, palette, map, tray, deep links, reopen and broadcast resolve the selected address alongside the existing key association.
+- Broadcast Host column and invalid-address skips; public reachability tooltip caveat and private-network/VPN/SSH-alias setup help. Addresses are local metadata, not credentials; no VPN detection, SSH-config editing or private-address probing is added. Addresses issue #56.
+
 ## [1.0.61-beta.4] - 2026-09-06
 
 ### Fixed

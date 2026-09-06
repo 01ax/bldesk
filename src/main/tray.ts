@@ -261,7 +261,7 @@ export class TrayManager {
             },
             {
               label: 'SSH as root',
-              enabled: !!srv.ip && srv.status === 'active',
+              enabled: srv.status === 'active',
               click: () => {
                 this.showWindow()
                 DeepLinkManager.dispatch(formatDeepLink({ kind: 'ssh', serverId: srv.id }))

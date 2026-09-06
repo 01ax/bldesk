@@ -4,7 +4,7 @@ import { AccountProfile } from '@shared/ipc-types'
 import { DeepLink, formatDeepLink, parseDeepLink } from '@shared/deeplink'
 import { BinaryLaneClient } from '../api/client'
 import { ActiveTab, ServerSubTab } from '../components/layout/Sidebar'
-import { openSsh } from './openSsh'
+import { openServerSsh } from './openServerSsh'
 import { openHelp, LOCAL_DEEP_LINK_EVENT } from './helpNavigation'
 
 type ServerResponse = components['schemas']['Server']
@@ -140,14 +140,9 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
             break
 
           case 'ssh': {
-            const ip = primaryIpv4(server)
             d.onSelectServer(server)
             d.onSelectTab('servers')
-            if (!ip) {
-              alert(`${server.name} has no IPv4 address to SSH to.`)
-              break
-            }
-            await openSsh({ host: ip, username: 'root', serverId: server.id, serverName: server.name })
+            await openServerSsh(server, d.activeProfile?.id)
             break
           }
 
