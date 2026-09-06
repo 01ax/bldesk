@@ -5,10 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
-## [Unreleased]
+## [1.0.61-beta.8] - 2026-09-07
 
 ### Added
-- Browse for an existing per-server SSH private-key file with any filename or location, without requiring a neighbouring `.pub` file. Retains only the exact path including filename; no private-key copying/content reads or passphrase storage. Selected files are checked by metadata and supported across launchers, reopen, learning and broadcast.
+- **Browse & Remember Custom SSH Key Files**:
+  - Added a **Browse…** button in **Remote Access** directly beside *Key for this server* to select an existing private key from anywhere on disk with any filename.
+  - No longer requires a neighbouring `.pub` file or standard `~/.ssh` directory structure.
+  - Security & Privacy: BLDesk retains only the exact local file path string per server and profile. Private-key contents are never read, copied, imported, or transmitted, and passphrase storage is deliberately not attempted.
+  - Full launcher integration: Selected keys are checked by metadata and supported seamlessly across all SSH launch buttons, terminal reopen, session key-learning, and parallel broadcast.
+  - UI display: Shows the key filename in the selector and the complete path beneath it.
 
 ## [1.0.61-beta.7] - 2026-09-06
 

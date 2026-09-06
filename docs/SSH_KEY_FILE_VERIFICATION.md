@@ -1,6 +1,6 @@
 # Existing SSH key-file selection
 
-Unreleased follow-up to issue #56, 7 September 2026. No version bump or release.
+Released in 1.0.61-beta.8 (7 September 2026). Follow-up to issue #56.
 
 ## Behaviour
 
