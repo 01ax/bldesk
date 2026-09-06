@@ -45,7 +45,7 @@ The original numbers are retained because code comments and older discussions re
 
 ### 1. Real embedded terminal (pty)
 
-Implemented on desktop: SSH-only PTYs, persistent tabs, scrollback search, opt-in reopen after restart, parallel broadcast with shared destructive review and per-host outcomes, native preference/override, and a 32-process cap. Interactive splits, serial broadcast and recording remain out of scope. See [terminal verification](docs/TERMINAL_VERIFICATION.md) for tested platforms and remaining release checks.
+**Done (v1.0.61-beta.2; confirmed against live BinaryLane servers on 6 September 2026).** SSH-only PTYs on desktop, persistent tabs, scrollback search, opt-in reopen after restart, parallel broadcast with shared destructive review and per-host outcomes, native preference/override, and a 32-process cap. Interactive splits, serial broadcast and recording remain out of scope by design. See [terminal verification](docs/TERMINAL_VERIFICATION.md) for what was tested and the Windows/Linux release-leg checks.
 
 ### 2. Fleet-wide firewall matrix
 
