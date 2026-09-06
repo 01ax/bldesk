@@ -1,6 +1,6 @@
 # SSH connect-address verification
 
-Implementation of [SSH_HOST_SPEC.md](SSH_HOST_SPEC.md), addressing [issue #56](https://github.com/termau/bldesk/issues/56). Unreleased follow-up to 1.0.61-beta.4. No version bump, commit, push or release in this work.
+Implementation of [SSH_HOST_SPEC.md](SSH_HOST_SPEC.md), addressing [issue #56](https://github.com/termau/bldesk/issues/56). Released in 1.0.61-beta.5. Built and deployed so users and issue reporters can test against live builds.
 
 ## Scope and source audit
 

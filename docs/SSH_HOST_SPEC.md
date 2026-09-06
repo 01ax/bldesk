@@ -1,6 +1,6 @@
 # Per-server SSH connect address — build spec
 
-Status: **implemented locally; automated verification passed; real-tailnet acceptance pending**. See [SSH_HOST_VERIFICATION.md](SSH_HOST_VERIFICATION.md). Answers issue #56. Follow-up to `docs/SSH_KEYS_SPEC.md`; read that and `AGENTS.md` first.
+Status: **implemented and released in 1.0.61-beta.5; automated verification passed; real-tailnet acceptance check pending Simon Hampel review**. See [SSH_HOST_VERIFICATION.md](SSH_HOST_VERIFICATION.md). Answers issue #56. Follow-up to `docs/SSH_KEYS_SPEC.md`; read that and `AGENTS.md` first.
 
 ## The problem
 

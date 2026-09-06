@@ -5,11 +5,17 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
-## [Unreleased]
+## [1.0.61-beta.5] - 2026-09-06
 
 ### Added
-- Per-profile Default SSH address and per-server Connect to preferences: public IPv4, server name or a custom hostname/IP/SSH-config alias. SSH buttons, palette, map, tray, deep links, reopen and broadcast resolve the selected address alongside the existing key association.
-- Broadcast Host column and invalid-address skips; public reachability tooltip caveat and private-network/VPN/SSH-alias setup help. Addresses are local metadata, not credentials; no VPN detection, SSH-config editing or private-address probing is added. Addresses issue #56.
+- **Per-Server SSH Connect Address & Tailscale/VPN Support**:
+  - Configurable per-server connection target under Remote Access: **Public address** (default), **Server name** (resolves Tailscale MagicDNS / local DNS short names), or **Custom…** (arbitrary hostname, Tailscale 100.x IP, FQDN, or `~/.ssh/config` Host alias). Resolves issue #56.
+  - Per-profile default connect address setting (**Default SSH address**) in the Terminal header (Public address or Server name).
+  - Unified SSH resolution (`openServerSsh`) across all entry points: Server List row button, Server Details header & Remote Access, Network Map, Command Palette, Context Menu, Tray menu, Deep Links (`bldesk://ssh/...`), Terminal tab reopen, and Broadcast panel.
+  - Profile fallback logic ensures callers without explicit profile context resolve the active profile's preferences rather than ignoring overrides.
+  - Broadcast panel execution preview displays the resolved target host per server and skips any server with an invalid or missing connect address with a clear `invalid connect address` reason.
+  - Reachability badge tooltip clarifies *"Checks the public address"* when an override is active so users know ping checks the public IP even when SSH connects over a private tailnet.
+  - Updated Help documentation (`server-remote-access.md`, `terminal.md`, `troubleshooting.md`) with setup guides for firewalled public SSH, Tailscale MagicDNS, WireGuard, and `~/.ssh/config` host aliases.
 
 ## [1.0.61-beta.4] - 2026-09-06
 
