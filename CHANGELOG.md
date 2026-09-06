@@ -5,6 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.61-beta.6] - 2026-09-06
+
+### Fixed
+- **Windows Embedded SSH Session Close** (fixes #55):
+  - Fixed an issue on Windows where clicking the close button on an embedded SSH tab had no effect while SSH was attempting to connect, leaving the tab open until the connection timed out.
+  - Root cause: `node-pty` on Windows throws `Signals not supported on windows.` when any signal argument is passed to `kill()`. The unhandled rejection prevented the renderer from closing the tab and caused Windows to leak background SSH processes on application exit.
+  - Solution: `close()` now invokes a bare `process.kill()` with no arguments on Windows, directly terminating the ConPTY process. Other platforms (macOS, Linux) continue sending `SIGHUP`.
+  - Updated test runner assertions in `scripts/test-terminal.cjs` to handle platform-specific termination signals.
+
 ## [1.0.61-beta.5] - 2026-09-06
 
 ### Added
