@@ -100,48 +100,50 @@ async function downloadMacZip(
   }
 }
 
+let macInstalling = false
+
 function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
+  if (macInstalling) return
+  macInstalling = true
+
   const targetApp = process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '')
   if (!targetApp.endsWith('.app') || !existsSync(targetApp)) {
     console.error('[Updater] Cannot locate app bundle to replace:', process.execPath)
+    macInstalling = false
     return
   }
 
   const stagingDir = join(app.getPath('temp'), `bldesk-update-${Date.now()}`)
   mkdirSync(stagingDir, { recursive: true })
 
-  try {
-    execFileSync('unzip', ['-q', '-o', zipPath, '-d', stagingDir])
-  } catch (err) {
-    console.error('[Updater] Failed to unzip update:', err)
-    rmSync(stagingDir, { recursive: true, force: true })
-    return
-  }
-
   const stagedApp = join(stagingDir, 'BLDesk.app')
-  if (!existsSync(stagedApp)) {
-    console.error('[Updater] Unzipped update does not contain BLDesk.app')
-    rmSync(stagingDir, { recursive: true, force: true })
-    return
-  }
-
   const scriptPath = join(stagingDir, 'install-update.sh')
   const scriptContent = `#!/bin/bash
 PID=${process.pid}
+COUNT=0
 while kill -0 $PID 2>/dev/null; do
   sleep 0.1
+  COUNT=$((COUNT+1))
+  if [ $COUNT -ge 30 ]; then
+    kill -9 $PID 2>/dev/null || true
+    break
+  fi
 done
 
-rm -rf "${targetApp}"
-cp -R "${stagedApp}" "${targetApp}"
+unzip -q -o "${zipPath}" -d "${stagingDir}"
+if [ -d "${stagedApp}" ]; then
+  rm -rf "${targetApp}"
+  cp -R "${stagedApp}" "${targetApp}"
+  xattr -cr "${targetApp}" 2>/dev/null || true
+fi
 rm -rf "${stagingDir}"
-xattr -cr "${targetApp}" 2>/dev/null || true
+rm -f "${zipPath}"
 ${forceRunAfter ? `open "${targetApp}"` : ''}
 `
   writeFileSync(scriptPath, scriptContent, { mode: 0o755 })
   const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' })
   child.unref()
-  app.quit()
+  setTimeout(() => app.exit(0), 100)
 }
 
 export class UpdaterManager {
@@ -290,6 +292,7 @@ export class UpdaterManager {
   }
 
   static onAppQuit(): void {
+    if (macInstalling) return
     if (isMac && this.state.status === 'ready' && macPendingZipPath && existsSync(macPendingZipPath)) {
       installMacUpdate(macPendingZipPath, false)
     }

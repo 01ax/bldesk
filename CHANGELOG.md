@@ -5,6 +5,14 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.61-beta.7] - 2026-09-06
+
+### Fixed
+- **macOS In-Place Auto-Update Process Swap**:
+  - Fixed an issue where the updater hung during the update swap when upgrading on macOS.
+  - Root cause: `installMacUpdate` executed `unzip` synchronously on the main thread, freezing the UI and event loop, while calling `app.quit()` which was intercepted by tray window-close handlers (`event.preventDefault()`). The helper script sat in an unbounded wait loop for the old PID, and `before-quit` triggered duplicate concurrent extraction jobs.
+  - Solution: Offloaded archive extraction directly to the detached helper script after process termination, added a re-entrancy installation guard (`macInstalling`), bounded the process wait loop with a force-kill fallback, and switched from `app.quit()` to `app.exit(0)` to prevent tray interception during an update restart.
+
 ## [1.0.61-beta.6] - 2026-09-06
 
 ### Fixed
