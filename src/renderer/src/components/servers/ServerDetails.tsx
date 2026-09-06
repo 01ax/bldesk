@@ -49,10 +49,12 @@ import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
 import { imageSupportsUserData, templateFromServer, type ServerTemplate } from '../../lib/serverTemplates'
 import { describeApiError } from '../../api/queries'
+import { loadKeyAssociations, keyAssociationSource, setKeyAssociation, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 type ServerResponse = components['schemas']['Server']
 
 interface ServerDetailsProps {
+  profileId?: string
   server: ServerResponse
   client: BinaryLaneClient | null
   activeSubTab?: ServerSubTab
@@ -134,6 +136,7 @@ function describeDiagnostic(
 }
 
 export const ServerDetails: React.FC<ServerDetailsProps> = ({
+  profileId,
   server,
   client,
   activeSubTab = 'overview',
@@ -148,6 +151,19 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [diagnosticResult, setDiagnosticResult] = useState<{ text: string; ok: boolean } | null>(null)
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
+  const [keySource, setKeySource] = useState<string>('')
+  const chooseKey = (path: string) => {
+    setKeyAssociation(profileId, server.id, path || null, 'manual', localKeys)
+  }
+  useEffect(() => {
+    const refresh = () => {
+      setSelectedKeyPath(loadKeyAssociations(profileId)[server.id] || '')
+      setKeySource(keyAssociationSource(profileId, server.id) || '')
+    }
+    refresh()
+    window.addEventListener(SSH_KEYS_EVENT, refresh)
+    return () => window.removeEventListener(SSH_KEYS_EVENT, refresh)
+  }, [profileId, server.id])
   const [linkCopied, setLinkCopied] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
@@ -181,10 +197,6 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         .then((keys) => {
           if (Array.isArray(keys)) {
             setLocalKeys(keys)
-            const defaultKey = keys.find((k) => k.privateKeyPath)
-            if (defaultKey?.privateKeyPath) {
-              setSelectedKeyPath(defaultKey.privateKeyPath)
-            }
           }
         })
         .catch(console.error)
@@ -418,11 +430,13 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <Key className="w-3.5 h-3.5 text-[#f1ca00] flex-shrink-0" />
               <select
                 value={selectedKeyPath}
-                onChange={(e) => setSelectedKeyPath(e.target.value)}
+                aria-label="Server SSH key"
+                onChange={(e) => chooseKey(e.target.value)}
                 className="bg-transparent text-xs text-[#212529] dark:text-slate-200 focus:outline-none cursor-pointer max-w-[120px]"
               >
-                <option value="">Default Key</option>
-                {localKeys.map((k) => (
+                <option value="">Use default</option>
+                {selectedKeyPath && !localKeys.some((k) => k.privateKeyPath === selectedKeyPath) && <option value={selectedKeyPath}>Key missing</option>}
+                {localKeys.filter((k) => k.privateKeyPath).map((k) => (
                   <option key={k.name} value={k.privateKeyPath || ''} className="bg-white dark:bg-[#2b3035]">
                     {k.name}
                   </option>
@@ -433,10 +447,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             <button
               onClick={() =>
                 openSsh({
-                  serverId: server.id, serverName: server.name,
+                  profileId, serverId: server.id, serverName: server.name,
                   host: primaryV4,
                   username: 'root',
-                  privateKeyPath: selectedKeyPath || undefined
                 })
               }
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
@@ -719,14 +732,24 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               <p className="text-xs text-[#6c757d] dark:text-slate-400 mb-4">
                 Open SSH using the selected local key. Desktop sessions open in BLDesk unless you prefer a native terminal; Android hands off to an SSH app.
               </p>
-              <div className="flex items-center gap-3">
+              {window.bldeskApi?.pty && <div className="mb-4 space-y-2 text-xs">
+                <label className="block">Key for this server
+                  <select aria-label="Key for this server" className="block mt-1 p-2 rounded border max-w-full bg-white dark:bg-[#212529]" value={selectedKeyPath} onChange={(e) => chooseKey(e.target.value)}>
+                    <option value="">Use default</option>
+                    {selectedKeyPath && !localKeys.some((k) => k.privateKeyPath === selectedKeyPath) && <option value={selectedKeyPath}>Key missing — {selectedKeyPath}</option>}
+                    {localKeys.filter((k) => k.privateKeyPath).map((k) => <option key={k.privateKeyPath} value={k.privateKeyPath}>{k.name}</option>)}
+                  </select>
+                </label>
+                <p>{keySource === 'learned' ? 'Learned from an SSH session' : keySource === 'manual' ? 'Set by hand' : 'Uses the last working key for this profile, then SSH defaults.'}</p>
+                <p>Only the file path is remembered on this device. BLDesk never reads or stores private-key contents; OpenSSH reads the existing file when connecting.</p>
+              </div>}
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() =>
                     openSsh({
-                      serverId: server.id, serverName: server.name,
+                      profileId, serverId: server.id, serverName: server.name,
                       host: primaryV4,
                       username: 'root',
-                      privateKeyPath: selectedKeyPath || undefined
                     })
                   }
                   className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-2 shadow-sm"

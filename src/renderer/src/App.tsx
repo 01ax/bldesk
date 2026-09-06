@@ -330,6 +330,7 @@ function MainDashboard() {
             {activeTab === 'servers' && (
               selectedServer ? (
                 <ServerDetails
+                  profileId={activeProfile?.id}
                   server={liveSelectedServer}
                   servers={servers}
                   client={client}
