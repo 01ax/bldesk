@@ -8,7 +8,7 @@ import { OPEN_SSH_EVENT, prefersNativeTerminal, setPreferNativeTerminal, takePen
 import { createTerminal, closeTerminal, initializeTerminals, recallOpenSessions, enableSessionMemory, finalizeSessionMemory, subscribeTerminals, terminalSnapshot, type TerminalSession } from '../../lib/terminalSessions'
 import { TerminalTab } from './TerminalTab'
 import { BroadcastPanel } from './BroadcastPanel'
-import { loadKeyAssociations, resolveKeyFor } from '../../lib/sshKeyAssociations'
+import { resolveConnection, resolveKeyFor, defaultSshAddress, setDefaultSshAddress, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 const field = 'min-w-0 max-w-full rounded bg-[#343a40] px-2 py-1.5 border border-[#495057]'
 export function TerminalView({ servers, profileId, active, onActivate }: {
@@ -18,6 +18,9 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
   const tabs = sessions.filter((s) => !s.broadcast)
   const [selected, setSelected] = useState('')
   const [host, setHost] = useState('')
+  const [pickedServerId, setPickedServerId] = useState<number>()
+  const [hostOrigin, setHostOrigin] = useState('manual host')
+  const [addressDefault, setAddressDefault] = useState(() => defaultSshAddress(profileId))
   const [username, setUsername] = useState('root')
   const [port, setPort] = useState('22')
   const [key, setKey] = useState('')
@@ -53,7 +56,12 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
     }).catch((e) => setError(String(e)))
     void window.bldeskApi.getLocalSshKeys().then(setKeys).catch((e) => setError(String(e)))
   }, [])
-  useEffect(() => { keyRequest.current++; setKeyLoading(false); setKey(''); setKeyOrigin('ssh default') }, [profileId])
+  useEffect(() => {
+    keyRequest.current++; setKeyLoading(false); setKey(''); setKeyOrigin('ssh default'); setPickedServerId(undefined); setHost(''); setHostOrigin('manual host')
+    const refresh = () => setAddressDefault(defaultSshAddress(profileId))
+    refresh(); window.addEventListener(SSH_KEYS_EVENT, refresh)
+    return () => window.removeEventListener(SSH_KEYS_EVENT, refresh)
+  }, [profileId])
   useEffect(() => {
     window.addEventListener('beforeunload', finalizeSessionMemory)
     return () => window.removeEventListener('beforeunload', finalizeSessionMemory)
@@ -71,8 +79,14 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
   async function reopenAll() {
     const remembered = reopen
     setReopen([])
-    const available = await window.bldeskApi.getLocalSshKeys()
-    await Promise.all(remembered.map((s) => connect({ ...s, privateKeyPath: resolveKeyFor(profileId, s.serverId, available) })))
+    try {
+      const available = await window.bldeskApi.getLocalSshKeys()
+      await Promise.all(remembered.map((s) => {
+        const server = servers.find((server) => server.id === s.serverId)
+        const resolved = server ? resolveConnection(profileId, server, available) : { host: s.host, privateKeyPath: resolveKeyFor(profileId, s.serverId, available) }
+        return connect({ ...s, ...resolved, username: s.username, profileId })
+      }))
+    } catch (error) { setError(String(error)) }
     enableSessionMemory()
   }
   return <div className="h-full min-h-0 min-w-0 flex flex-col bg-[#212529] text-[#f8f9fa]" data-testid="terminal-view">
@@ -81,6 +95,7 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
         <button onClick={() => { setConnectBar((v) => !v); setBroadcast(false) }} aria-label="New SSH session">+ Connect</button>
         <button onClick={() => { setBroadcastOpened(true); setBroadcast((v) => !v) }}>Broadcast</button>
         <label className="flex gap-1 items-center"><input type="checkbox" checked={native} onChange={(e) => { setNative(e.target.checked); setPreferNativeTerminal(e.target.checked) }} />Prefer native terminal</label>
+        <label>Default SSH address<select aria-label="Default SSH address" className={`${field} ml-2`} value={addressDefault} disabled={!profileId} onChange={(e) => setDefaultSshAddress(profileId, e.target.value as 'public' | 'name')}><option value="public">Public address</option><option value="name">Server name</option></select></label>
       </div>
       {!!reopen.length && <div className="rounded border border-[#017cb6] p-2 space-y-2" aria-label="Reopen SSH sessions">
         <p>Reopen previous SSH tabs? Nothing connects until you choose Reopen. Keys resolve from this profile’s associations, then last working key, then SSH defaults. Uses default SSH port/configuration; select a custom port in the connect bar if needed.</p>
@@ -88,25 +103,28 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
         <button disabled={connecting} onClick={() => void reopenAll()} className="mr-3">Reopen {reopen.length} sessions</button>
         <button onClick={() => { setReopen([]); enableSessionMemory() }}>Dismiss</button>
       </div>}
-      {connectBar && <form onSubmit={(e) => { e.preventDefault(); void connect({ ...connection, host }) }} className="flex flex-wrap items-end gap-2">
+      {connectBar && <form onSubmit={(e) => { e.preventDefault(); if (!keyLoading) void connect({ ...connection, host, serverId: pickedServerId }) }} className="flex flex-wrap items-end gap-2">
         <label className="min-w-0">Server<select aria-label="SSH server" value="" className={`${field} block w-44`} onChange={async (e) => {
           const s = servers.find((s) => s.id === Number(e.target.value))
           if (!s) return
-          setHost(primaryIpv4(s) || '')
+          setPickedServerId(s.id)
+          setHost(resolveConnection(profileId, s, keys).host)
           const request = ++keyRequest.current
           setKeyLoading(true); setKey(''); setKeyOrigin('ssh default')
           try {
             const available = await window.bldeskApi.getLocalSshKeys()
             if (request !== keyRequest.current) return
             setKeys(available)
-            const resolved = resolveKeyFor(profileId, s.id, available)
-            setKey(resolved || '')
-            setKeyOrigin(resolved ? loadKeyAssociations(profileId)[s.id] === resolved ? 'associated' : 'last used' : 'ssh default')
+            const resolved = resolveConnection(profileId, s, available)
+            setHost(resolved.host); setHostOrigin(resolved.origin.host === 'name' ? 'server name' : resolved.origin.host === 'default-name' ? 'profile server name' : resolved.origin.host)
+            setKey(resolved.privateKeyPath || '')
+            setKeyOrigin(resolved.origin.key)
+            setError(resolved.warning || '')
           } catch (error) { if (request === keyRequest.current) setError(String(error)) }
           finally { if (request === keyRequest.current) setKeyLoading(false) }
-        }}><option value="">Choose a server…</option>{servers.map((s) => <option key={s.id} value={s.id} disabled={!primaryIpv4(s)}>{s.name}</option>)}</select></label>
+        }}><option value="">Choose a server…</option>{servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
         <label>User<input aria-label="SSH user" className={`${field} block w-24`} value={username} onChange={(e) => setUsername(e.target.value)} /></label>
-        <label className="min-w-0">Host<input aria-label="SSH host" className={`${field} block w-44`} value={host} onChange={(e) => setHost(e.target.value)} required /></label>
+        <label className="min-w-0">Host ({hostOrigin})<input aria-label="SSH host" className={`${field} block w-44`} value={host} onChange={(e) => { keyRequest.current++; setKeyLoading(false); setHost(e.target.value); setPickedServerId(undefined); setHostOrigin('manual host') }} required /></label>
         <label>Port<input aria-label="SSH port" className={`${field} block w-20`} type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} /></label>
         <label className="min-w-0">Key ({keyOrigin})<select aria-label="SSH key" className={`${field} block w-44`} value={key} onChange={(e) => { setKey(e.target.value); setKeyOrigin(e.target.value ? 'selected' : 'ssh default') }}><option value="">Default SSH identities</option>{keys.filter((k) => k.privateKeyPath).map((k) => <option key={k.privateKeyPath} value={k.privateKeyPath}>{k.name}</option>)}</select></label>
         <button disabled={!host || connecting || keyLoading} className="rounded bg-[#017cb6] px-3 py-1.5 disabled:opacity-50" type="submit">Connect in BLDesk</button>

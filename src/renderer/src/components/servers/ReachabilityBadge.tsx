@@ -148,8 +148,9 @@ function explainTimeout(r: Reachability): string | null {
 export const ReachabilityChip: React.FC<{
   r: Reachability
   ip?: string
+  sshHost?: string
   onOpenFirewall?: () => void
-}> = ({ r, ip, onOpenFirewall }) => {
+}> = ({ r, ip, sshHost, onOpenFirewall }) => {
   if (!r.supported || !ip) return null
   const { result, busy, port } = r
   const explanation = explainTimeout(r)
@@ -157,7 +158,7 @@ export const ReachabilityChip: React.FC<{
   const failed = !!result && !result.ok
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2" title={sshHost ? `Checks the public address; SSH connects to ${sshHost}` : undefined}>
       {/* No result yet: the only time the pill is a placeholder. */}
       {!result && busy && (
         <span className={`${pill} bg-[#e9ecef] dark:bg-[#343a40] text-[#6c757d] dark:text-slate-400`}>
@@ -168,7 +169,7 @@ export const ReachabilityChip: React.FC<{
 
       {result?.ok && (
         <span
-          title={`TCP connect to port ${port} from this machine`}
+          title={sshHost ? `Checks the public address; SSH connects to ${sshHost}` : `TCP connect to port ${port} from this machine`}
           className={`${pill} bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300`}
         >
           {busy ? (

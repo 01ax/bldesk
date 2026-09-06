@@ -109,6 +109,35 @@ async function main() {
   storage.set('bldesk_ssh_keys_broken', '{bad json')
   assert.deepEqual(associations.loadKeyAssociations('broken'), {})
 
+  const hostServer = { ...fleet[0], name: 'private-web', networks: { v4: [{ type: 'public', ip_address: '192.0.2.10' }] } }
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).host, '192.0.2.10')
+  associations.setDefaultSshAddress('hosts', 'name')
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).origin.host, 'default-name')
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).host, 'private-web')
+  assert.equal(associations.resolveConnection('other', hostServer, keys).host, '192.0.2.10')
+  associations.setServerConnectAddress('hosts', 1, { mode: 'public' })
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).host, '192.0.2.10')
+  associations.setServerConnectAddress('hosts', 1, { mode: 'name' })
+  const fallback = associations.resolveConnection('hosts', { ...hostServer, name: 'invalid name' }, keys)
+  assert.equal(fallback.host, '192.0.2.10'); assert.ok(fallback.warning)
+  associations.setServerConnectAddress('hosts', 1, { mode: 'custom', host: 'web.tailnet.example' })
+  associations.setKeyAssociation('hosts', 1, '/tmp/b', 'learned', keys)
+  const combined = associations.resolveConnection('hosts', hostServer, keys)
+  assert.equal(combined.host, 'web.tailnet.example'); assert.equal(combined.privateKeyPath, '/tmp/b')
+  assert.deepEqual(combined.origin, { host: 'custom', key: 'associated' })
+  associations.setDefaultSshAddress('hosts', 'public')
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).host, 'web.tailnet.example')
+  for (const host of ['', '-oProxyCommand=bad', 'name with spaces', 'root@host']) {
+    associations.setServerConnectAddress('hosts', 1, { mode: 'custom', host })
+    assert.ok(ssh.validateSshTarget(associations.resolveConnection('hosts', hostServer, keys)))
+  }
+  associations.setServerConnectAddress('hosts', 1, { mode: 'custom', host: 'private-only' })
+  const privateServer = { ...hostServer, networks: { v4: [] } }
+  assert.equal(registry.broadcastTargets('#1', [privateServer], {}, [], (s) => associations.resolveConnection('hosts', s, keys).host).eligible.length, 1)
+  associations.setServerConnectAddress('hosts', 1, null)
+  assert.equal(registry.broadcastTargets('#1', [privateServer], {}, [], (s) => associations.resolveConnection('hosts', s, keys).host).skipped[0].reason, 'invalid connect address')
+  assert.equal(associations.resolveConnection('hosts', hostServer, keys).privateKeyPath, '/tmp/b', 'address writes preserve keys')
+
   let onExit, nextId = 0, earlyExit
   window.bldeskApi = { getLocalSshKeys: async () => keys, pty: {
     onData() {}, onExit(cb) { onExit = cb }, list: async () => [],

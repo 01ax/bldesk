@@ -8,7 +8,9 @@ keywords: [terminal, ssh, xterm, shell, native, private key, broadcast, reconnec
 Embedded SSH runs your device's OpenSSH client inside BLDesk. Each session has its own tab and stays connected across app views and account switches. Check the host and username: switching profiles does not change existing SSH connections. Android hides this tab and retains its ssh:// app handoff.
 
 ## Connect to a server
-Choose + Connect. Pick a server to fill its primary public IPv4, or enter Host yourself. Set User (root by default), Port (22 by default) and Key, then choose Connect in BLDesk. Default SSH identities leaves identity selection to OpenSSH.
+Choose + Connect. Pick a server to fill its resolved SSH address, or enter Host yourself. Set User (root by default), Port (22 by default) and Key, then choose Connect in BLDesk. Default SSH identities leaves identity selection to OpenSSH. Host shows the address origin separately from Key's source label.
+
+Default SSH address in the header selects Public address or Server name for the active profile. A server's Connect to setting in [Remote access](help:server-remote-access#connect-to) overrides it. Server name uses the name as an SSH hostname, falling back to public with an explanation if it is invalid. Custom addresses support private-network names and SSH-config aliases; BLDesk does not configure or connect your VPN. Changing the default affects subsequent resolutions, not existing sessions or a host already filled into the connect bar; pick the server again to refresh it.
 
 Picking a server also fills Key using its profile-specific association, then the profile's last working key, then SSH defaults. The label shows associated, last used, or ssh default. You can override it before connecting. Server buttons, the map, tray and palette use the same resolution order. No first-local-key fallback is used.
 
@@ -28,10 +30,12 @@ Native launches use the resolved or explicitly selected key, but do not learn: B
 ## Search and reopen
 Ctrl/Cmd+F while the terminal has focus opens scrollback search. Use Find next, Previous, or Escape to return to the session. Each terminal keeps up to 5,000 scrollback lines in memory, not a recording.
 
-On restart, the terminal view offers Reopen or Dismiss for previously open interactive tabs. Nothing connects automatically. The tab list remembers only server names, usernames, hosts and server IDs, not key paths, custom ports, commands or output. Key associations are stored separately. Reopen resolves each key for the active profile and uses the default port; use the connect bar when a custom port is required. Renderer reload can recover running connections, but not old scrollback.
+On restart, the terminal view offers Reopen or Dismiss for previously open interactive tabs. Nothing connects automatically. The tab list remembers only server names, usernames, hosts and server IDs, not key paths, custom ports, commands or output. Address preferences and key associations are stored separately. Reopen resolves the current address and key for servers found in the active profile; other tabs retain their remembered host. It preserves the username but does not restore a custom port; use the connect bar when a custom port is required. Renderer reload can recover running connections, but not old scrollback.
 
 ## Broadcast
-Choose Broadcast, enter a target expression such as wp-*, @web or #123,#456, and inspect Eligible, Skipped and Unmatched. Building/archived servers and servers without a public IPv4 are skipped. Other status labels do not prove SSH is reachable. User and port come from the connect bar; its key selection is not shared across the fleet.
+Choose Broadcast, enter a target expression such as wp-*, @web or #123,#456, and inspect Eligible, Skipped and Unmatched. Building/archived servers are skipped, as are servers whose resolved address is invalid (invalid connect address). A server without public IPv4 can participate using a valid name/custom address. Other status labels do not prove SSH is reachable. User and port come from the connect bar; its host and key selections are not shared across the fleet.
+
+The preview's Host column shows the actual SSH destination per server. Check it alongside Key before confirming. Valid syntax is not a reachability test; an unavailable VPN, DNS name or bastion can still cause SSH to fail.
 
 The target preview shows each server's resolved key: its association, the profile's last working key, or ssh default. A server whose associated key is no longer available is skipped with key missing; update or clear that association before retrying. Each host gets its own key when launched, and learns independently under the same rule as an interactive session.
 

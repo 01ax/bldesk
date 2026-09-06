@@ -1,5 +1,13 @@
 # Help verification
 
+## SSH address follow-up (6 September 2026, unreleased)
+
+- `help/server-remote-access.md`: Connect to options, Custom SSH host input, inheritance, invalid-name fallback and address warning checked against `ServerDetails.tsx` and `lib/sshKeyAssociations.ts`. Public-probe tooltip checked against `ReachabilityBadge.tsx`; probing remains unchanged. `src/shared/ssh.ts` and the native/PTY launchers pass a hostname to system OpenSSH without renderer DNS resolution. The loopback test verifies an OpenSSH Host/HostName alias. VPN availability remains the user's responsibility; no automatic short-name extraction or VPN configuration is claimed.
+- `help/terminal.md`: Default SSH address, separate Host/Key origin labels and reopen rules checked against `TerminalView.tsx`; Host column and invalid-connect-address skips against `BroadcastPanel.tsx` and `lib/terminalSessions.ts`. Existing confirmation quotes are unchanged. `sshArgv` still supplies root for server buttons and connect-bar user/port explicitly, so docs do not promise that an alias's User/Port overrides those arguments.
+- `help/troubleshooting.md`: distinguishes intentionally firewalled public SSH from private-route availability; points to the implemented Connect to control rather than suggesting a firewall relaxation. Source: `useReachability(primaryV4, 22, ...)` in `ServerDetails.tsx` and the unchanged reachability implementation.
+
+See [SSH host verification](SSH_HOST_VERIFICATION.md) for test evidence and the outstanding real-tailnet acceptance check.
+
 ## SSH key association follow-up (6 September 2026, unreleased)
 
 - `help/server-remote-access.md`: checked control names and manual/learned labels against `ServerDetails.tsx`; resolution and pruning against `lib/sshKeyAssociations.ts`; lifetime/exit conditions against `lib/terminalSessions.ts`.

@@ -94,7 +94,7 @@ export const ServerContextMenu: React.FC<ServerContextMenuProps> = ({
       <button className={item} onClick={run(() => onOpen(server))}>
         <ExternalLink className="w-3.5 h-3.5 text-[#017cb6]" /> Open
       </button>
-      <button className={item} disabled={!ip} onClick={run(() => ip && onSsh(ip))}>
+      <button className={item} onClick={run(() => onSsh(ip || ''))}>
         <Terminal className="w-3.5 h-3.5 text-[#017cb6]" /> SSH as root
       </button>
 

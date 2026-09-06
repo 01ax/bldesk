@@ -1,8 +1,13 @@
 import type { LocalSshKey } from '@shared/ipc-types'
+import type { components } from '@shared/api/schema'
+import { validateSshTarget } from '@shared/ssh'
 
 export const SSH_KEYS_EVENT = 'bldesk:ssh-key-associations'
 type Source = 'manual' | 'learned'
-type Store = { associations: Record<number, string>; sources: Record<number, Source>; lastWorking?: string }
+export type ConnectMode = 'public' | 'name' | 'custom'
+export type ConnectAddress = { mode: ConnectMode; host?: string }
+type Store = { associations: Record<number, string>; sources: Record<number, Source>; lastWorking?: string;
+  profileDefault?: { connect: 'public' | 'name' }; servers?: Record<number, { connect?: ConnectAddress }> }
 const storageKey = (profileId: string) => `bldesk_ssh_keys_${profileId}`
 function read(profileId?: string): Store {
   const empty: Store = { associations: {}, sources: {} }
@@ -16,6 +21,14 @@ function read(profileId?: string): Store {
       }
     }
     if (typeof value.lastWorking === 'string') empty.lastWorking = value.lastWorking
+    empty.profileDefault = { connect: value.profileDefault?.connect === 'name' ? 'name' : 'public' }
+    empty.servers = {}
+    for (const [id, entry] of Object.entries(value.servers || {})) {
+      const connect = (entry as { connect?: ConnectAddress })?.connect
+      if (/^[1-9]\d*$/.test(id) && connect && ['public', 'name', 'custom'].includes(connect.mode)) {
+        empty.servers[Number(id)] = { connect: { mode: connect.mode, host: typeof connect.host === 'string' ? connect.host : undefined } }
+      }
+    }
   } catch { /* Malformed or unavailable local storage behaves like an empty store. */ }
   return empty
 }
@@ -53,4 +66,41 @@ export function resolveKeyFor(profileId: string | undefined, serverId: number | 
   if (associated && available.has(associated)) return associated
   if (value.lastWorking && available.has(value.lastWorking)) return value.lastWorking
   return undefined
+}
+
+function writeAddress(profileId: string | undefined, update: (store: Store) => void): void {
+  if (!profileId) return
+  const store = read(profileId)
+  update(store)
+  try { localStorage.setItem(storageKey(profileId), JSON.stringify(store)); window.dispatchEvent(new Event(SSH_KEYS_EVENT)) } catch { /* optional */ }
+}
+export function defaultSshAddress(profileId?: string): 'public' | 'name' { return read(profileId).profileDefault?.connect || 'public' }
+export function setDefaultSshAddress(profileId: string | undefined, connect: 'public' | 'name'): void {
+  writeAddress(profileId, (store) => { store.profileDefault = { connect } })
+}
+export function serverConnectAddress(profileId: string | undefined, serverId: number): ConnectAddress | undefined {
+  return read(profileId).servers?.[serverId]?.connect
+}
+export function setServerConnectAddress(profileId: string | undefined, serverId: number, connect: ConnectAddress | null): void {
+  if (!Number.isSafeInteger(serverId) || serverId <= 0) return
+  writeAddress(profileId, (store) => {
+    store.servers ??= {}
+    if (connect) store.servers[serverId] = { connect }
+    else delete store.servers[serverId]
+  })
+}
+export function resolveConnection(profileId: string | undefined, server: Pick<components['schemas']['Server'], 'id' | 'name' | 'networks'>, localKeys: LocalSshKey[]) {
+  const connect = serverConnectAddress(profileId, server.id)
+  const mode = connect?.mode || defaultSshAddress(profileId)
+  const publicHost = server.networks?.v4?.find((n) => n.type === 'public')?.ip_address || ''
+  let host = mode === 'custom' ? connect?.host || '' : mode === 'name' ? server.name : publicHost
+  let origin: 'public' | 'name' | 'custom' | 'default-name' = mode === 'name' && !connect ? 'default-name' : mode
+  let warning: string | undefined
+  if (mode === 'name' && validateSshTarget({ host })) {
+    host = publicHost; origin = 'public'
+    warning = 'Server name is not a valid SSH address; using the public address.'
+  }
+  const privateKeyPath = resolveKeyFor(profileId, server.id, localKeys)
+  const key: 'associated' | 'last used' | 'ssh default' = privateKeyPath ? loadKeyAssociations(profileId)[server.id] === privateKeyPath ? 'associated' : 'last used' : 'ssh default'
+  return { host, username: 'root' as const, privateKeyPath, origin: { host: origin, key }, warning }
 }

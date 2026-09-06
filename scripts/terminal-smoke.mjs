@@ -10,7 +10,8 @@ import { execFileSync } from 'node:child_process'
 import ssh2 from 'ssh2'
 const { Server, utils } = ssh2
 const require = createRequire(import.meta.url)
-const { _electron: electron } = await import(process.env.BLDESK_PLAYWRIGHT_MODULE || 'playwright')
+const pw = await import(process.env.BLDESK_PLAYWRIGHT_MODULE || 'playwright')
+const electron = pw._electron || pw.default?._electron
 const root = resolve(import.meta.dirname, '..')
 const dir = mkdtempSync(join(tmpdir(), 'bldesk-terminal-smoke-'))
 const key = join(dir, 'identity')
@@ -234,6 +235,7 @@ try {
     for (const [width, height] of [[1024, 680], [1280, 840]]) for (const zoom of [0.8, 1.25, 1.5]) {
       await app.evaluate(({ BrowserWindow }, { width, height, zoom }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, height); w.webContents.setZoomFactor(zoom) }, { width, height, zoom })
       await reachable(page.getByLabel('Key for this server', { exact: true }), 'per-server key selector')
+      await reachable(page.getByLabel('Connect to', { exact: true }), 'per-server address selector')
     }
   }
   await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(1280, 840); w.webContents.setZoomFactor(1) })
@@ -272,6 +274,58 @@ try {
   await page.getByText('exit 255', { exact: true }).waitFor()
   await page.getByText('exit 0', { exact: true }).waitFor()
   report.twoKeyBroadcast = 'associated: 0/0; cleared with both keys present: 0/255'
+  await page.getByRole('button', { name: 'Close broadcast', exact: true }).click()
+  // Address proof independent of the key test: keep the same accepted key for
+  // both targets. Only the alias maps to the reachable loopback interface.
+  writeFileSync(join(bin, 'ssh'), `#!/bin/sh\nexec /usr/bin/ssh -F '${config}' "$@"\n`, { mode: 0o755 })
+  writeFileSync(config, `Host private-web\n  HostName 127.0.0.1\nHost 192.0.2.21\n  HostName 127.0.0.2\n${readFileSync(config, 'utf8')}`)
+  await deep('bldesk://server/8101/remote-access')
+  await page.getByLabel('Connect to', { exact: true }).selectOption('custom')
+  await page.getByLabel('Custom SSH host', { exact: true }).fill('private-web')
+  for (const [width, height] of [[1024, 680], [1280, 840]]) for (const zoom of [0.8, 1.25, 1.5]) {
+    await app.evaluate(({ BrowserWindow }, { width, height, zoom }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, height); w.webContents.setZoomFactor(zoom) }, { width, height, zoom })
+    await reachable(page.getByLabel('Custom SSH host', { exact: true }), 'custom address input')
+  }
+  await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(1280, 840); w.webContents.setZoomFactor(1) })
+  await app.close(); app = undefined
+  await launch()
+  await page.getByLabel('Default SSH address', { exact: true }).selectOption('name')
+  await page.getByLabel('SSH server', { exact: true }).selectOption('8100')
+  await until(async () => await page.getByLabel('SSH host', { exact: true }).inputValue() === 'edge-web-syd-01')
+  await page.getByLabel('Default SSH address', { exact: true }).selectOption('public')
+  await page.getByLabel('SSH server', { exact: true }).selectOption('8101')
+  await until(async () => await page.getByLabel('SSH host', { exact: true }).inputValue() === 'private-web')
+  // Inspect native handoffs without opening the user's terminal. Both the deep
+  // link (also used by tray) and row button must resolve the persisted alias.
+  await page.getByLabel('Prefer native terminal', { exact: true }).check()
+  await deep('bldesk://ssh/8101')
+  await until(() => app.evaluate(() => global.showcase.nativeLaunches?.length === 1))
+  assert.equal(await app.evaluate(() => global.showcase.nativeLaunches[0].host), 'private-web')
+  await deep('bldesk://tab/servers')
+  await page.getByRole('button', { name: 'All Servers', exact: true }).click()
+  await page.getByRole('row').filter({ hasText: 'api-syd-01' }).getByTitle('Open SSH', { exact: true }).click()
+  await until(() => app.evaluate(() => global.showcase.nativeLaunches?.length === 2))
+  assert.equal(await app.evaluate(() => global.showcase.nativeLaunches[1].host), 'private-web')
+  await deep('bldesk://tab/terminal')
+  await page.getByLabel('Prefer native terminal', { exact: true }).uncheck()
+  await page.getByLabel('SSH port', { exact: true }).fill(String(port))
+  for (const overridden of [true, false]) {
+    if (!overridden) {
+      await deep('bldesk://server/8101/remote-access')
+      await page.getByLabel('Connect to', { exact: true }).selectOption('')
+      await deep('bldesk://tab/terminal')
+    }
+    await page.getByRole('button', { name: 'Broadcast', exact: true }).click()
+    await page.getByLabel('Broadcast targets').fill('#8100,#8101')
+    await page.getByLabel('Broadcast command').fill('hostname')
+    await page.getByRole('cell', { name: overridden ? 'private-web' : '192.0.2.21', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Run broadcast', exact: true }).click()
+    await page.getByRole('button', { name: /Run on all targets/ }).click()
+    if (overridden) await until(async () => await page.getByText('exit 0', { exact: true }).count() === 2)
+    else { await page.getByText('exit 255', { exact: true }).waitFor(); await page.getByText('exit 0', { exact: true }).waitFor() }
+    await page.getByRole('button', { name: 'Close broadcast', exact: true }).click()
+  }
+  report.hostOverride = 'custom alias: 0/0; cleared with identities unchanged: 0/255'
   assert.deepEqual(errors, [])
   console.log('PASS', JSON.stringify(report))
 } catch (error) {
