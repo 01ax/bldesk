@@ -90,7 +90,7 @@ async function main() {
   owner.closeAll()
   assert.equal(owner.list().length, 0)
   assert.ok(children.slice(1).every((c) => c.killed))
-  assert.ok(children.slice(1).every((c) => c.signal === 'SIGHUP'))
+  assert.ok(children.slice(1).every((c) => c.signal === (process.platform === 'win32' ? undefined : 'SIGHUP')))
   const associations = load(resolve(root, 'src/renderer/src/lib/sshKeyAssociations.ts'))
   const keys = ['a', 'b'].map((name) => ({ name, privateKeyPath: `/tmp/${name}`, publicKey: '' }))
   global.window = new EventTarget()

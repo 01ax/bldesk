@@ -105,7 +105,11 @@ export function close(id: string): void {
   const session = sessions.get(id)
   if (!session) return
   // Keep it counted until onExit: rapid close/open cannot bypass the cap.
-  session.process.kill('SIGHUP')
+  // node-pty on Windows throws "Signals not supported on windows." for any
+  // signal argument, which made the tab's close button a no-op there until
+  // ssh gave up on its own (#55). A bare kill() terminates the ConPTY process.
+  if (process.platform === 'win32') session.process.kill()
+  else session.process.kill('SIGHUP')
 }
 export function list(): PtySessionInfo[] { return [...sessions.values()].map((s) => ({ ...s.info })) }
 export function closeAll(): void {
