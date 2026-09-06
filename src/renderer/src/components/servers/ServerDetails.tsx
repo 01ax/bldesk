@@ -51,7 +51,7 @@ import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
 import { imageSupportsUserData, templateFromServer, type ServerTemplate } from '../../lib/serverTemplates'
 import { describeApiError } from '../../api/queries'
-import { loadKeyAssociations, keyAssociationSource, setKeyAssociation, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
+import { loadKeyAssociations, keyAssociationSource, setKeyAssociation, availableSshKeys, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -154,6 +154,21 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const [localKeys, setLocalKeys] = useState<LocalSshKey[]>([])
   const [selectedKeyPath, setSelectedKeyPath] = useState<string>('')
   const [keySource, setKeySource] = useState<string>('')
+  const [browsingKey, setBrowsingKey] = useState(false)
+  const [keyError, setKeyError] = useState('')
+  const browseKey = async () => {
+    if (browsingKey || !profileId || !window.bldeskApi.chooseSshKeyFile) return
+    setBrowsingKey(true); setKeyError('')
+    try {
+      const key = await window.bldeskApi.chooseSshKeyFile()
+      if (!key?.privateKeyPath) return
+      const keys = await availableSshKeys(profileId, [key.privateKeyPath])
+      if (!keys.some((k) => k.privateKeyPath === key.privateKeyPath)) throw new Error('The selected key file is no longer available.')
+      setLocalKeys(keys)
+      setKeyAssociation(profileId, server.id, key.privateKeyPath, 'manual', keys)
+    } catch (error) { setKeyError(String(error)) }
+    finally { setBrowsingKey(false) }
+  }
   const [, refreshAddress] = useState(0)
   const connectAddress = serverConnectAddress(profileId, server.id)
   const resolvedConnection = resolveConnection(profileId, server, localKeys)
@@ -197,17 +212,13 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   }
 
   useEffect(() => {
-    if (window.bldeskApi?.getLocalSshKeys) {
-      window.bldeskApi
-        .getLocalSshKeys()
-        .then((keys) => {
-          if (Array.isArray(keys)) {
-            setLocalKeys(keys)
-          }
-        })
-        .catch(console.error)
-    }
-  }, [])
+    let alive = true
+    const refresh = () => { void availableSshKeys(profileId).then((keys) => { if (alive) setLocalKeys(keys) }).catch((error) => { if (alive) setKeyError(String(error)) }) }
+    refresh()
+    window.addEventListener(SSH_KEYS_EVENT, refresh)
+    window.addEventListener('focus', refresh)
+    return () => { alive = false; window.removeEventListener(SSH_KEYS_EVENT, refresh); window.removeEventListener('focus', refresh) }
+  }, [profileId])
 
   const metricsQuery = useServerMetrics(client, server.id)
   const consoleQuery = useServerConsole(client, server.id)
@@ -755,6 +766,10 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   </select>
                 </label>
                 <p>{keySource === 'learned' ? 'Learned from an SSH session' : keySource === 'manual' ? 'Set by hand' : 'Uses the last working key for this profile, then SSH defaults.'}</p>
+                {window.bldeskApi.chooseSshKeyFile && <button type="button" disabled={browsingKey || !profileId} onClick={() => void browseKey()} className="px-3 py-2 rounded border disabled:opacity-50">{browsingKey ? 'Choosing key…' : 'Browse…'}</button>}
+                {selectedKeyPath && <p className="break-all" title={selectedKeyPath}>Key file: {selectedKeyPath}</p>}
+                {keyError && <p role="alert" className="text-rose-500 break-words">{keyError}</p>}
+                <p>Browse to an existing OpenSSH private-key file with any filename, in any accessible folder. No matching .pub file is required. Passphrases are never stored by BLDesk; OpenSSH prompts or your SSH agent handles unlocking.</p>
                 <p>Only the file path is remembered on this device. BLDesk never reads or stores private-key contents; OpenSSH reads the existing file when connecting.</p>
               </div>}
               <div className="flex flex-wrap items-center gap-3">

@@ -34,7 +34,8 @@ const api: IpcApi = {
   openRescueConsole: (options) => ipcRenderer.invoke('console:openRescue', options),
 
   // SSH Keys
-  getLocalSshKeys: () => ipcRenderer.invoke('vault:getLocalSshKeys'),
+  getLocalSshKeys: (paths) => ipcRenderer.invoke('vault:getLocalSshKeys', paths),
+  chooseSshKeyFile: () => ipcRenderer.invoke('vault:chooseSshKeyFile'),
 
   // System Notifications
   sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),

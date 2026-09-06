@@ -8,7 +8,7 @@ import { OPEN_SSH_EVENT, prefersNativeTerminal, setPreferNativeTerminal, takePen
 import { createTerminal, closeTerminal, initializeTerminals, recallOpenSessions, enableSessionMemory, finalizeSessionMemory, subscribeTerminals, terminalSnapshot, type TerminalSession } from '../../lib/terminalSessions'
 import { TerminalTab } from './TerminalTab'
 import { BroadcastPanel } from './BroadcastPanel'
-import { resolveConnection, resolveKeyFor, defaultSshAddress, setDefaultSshAddress, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
+import { resolveConnection, resolveKeyFor, availableSshKeys, defaultSshAddress, setDefaultSshAddress, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 const field = 'min-w-0 max-w-full rounded bg-[#343a40] px-2 py-1.5 border border-[#495057]'
 export function TerminalView({ servers, profileId, active, onActivate }: {
@@ -54,7 +54,7 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
       if (existing.length) { setReopen([]); setSelected(existing[0].id); enableSessionMemory() }
       else if (!reopen.length) enableSessionMemory()
     }).catch((e) => setError(String(e)))
-    void window.bldeskApi.getLocalSshKeys().then(setKeys).catch((e) => setError(String(e)))
+    void availableSshKeys(profileId).then(setKeys).catch((e) => setError(String(e)))
   }, [])
   useEffect(() => {
     keyRequest.current++; setKeyLoading(false); setKey(''); setKeyOrigin('ssh default'); setPickedServerId(undefined); setHost(''); setHostOrigin('manual host')
@@ -80,7 +80,7 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
     const remembered = reopen
     setReopen([])
     try {
-      const available = await window.bldeskApi.getLocalSshKeys()
+      const available = await availableSshKeys(profileId)
       await Promise.all(remembered.map((s) => {
         const server = servers.find((server) => server.id === s.serverId)
         const resolved = server ? resolveConnection(profileId, server, available) : { host: s.host, privateKeyPath: resolveKeyFor(profileId, s.serverId, available) }
@@ -112,7 +112,7 @@ export function TerminalView({ servers, profileId, active, onActivate }: {
           const request = ++keyRequest.current
           setKeyLoading(true); setKey(''); setKeyOrigin('ssh default')
           try {
-            const available = await window.bldeskApi.getLocalSshKeys()
+            const available = await availableSshKeys(profileId)
             if (request !== keyRequest.current) return
             setKeys(available)
             const resolved = resolveConnection(profileId, s, available)
