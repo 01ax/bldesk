@@ -1,8 +1,9 @@
 import type { TerminalLaunchOptions, TerminalLaunchResult } from '@shared/ipc-types'
 import { launchSsh } from './launchSsh'
+import { resolveKeyFor } from './sshKeyAssociations'
 
 export const OPEN_SSH_EVENT = 'bldesk:open-ssh'
-export type OpenSshOptions = TerminalLaunchOptions & { serverId?: number; serverName?: string }
+export type OpenSshOptions = TerminalLaunchOptions & { serverId?: number; serverName?: string; profileId?: string }
 const PREFERENCE = 'bldesk_prefer_native_terminal'
 const pending: OpenSshOptions[] = []
 export function prefersNativeTerminal(): boolean {
@@ -12,6 +13,9 @@ export function setPreferNativeTerminal(value: boolean): void {
   try { localStorage.setItem(PREFERENCE, String(value)) } catch { /* optional */ }
 }
 export async function openSsh(options: OpenSshOptions, native = false): Promise<TerminalLaunchResult> {
+  const profileId = options.profileId ?? (await window.bldeskApi.getActiveProfile())?.id
+  const keys = await window.bldeskApi.getLocalSshKeys()
+  options = { ...options, profileId, privateKeyPath: options.privateKeyPath ?? resolveKeyFor(profileId, options.serverId, keys) }
   if (native || !window.bldeskApi?.pty || prefersNativeTerminal()) return launchSsh(options)
   // A cold deep link can be routed during React's initial effect flush. Queue
   // until TerminalView owns the request rather than reporting a false success.

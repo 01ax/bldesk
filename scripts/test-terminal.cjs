@@ -46,7 +46,8 @@ const owner = load(resolve(root, 'src/main/pty.ts'))
 async function main() {
   const options = { host: '127.0.0.1', username: 'root', privateKeyPath: '/tmp/key with spaces', port: 2222, cols: 80, rows: 24 }
   const command = 'printf "%s\\n" "$(hostname)"; exit 7'
-  assert.deepEqual(ssh.sshArgv(options, command), ['ssh', '-p', '2222', '-i', '/tmp/key with spaces', 'root@127.0.0.1', command])
+  assert.deepEqual(ssh.sshArgv(options, command), ['ssh', '-p', '2222', '-i', '/tmp/key with spaces', '-o', 'IdentitiesOnly=yes', 'root@127.0.0.1', command])
+  assert.deepEqual(ssh.sshArgv({ host: 'localhost' }), ['ssh', 'root@localhost'])
   assert.ok(ssh.validateSshTarget({ host: '-oProxyCommand=bad' }))
   assert.equal(commands.parseCommand('ssh web --native').native, true)
   assert.equal(commands.parseCommand('ssh web --wrong').kind, 'incomplete')
@@ -90,6 +91,60 @@ async function main() {
   assert.equal(owner.list().length, 0)
   assert.ok(children.slice(1).every((c) => c.killed))
   assert.ok(children.slice(1).every((c) => c.signal === 'SIGHUP'))
+  const associations = load(resolve(root, 'src/renderer/src/lib/sshKeyAssociations.ts'))
+  const keys = ['a', 'b'].map((name) => ({ name, privateKeyPath: `/tmp/${name}`, publicKey: '' }))
+  global.window = new EventTarget()
+  assert.equal(associations.resolveKeyFor('profile-a', 1, keys), undefined, 'must not select first local key')
+  associations.setKeyAssociation('profile-a', 1, '/tmp/a', 'learned', keys)
+  associations.setKeyAssociation('profile-a', 2, '/tmp/b', 'manual', keys)
+  assert.equal(associations.resolveKeyFor('profile-a', 2, keys), '/tmp/b')
+  assert.equal(associations.resolveKeyFor('profile-a', 3, keys), '/tmp/a')
+  assert.equal(associations.resolveKeyFor('profile-b', 1, keys), undefined)
+  assert.equal(associations.keyAssociationSource('profile-a', 2), 'manual')
+  assert.equal(associations.resolveKeyFor('profile-a', 2, keys.slice(0, 1)), '/tmp/a')
+  associations.setKeyAssociation('profile-a', 3, '/tmp/a', 'manual', keys.slice(0, 1))
+  assert.equal(associations.loadKeyAssociations('profile-a')[2], undefined, 'next write prunes stale paths')
+  associations.setKeyAssociation('profile-a', 1, null, 'manual', [])
+  assert.equal(associations.lastWorkingKey('profile-a'), undefined)
+  storage.set('bldesk_ssh_keys_broken', '{bad json')
+  assert.deepEqual(associations.loadKeyAssociations('broken'), {})
+
+  let onExit, nextId = 0, earlyExit
+  window.bldeskApi = { getLocalSshKeys: async () => keys, pty: {
+    onData() {}, onExit(cb) { onExit = cb }, list: async () => [],
+    open: async () => { const id = `renderer-${++nextId}`; if (earlyExit !== undefined) onExit(id, earlyExit); return { id } },
+    close: async (id) => onExit(id, 0, 1)
+  } }
+  const realSetTimeout = global.setTimeout, realClearTimeout = global.clearTimeout
+  let now = 0, timerId = 0
+  const timers = new Map()
+  global.setTimeout = (cb, delay) => { const id = ++timerId; timers.set(id, { cb, at: now + delay }); return id }
+  global.clearTimeout = (id) => timers.delete(id)
+  const advance = async (ms) => { now += ms; for (const [id, t] of timers) if (t.at <= now) { timers.delete(id); t.cb() }; await Promise.resolve() }
+  const open = (serverId, profileId = 'learning') => registry.createTerminal({ ...options, privateKeyPath: '/tmp/b', serverId }, profileId)
+  try {
+    await open(1)
+    await advance(9999)
+    assert.equal(associations.loadKeyAssociations('learning')[1], undefined)
+    await advance(1)
+    assert.equal(associations.loadKeyAssociations('learning')[1], '/tmp/b')
+    assert.equal(associations.lastWorkingKey('learning'), '/tmp/b')
+    const failed = await open(2)
+    await advance(3000); onExit(failed, 255)
+    await advance(10000)
+    assert.equal(associations.loadKeyAssociations('learning')[2], undefined)
+    const short = await open(3, 'original-profile')
+    onExit(short, 7); await Promise.resolve()
+    assert.equal(associations.loadKeyAssociations('original-profile')[3], '/tmp/b')
+    assert.equal(associations.loadKeyAssociations('learning')[3], undefined)
+    const closed = await open(4)
+    await registry.closeTerminal(closed); await advance(10000)
+    assert.equal(associations.loadKeyAssociations('learning')[4], undefined)
+    earlyExit = 0; await open(5); await Promise.resolve()
+    assert.equal(associations.loadKeyAssociations('learning')[5], '/tmp/b', 'exit before open resolves still learns')
+    earlyExit = 255; await open(6); await advance(10000)
+    assert.equal(associations.loadKeyAssociations('learning')[6], undefined)
+  } finally { global.setTimeout = realSetTimeout; global.clearTimeout = realClearTimeout }
   console.log('PASS: SSH argv, native syntax, target expansion, persistence whitelist, IPC ownership, validation, batching, exit ordering, resize, 32-session cap, cleanup')
 }
 main().catch((e) => { console.error(e); process.exitCode = 1 })

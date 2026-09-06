@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { components } from '@shared/api/schema'
-import type { TerminalLaunchOptions } from '@shared/ipc-types'
+import type { TerminalLaunchOptions, LocalSshKey } from '@shared/ipc-types'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { primaryIpv4 } from '../../lib/deeplinks'
 import { loadGroups, loadTags, GROUPS_EVENT } from '../../lib/serverGroups'
 import { broadcastTargets, createTerminal, closeTerminal, subscribeTerminals, terminalSnapshot } from '../../lib/terminalSessions'
 import { TerminalTab } from './TerminalTab'
+import { loadKeyAssociations, resolveKeyFor, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
 
 type Result = { name: string; id?: string; error?: string }
 export function BroadcastPanel({ servers, profileId, connection, onClose }: {
@@ -19,10 +20,29 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<Result[]>([])
   const [notice, setNotice] = useState('')
+  const [keys, setKeys] = useState<LocalSshKey[]>([])
+  const [keysReady, setKeysReady] = useState(false)
   const [, refreshGroups] = useState(0)
   const run = useRef<{ changeId?: string; profileId: string; results: Result[]; starting: boolean; settled: boolean }>()
   const alive = useRef(true)
   const targets = broadcastTargets(expression, servers, loadTags(profileId), loadGroups(profileId))
+  const associations = loadKeyAssociations(profileId)
+  const missing = targets.eligible.filter(({ server }) => associations[server.id] && !keys.some((k) => k.privateKeyPath === associations[server.id]))
+  targets.eligible = targets.eligible.filter((target) => !missing.includes(target))
+  targets.skipped.push(...missing.map((target) => ({ ...target, reason: 'key missing' })))
+  const hosts = targets.eligible.map(({ server }) => ({ serverId: server.id, serverName: server.name, host: primaryIpv4(server)!, privateKeyPath: resolveKeyFor(profileId, server.id, keys) }))
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      setKeysReady(false)
+      void window.bldeskApi.getLocalSshKeys().then((available) => { if (alive) { setKeys(available); setKeysReady(true) } })
+        .catch((error) => { if (alive) setNotice(String(error)) })
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    window.addEventListener(SSH_KEYS_EVENT, refresh)
+    return () => { alive = false; window.removeEventListener('focus', refresh); window.removeEventListener(SSH_KEYS_EVENT, refresh) }
+  }, [profileId, expression])
   useEffect(() => {
     const changed = () => refreshGroups((n) => n + 1)
     window.addEventListener(GROUPS_EVENT, changed)
@@ -61,11 +81,10 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
   }, [sessions, results])
 
   async function start() {
-    if (busy || !profileId || !command.trim() || !targets.eligible.length) return
+    if (busy || !keysReady || !profileId || !command.trim() || !targets.eligible.length) return
     setBusy(true)
     setNotice('')
     const account = profileId
-    const hosts = targets.eligible.map(({ server }) => ({ serverId: server.id, serverName: server.name, host: primaryIpv4(server)! }))
     const cmd = command
     const options = { ...connection }
     try {
@@ -91,7 +110,7 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
       await Promise.all(hosts.map(async (host) => {
         let result: Result
         try {
-          const id = await createTerminal({ ...options, ...host, remoteCommand: cmd, cols: 80, rows: 12 })
+          const id = await createTerminal({ ...options, ...host, remoteCommand: cmd, cols: 80, rows: 12 }, account)
           result = { name: host.serverName, id }
           if (!alive.current) void closeTerminal(id)
         } catch (error) { result = { name: host.serverName, error: String(error) } }
@@ -104,15 +123,16 @@ export function BroadcastPanel({ servers, profileId, connection, onClose }: {
   }
   return <section className="h-full overflow-auto p-3 space-y-3 text-xs" aria-label="Broadcast SSH">
     <div className="flex flex-wrap gap-3 items-center"><h2 className="font-bold">Broadcast SSH</h2><button disabled={busy && !run.current} onClick={onClose}>Close broadcast</button></div>
-    <p>Parallel remote commands. User, port and key come from the connect bar. Answer authentication prompts in each pane. Command text is saved in History; output is not.</p>
+    <p>Parallel remote commands. User and port come from the connect bar. Each host uses its associated key, then the profile’s last working key, then SSH defaults. Answer authentication prompts in each pane. Command text is saved in History; output is not.</p>
     <label className="block">Targets<input aria-label="Broadcast targets" disabled={busy} className="block w-full rounded bg-[#343a40] p-2" placeholder="wp-*, @web, #123" value={expression} onChange={(e) => setExpression(e.target.value)} /></label>
     <div aria-label="Target preview" className="max-h-28 overflow-auto break-words">
       <p>Eligible ({targets.eligible.length}): {targets.eligible.map((s) => s.server.name).join(', ') || 'none'}</p>
+      <table className="w-full text-left"><thead><tr><th>Server</th><th>Key</th></tr></thead><tbody>{hosts.map((s) => <tr key={s.serverId}><td>{s.serverName}</td><td className="break-all">{s.privateKeyPath ? keys.find((k) => k.privateKeyPath === s.privateKeyPath)?.name || s.privateKeyPath : 'ssh default'}</td></tr>)}</tbody></table>
       <p>Skipped ({targets.skipped.length}): {targets.skipped.map((s) => `${s.server.name} (${s.reason})`).join(', ') || 'none'}</p>
       <p>Unmatched: {targets.unmatched.join(', ') || 'none'}</p>
     </div>
     <label className="block">Command<textarea aria-label="Broadcast command" rows={2} maxLength={32768} disabled={busy} className="block w-full rounded bg-[#343a40] p-2 font-mono" value={command} onChange={(e) => setCommand(e.target.value)} /></label>
-    <button className="px-3 py-2 bg-rose-700 rounded disabled:opacity-50" disabled={busy || !profileId || !targets.eligible.length || !command.trim()} onClick={() => void start()}>{busy ? 'Broadcast in progress' : 'Run broadcast'}</button>
+    <button className="px-3 py-2 bg-rose-700 rounded disabled:opacity-50" disabled={busy || !keysReady || !profileId || !targets.eligible.length || !command.trim()} onClick={() => void start()}>{busy ? 'Broadcast in progress' : 'Run broadcast'}</button>
     {!profileId && <p>Select an account to record broadcast commands in History.</p>}
     {notice && <p role="alert">{notice}</p>}
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
