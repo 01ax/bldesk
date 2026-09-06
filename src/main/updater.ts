@@ -1,7 +1,8 @@
 import { app, BrowserWindow, Notification } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
@@ -62,6 +63,87 @@ function writeSettings(s: UpdaterSettings): void {
   }
 }
 
+const isMac = process.platform === 'darwin'
+let macPendingZipPath: string | null = null
+let macDownloading = false
+
+async function downloadMacZip(
+  url: string,
+  destPath: string,
+  onProgress: (percent: number) => void
+): Promise<void> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
+  const total = Number(res.headers.get('content-length')) || 0
+  let received = 0
+
+  if (!res.body) throw new Error('Response body is empty')
+  const reader = res.body.getReader()
+  const out = createWriteStream(destPath)
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) {
+        received += value.length
+        out.write(Buffer.from(value))
+        if (total > 0) {
+          onProgress(Math.min(100, Math.round((received / total) * 100)))
+        }
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      out.end((err: any) => (err ? reject(err) : resolve()))
+    })
+  }
+}
+
+function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
+  const targetApp = process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '')
+  if (!targetApp.endsWith('.app') || !existsSync(targetApp)) {
+    console.error('[Updater] Cannot locate app bundle to replace:', process.execPath)
+    return
+  }
+
+  const stagingDir = join(app.getPath('temp'), `bldesk-update-${Date.now()}`)
+  mkdirSync(stagingDir, { recursive: true })
+
+  try {
+    execFileSync('unzip', ['-q', '-o', zipPath, '-d', stagingDir])
+  } catch (err) {
+    console.error('[Updater] Failed to unzip update:', err)
+    rmSync(stagingDir, { recursive: true, force: true })
+    return
+  }
+
+  const stagedApp = join(stagingDir, 'BLDesk.app')
+  if (!existsSync(stagedApp)) {
+    console.error('[Updater] Unzipped update does not contain BLDesk.app')
+    rmSync(stagingDir, { recursive: true, force: true })
+    return
+  }
+
+  const scriptPath = join(stagingDir, 'install-update.sh')
+  const scriptContent = `#!/bin/bash
+PID=${process.pid}
+while kill -0 $PID 2>/dev/null; do
+  sleep 0.1
+done
+
+rm -rf "${targetApp}"
+cp -R "${stagedApp}" "${targetApp}"
+rm -rf "${stagingDir}"
+xattr -cr "${targetApp}" 2>/dev/null || true
+${forceRunAfter ? `open "${targetApp}"` : ''}
+`
+  writeFileSync(scriptPath, scriptContent, { mode: 0o755 })
+  const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' })
+  child.unref()
+  app.quit()
+}
+
 export class UpdaterManager {
   private static state: UpdaterState = {
     status: 'idle',
@@ -91,8 +173,13 @@ export class UpdaterManager {
       error: (m: any) => console.error('[Updater]', m),
       debug: (m: any) => console.debug('[Updater]', m)
     }
-    autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    if (isMac) {
+      // Squirrel.Mac requires Developer ID signatures; bypass on macOS via direct zip update
+      autoUpdater.autoDownload = false
+    } else {
+      autoUpdater.autoDownload = true
+      autoUpdater.autoInstallOnAppQuit = true
+    }
     try {
       autoUpdater.setFeedURL({
         provider: 'github',
@@ -105,9 +192,53 @@ export class UpdaterManager {
     this.applyChannel(settings.channel)
 
     autoUpdater.on('checking-for-update', () => this.setState({ status: 'checking', error: undefined }))
-    autoUpdater.on('update-available', (info: UpdateInfo) =>
+    autoUpdater.on('update-available', async (info: UpdateInfo) => {
       this.setState({ status: 'available', availableVersion: info.version, releaseNotes: notesToString(info) })
-    )
+      if (isMac) {
+        if (macDownloading) return
+        macDownloading = true
+        try {
+          const zipEntry = info.files?.find((f: any) => f.url && f.url.endsWith('.zip'))
+          const zipFilename = zipEntry?.url || `BLDesk-${info.version}-mac-universal.zip`
+          const tag = (info as any).tag || `v${info.version}`
+          const downloadUrl = `https://github.com/termau/bldesk/releases/download/${tag}/${zipFilename}`
+          const destDir = join(app.getPath('userData'), 'updates')
+          mkdirSync(destDir, { recursive: true })
+          const destPath = join(destDir, zipFilename)
+
+          if (existsSync(destPath) && statSync(destPath).size > 1000000) {
+            macPendingZipPath = destPath
+            this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
+            if (Notification.isSupported()) {
+              new Notification({
+                title: `BLDesk ${info.version} is ready`,
+                body: 'Restart BLDesk to finish installing the update.'
+              }).show()
+            }
+            return
+          }
+
+          this.setState({ status: 'downloading', progress: 0 })
+          await downloadMacZip(downloadUrl, destPath, (progress) => {
+            this.setState({ status: 'downloading', progress })
+          })
+
+          macPendingZipPath = destPath
+          this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
+          if (Notification.isSupported()) {
+            new Notification({
+              title: `BLDesk ${info.version} is ready`,
+              body: 'Restart BLDesk to finish installing the update.'
+            }).show()
+          }
+        } catch (err: any) {
+          console.error('[Updater] macOS update download failed:', err)
+          this.handleCheckError(err)
+        } finally {
+          macDownloading = false
+        }
+      }
+    })
     autoUpdater.on('update-not-available', () =>
       this.setState({ status: 'up-to-date', availableVersion: undefined, lastCheckedAt: new Date().toISOString() })
     )
@@ -123,7 +254,10 @@ export class UpdaterManager {
         }).show()
       }
     })
-    autoUpdater.on('error', (err: Error) => this.handleCheckError(err))
+    autoUpdater.on('error', (err: Error) => {
+      if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return
+      this.handleCheckError(err)
+    })
 
     setTimeout(() => this.check(), INITIAL_DELAY_MS)
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS)
@@ -147,8 +281,18 @@ export class UpdaterManager {
 
   static install(): void {
     if (this.state.status !== 'ready') return
+    if (isMac && macPendingZipPath && existsSync(macPendingZipPath)) {
+      installMacUpdate(macPendingZipPath, true)
+      return
+    }
     // isSilent=false shows the installer UI on Windows; forceRunAfter restarts the app.
     setImmediate(() => autoUpdater.quitAndInstall(false, true))
+  }
+
+  static onAppQuit(): void {
+    if (isMac && this.state.status === 'ready' && macPendingZipPath && existsSync(macPendingZipPath)) {
+      installMacUpdate(macPendingZipPath, false)
+    }
   }
 
   static setChannel(channel: UpdateChannel): UpdaterState {

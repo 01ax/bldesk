@@ -396,6 +396,7 @@ if (!gotTheLock) {
   app.on('before-quit', () => {
     isQuitting = true
     closeAllPtys()
+    UpdaterManager.onAppQuit()
     UpdaterManager.dispose()
     TrayManager.dispose()
   })

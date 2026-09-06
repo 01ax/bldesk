@@ -5,6 +5,14 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [Unreleased]
+
+### Fixed
+- **macOS Unsigned Auto-Update**:
+  - Bypassed Squirrel.Mac on macOS to allow unsigned application builds to auto-update without hitting `SQRLCodeSignatureErrorDomain` ("code object is not signed at all").
+  - Direct universal zip download with real-time progress, in-place atomic application bundle swap on restart or quit, and automatic quarantine (`xattr -cr`) clearance.
+  - Added structural updater guard suite (`scripts/check-updater-guards.mjs`) to verify auto-update invariants on every build.
+
 ## [1.0.61-beta.3] - 2026-09-06
 
 ### Added
