@@ -551,8 +551,12 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   <HardDrive className="w-4 h-4 text-[#017cb6]" />
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-[#212529] dark:text-white">{server.disk} GB</span>
-                  <span className="text-xs text-[#6c757d] dark:text-slate-400">NVMe High IOPS</span>
+                  <span className="text-2xl font-bold text-[#212529] dark:text-white">
+                    {sample && server.disk > 0
+                      ? `${((sample.storage_usage_megabytes / (server.disk * 1024)) * 100).toFixed(1)}%`
+                      : '—'}
+                  </span>
+                  <span className="text-xs text-[#6c757d] dark:text-slate-400">{server.disk} GB NVMe High IOPS</span>
                 </div>
               </div>
 
