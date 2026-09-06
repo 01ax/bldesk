@@ -18,6 +18,8 @@ With an explicit key, BLDesk passes -i and -o IdentitiesOnly=yes to OpenSSH. The
 
 Your private key stays on your device; the account's public-key list is separate. See [SSH keys](help:keys).
 
+Keys selected with Browse… in a server's Remote Access tab participate in the same resolution, learning, reopen and broadcast rules, even outside ~/.ssh or without a .pub file. Only the exact file path and filename are remembered, not key contents or passphrases. Missing selected files are excluded from resolution and skipped in broadcast like other missing associations.
+
 Answer password, passphrase and host-key prompts inside the terminal. BLDesk does not bypass host verification. Connecting means the SSH process is being created; live means it is running, not necessarily authenticated. Exit 255 usually means an SSH error; other codes can come from the remote shell/command. Reconnect starts a new connection; Close ends the local SSH process.
 
 For an explicit key and known server, embedded SSH remembers the path after ten seconds live, or a normal exit other than 255, for the profile that opened the session. Early exit 255, a launch failure, or manually closing a short session does not teach a key. An exit 255 after the ten-second threshold does not undo an already learned association. This is a process-lifetime heuristic, not proof of authentication. Only the path is retained: BLDesk never reads or stores private-key contents. See [Remote access](help:server-remote-access) to change or clear an association.

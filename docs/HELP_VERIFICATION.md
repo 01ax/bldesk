@@ -1,5 +1,11 @@
 # Help verification
 
+## Browse existing SSH key files (7 September 2026, unreleased)
+
+Checked `help/keys.md`, `help/server-remote-access.md` and `help/terminal.md` against the Browse… button, Key file display and cancellation flow in `ServerDetails.tsx`; the main-process `vault:chooseSshKeyFile` / `vault:getLocalSshKeys` handlers; `existingKeyFiles` in `src/main/sshKeyFiles.ts`; and `availableSshKeys` in `lib/sshKeyAssociations.ts`. Selected files use stat metadata only, with no private-content read, copy or passphrase persistence. Existing automatic discovery still reads public `.pub` files only. Local filenames are not BinaryLane account public keys. All SSH consumers include persisted selected paths when checking availability, so an external file does not become missing merely because discovery cannot find it.
+
+Cancellation preserves the association. The file browser has no extension restriction and does not validate cryptographic format; OpenSSH does that. Documentation names the required OpenSSH format and does not promise PuTTY-format support. See [key-file browser verification](SSH_KEY_FILE_VERIFICATION.md).
+
 ## SSH address follow-up (6 September 2026, 1.0.61-beta.5)
 
 - `help/server-remote-access.md`: Connect to options, Custom SSH host input, inheritance, invalid-name fallback and address warning checked against `ServerDetails.tsx` and `lib/sshKeyAssociations.ts`. Public-probe tooltip checked against `ReachabilityBadge.tsx`; probing remains unchanged. `src/shared/ssh.ts` and the native/PTY launchers pass a hostname to system OpenSSH without renderer DNS resolution. The loopback test verifies an OpenSSH Host/HostName alias. VPN availability remains the user's responsibility; no automatic short-name extraction or VPN configuration is claimed.

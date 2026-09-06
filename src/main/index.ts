@@ -1,4 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage, NativeImage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, nativeImage, NativeImage, dialog } from 'electron'
+import { existingKeyFiles } from './sshKeyFiles'
 import { join } from 'path'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -262,13 +263,23 @@ function registerIpcHandlers(): void {
   })
 
   // SSH Keys & Local FS
-  ipcMain.handle('vault:getLocalSshKeys', async () => {
+  ipcMain.handle('vault:chooseSshKeyFile', async (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('SSH key selection is restricted to the main window.')
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose SSH private-key file', properties: ['openFile'] })
+    if (result.canceled || !result.filePaths.length) return null
+    const key = existingKeyFiles([result.filePaths[0]])[0]
+    if (!key) throw new Error('The selected key file is no longer available.')
+    return key
+  })
+  ipcMain.handle('vault:getLocalSshKeys', async (event, paths: unknown = []) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('SSH key discovery is restricted to the main window.')
+    const selected = existingKeyFiles(paths)
     try {
       const sshDir = join(app.getPath('home'), '.ssh')
-      if (!existsSync(sshDir)) return []
+      if (!existsSync(sshDir)) return selected
       const files = readdirSync(sshDir)
       const pubFiles = files.filter(f => f.endsWith('.pub'))
-      return pubFiles.map(f => {
+      const discovered = pubFiles.map(f => {
         const baseName = f.replace('.pub', '')
         const privPath = join(sshDir, baseName)
         const pubPath = join(sshDir, f)
@@ -280,9 +291,10 @@ function registerIpcHandlers(): void {
           privateKeyPath: hasPriv ? privPath : undefined
         }
       })
+      return [...discovered, ...selected.filter((key) => !discovered.some((k) => k.privateKeyPath === key.privateKeyPath))]
     } catch (err) {
       console.error('[Main] Failed to read local SSH keys:', err)
-      return []
+      return selected
     }
   })
 

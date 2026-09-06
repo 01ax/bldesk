@@ -9,6 +9,7 @@ const root = join(__dirname, '../..')
 const dir = process.env.BLDESK_TEST_USER_DATA || mkdtempSync(join(tmpdir(), 'bldesk-showcase-'))
 app.setPath('userData', dir)
 app.setPath('sessionData', dir)
+if (process.env.BLDESK_TEST_KEY) app.setPath('home', dir)
 app.setVersion(require(join(root, 'package.json')).version)
 const regions = ['Sydney', 'Brisbane', 'Melbourne'].map((name,i)=>({name,slug:['syd','bne','mel'][i],available:true,features:[],sizes:[]}))
 const images = ['Ubuntu','Debian','AlmaLinux'].map((distribution,i)=>({id:101+i,slug:['ubuntu-24.04','debian-12','almalinux-9'][i],name:['Ubuntu 24.04 LTS','Debian 12','AlmaLinux 9'][i],full_name:['Ubuntu 24.04 LTS','Debian 12','AlmaLinux 9'][i],distribution,public:true,regions:regions.map(r=>r.slug),min_disk_size:10,min_memory_megabytes:512}))
@@ -62,7 +63,15 @@ app.whenReady().then(()=>{
   session.defaultSession.protocol.handle('https',handler)
   session.defaultSession.protocol.handle('http',handler)
 })
+const originalHandle = ipcMain.handle.bind(ipcMain)
+let productionKeyDiscovery
+if (process.env.BLDESK_TEST_KEY) ipcMain.handle = (channel, handler) => {
+  if (channel === 'vault:getLocalSshKeys' && !productionKeyDiscovery) productionKeyDiscovery = handler
+  return originalHandle(channel, handler)
+}
 import(pathToFileURL(process.env.BLDESK_TEST_MAIN || join(root,'out/main/index.js')).href).then(()=>app.whenReady()).then(()=>{
+  ipcMain.handle = originalHandle
+  if (process.env.BLDESK_TEST_KEY) global.showcase.productionKeyDiscovery = productionKeyDiscovery
   const values={'vault:getProfiles':[profile],'vault:getActiveProfile':profile,'vault:getLocalSshKeys':[],'system:sendNotification':false,'net:probeTcp':{ok:true,latencyMs:8},'net:probePing':{ok:true,latencyMs:8},'net:setTargets':undefined}
   for(const [name,value] of Object.entries(values)){ipcMain.removeHandler(name);ipcMain.handle(name,()=>value)}
   if (process.env.BLDESK_TEST_KEY) {

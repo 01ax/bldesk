@@ -12,6 +12,10 @@ Only paste a public key into the account form. Your SSH private key belongs on y
 
 Desktop connection selectors offer keys discovered from .pub files in ~/.ssh with a corresponding private-key file. BLDesk reads the public file and checks whether the private path exists; it never reads the private file's contents. OpenSSH reads the private key when connecting.
 
+For a key stored elsewhere or under a nonstandard filename, open the server's Remote Access tab and choose Browse… beside Key for this server. Select the existing OpenSSH private-key file, not its public .pub file. No matching .pub file is required when browsing. BLDesk remembers the exact full path including the filename for this profile/server; it does not copy, import or read the selected file's contents. The filename appears in the selector and the full path under Key file. Cancelling the browser leaves the selection unchanged.
+
+BLDesk never stores key passphrases. OpenSSH prompts when necessary, or your existing SSH agent handles unlocking. A file browser cannot verify the key's format without reading it: choose a format supported by your system OpenSSH, not a PuTTY .ppk file unless you have separately converted it. If you move or rename the file, browse to it again; broadcast skips a missing associated file.
+
 Key for this server in [Remote access](help:server-remote-access) stores only that existing file path, per profile and server. Embedded SSH can also learn the path from a session; native launches cannot. No private-key material is retained, so there is no private-key secret for BLDesk to encrypt. These local associations are separate from the public keys registered with BinaryLane and are not synced between devices.
 
 Adding an account key does not automatically update every existing guest's authorized_keys.
