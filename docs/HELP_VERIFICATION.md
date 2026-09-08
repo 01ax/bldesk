@@ -1,5 +1,22 @@
 # Help verification
 
+## Network & Addressing lists every address (9 September 2026, 1.0.61-beta.8)
+
+Branch: `feat/show-all-public-ipv4`. No new runtime dependencies.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `Secondary IPv4` | `ServerDetails.tsx`, Network & Addressing, one row per entry after the first `type: 'public'` address | New. Matches the language `ChangePlanPanel.tsx` already uses, where `publicIps[0]` is labelled "primary - stays with the server" and the rest are the secondaries that can be released. |
+| `Private IPv4` | `ServerDetails.tsx`, same pane, the first `type: 'private'` address | New. Suppressed when it is already the row above, which happens only for a server with no public address at all, where `primaryV4` falls back to the first address of any kind. |
+| `server-overview.md` - "Network & Addressing below lists every address the server holds..." | the pane itself | New sentence, added because the pane was previously undocumented. Checked against the rows above: primary, secondaries, private, and IPv6 which is rendered only when `server.networks.v6[0]` exists. |
+| `server-overview.md` - "The header shows its name, ID, primary IPv4, region..." | `ServerDetails.tsx` title row and meta row | Unchanged and still true. The header still shows only the primary; this change adds rows to the pane below it, not to the header. |
+| `server-remote-access.md` - "Public address uses the server's primary public IPv4." | `lib/sshKeyAssociations.ts` | Unchanged and still true. This change adds no SSH route and no probe target; the reachability badge still checks the primary only. |
+
+### Checks performed
+
+- `npm run typecheck` and `npm run build`.
+- On a physical Samsung SM-S948B at 411 CSS px, against a real account server that holds two public IPv4 addresses and one private: all three rows render, each with a working copy control, none overflows its container, and the page still does not scroll sideways. Before this change that server displayed one address of the three, while Change Plan on the same server listed both public addresses by name in order to offer one for release.
+
 ## Browse existing SSH key files (7 September 2026, 1.0.61-beta.8)
 
 Checked `help/keys.md`, `help/server-remote-access.md` and `help/terminal.md` against the Browse… button, Key file display and cancellation flow in `ServerDetails.tsx`; the main-process `vault:chooseSshKeyFile` / `vault:getLocalSshKeys` handlers; `existingKeyFiles` in `src/main/sshKeyFiles.ts`; and `availableSshKeys` in `lib/sshKeyAssociations.ts`. Selected files use stat metadata only, with no private-content read, copy or passphrase persistence. Existing automatic discovery still reads public `.pub` files only. Local filenames are not BinaryLane account public keys. All SSH consumers include persisted selected paths when checking availability, so an external file does not become missing merely because discovery cannot find it.
