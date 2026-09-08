@@ -193,7 +193,21 @@ export const ReachabilityChip: React.FC<{
 
       {failed && (
         <span
-          title={result!.error === 'other' ? result!.detail || undefined : undefined}
+          /*
+           * `other` carries its detail, because that is the only place the
+           * reason a probe never ran is visible. It keeps the override note
+           * alongside rather than replacing it: `server-remote-access.md`
+           * states that an overridden server's chip says where SSH connects,
+           * and a title on this pill would otherwise shadow the one on the
+           * wrapper for the whole failure state.
+           */
+          title={
+            result!.error === 'other'
+              ? [result!.detail, sshHost && `SSH connects to ${sshHost}`]
+                  .filter(Boolean)
+                  .join(' — ') || undefined
+              : undefined
+          }
           className={`${pill} ${
             result!.error === 'refused'
               ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
