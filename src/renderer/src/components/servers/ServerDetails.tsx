@@ -234,6 +234,22 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
     server.networks?.v4?.[0]?.ip_address ||
     '127.0.0.1'
 
+  /*
+   * Every address the server has, not only the first one.
+   *
+   * The pane is called Network & Addressing and was showing one of them: a
+   * server with a second public IPv4 - which Change Plan will happily sell you,
+   * and lists by name when you go to release one - had no screen anywhere in
+   * BLDesk that admitted it existed. `publicV4[0]` is the primary that stays
+   * with the server; the rest are the secondaries Change Plan can release.
+   */
+  const publicV4 = (server.networks?.v4 ?? [])
+    .filter((n) => n.type === 'public')
+    .map((n) => n.ip_address)
+    .filter((ip): ip is string => !!ip)
+  const secondaryV4 = publicV4.slice(1)
+  const privateV4 = (server.networks?.v4 ?? []).find((n) => n.type === 'private')?.ip_address
+
   const primaryV6 = server.networks?.v6?.[0]?.ip_address
   const isRunning = server.status === 'active'
   const state = describeStatus(server.status)
@@ -673,6 +689,40 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                       </button>
                     </div>
                   </div>
+
+                  {secondaryV4.map((ip) => (
+                    <div key={ip} className="flex items-center justify-between py-2.5 px-4">
+                      <span className="w-32 text-[#6c757d] dark:text-slate-400">Secondary IPv4</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[#212529] dark:text-white font-medium">{ip}</span>
+                        <button
+                          onClick={() => handleCopy(ip)}
+                          className="text-[#6c757d] hover:text-[#017cb6]"
+                          aria-label={`Copy ${ip}`}
+                        >
+                          {copiedText === ip ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Only when it is not already the row above: a server with no
+                      public address falls back to its first address of any kind. */}
+                  {privateV4 && privateV4 !== primaryV4 && (
+                    <div className="flex items-center justify-between py-2.5 px-4">
+                      <span className="w-32 text-[#6c757d] dark:text-slate-400">Private IPv4</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[#212529] dark:text-white font-medium">{privateV4}</span>
+                        <button
+                          onClick={() => handleCopy(privateV4)}
+                          className="text-[#6c757d] hover:text-[#017cb6]"
+                          aria-label={`Copy ${privateV4}`}
+                        >
+                          {copiedText === privateV4 ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {primaryV6 && (
                     <div className="flex items-center justify-between py-2.5 px-4">
