@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route } from 'lucide-react'
+import { Activity, AlertTriangle, HelpCircle, Loader2, RotateCw, Route, X } from 'lucide-react'
 import type { TcpProbeResult, TracerouteHop } from '@shared/ipc-types'
 import type { BinaryLaneClient } from '../../api/client'
 import { useFirewallRules } from '../../api/queries'
@@ -151,6 +151,15 @@ export const ReachabilityChip: React.FC<{
   sshHost?: string
   onOpenFirewall?: () => void
 }> = ({ r, ip, sshHost, onOpenFirewall }) => {
+  /*
+   * Dismissal has to be state rather than CSS. Android leaves a sticky :hover
+   * after a tap, so `group-hover` holds the card open however focus moves -
+   * blurring alone looked right in a scripted test and did nothing on a finger.
+   *
+   * Declared above the early return: it is a hook.
+   */
+  const [dismissed, setDismissed] = useState(false)
+
   if (!r.supported || !ip) return null
   const { result, busy, port } = r
   const explanation = explainTimeout(r)
@@ -184,10 +193,13 @@ export const ReachabilityChip: React.FC<{
 
       {failed && (
         <span
+          title={result!.error === 'other' ? result!.detail || undefined : undefined}
           className={`${pill} ${
             result!.error === 'refused'
               ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-              : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+              : result!.error === 'other'
+                ? 'bg-[#e9ecef] text-[#6c757d] dark:bg-[#343a40] dark:text-slate-400'
+                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
           }`}
         >
           {busy ? (
@@ -195,11 +207,19 @@ export const ReachabilityChip: React.FC<{
           ) : (
             <AlertTriangle className="w-3 h-3 shrink-0" />
           )}
+          {/*
+            * `other` is the probe not running - the platform refused the call,
+            * or it failed before a socket existed. Nothing was learned about
+            * the port, so it cannot be reported as unreachable, and it is grey
+            * rather than red because it says nothing about the server.
+            */}
           {result!.error === 'refused'
             ? `Port ${port} refused`
             : result!.error === 'invalid-target'
               ? 'Not probeable'
-              : `Port ${port} unreachable`}
+              : result!.error === 'other'
+                ? `Port ${port} not checked`
+                : `Port ${port} unreachable`}
 
           {/*
             * The "?" sits inside the bubble it explains, and blinks once when a
@@ -212,6 +232,12 @@ export const ReachabilityChip: React.FC<{
               <button
                 type="button"
                 aria-label="Why is this unreachable?"
+                onClick={(e) => {
+                  // Focus explicitly: after a dismissal the card needs hover or
+                  // focus to come back, and a tap gives neither reliably.
+                  setDismissed(false)
+                  e.currentTarget.focus()
+                }}
                 className="inline-flex text-current opacity-70 hover:opacity-100"
               >
                 <HelpCircle className="w-3.5 h-3.5" />
@@ -225,12 +251,38 @@ export const ReachabilityChip: React.FC<{
               {/* focus-within as well as hover: a hover-only tooltip is
                   unreachable by keyboard, and the card holds the only route to
                   the firewall link and the traceroute action. */}
+              {/*
+                * Below `sm` the card is fixed and screen-centred: anchored to
+                * the "?" it ran off the right edge on a phone, because the chip
+                * sits near the end of its row. From `sm` up it is the anchored
+                * card it always was.
+                */}
+              {!dismissed && (
               <span
                 role="tooltip"
-                className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition absolute left-1/2 -translate-x-1/2 top-full pt-2 z-30 w-80"
+                className="pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition pt-2 z-30 w-[min(20rem,calc(100vw-1.5rem))] fixed left-1/2 -translate-x-1/2 top-28 sm:absolute sm:top-full sm:w-80"
               >
-                <span className="block p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
-                <span className="block">{explanation}</span>
+                <span className="block relative p-2.5 rounded border border-[#ced4da] dark:border-[#373b3e] bg-white dark:bg-[#2b3035] shadow-lg text-[11px] font-normal text-[#495057] dark:text-slate-300 space-y-1.5">
+                {/*
+                  * A touch has no hover to leave. The card opens on focus and
+                  * would otherwise sit there until you found something else to
+                  * tap, so it needs a way out. Conditional rendering rather than
+                  * a class: `.group:hover .card` out-specifies anything the
+                  * button can add, and Android's post-tap :hover keeps it live.
+                  */}
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => {
+                    setDismissed(true)
+                    ;(document.activeElement as HTMLElement | null)?.blur()
+                  }}
+                  className="absolute top-1 right-1 p-1 text-[#6c757d] hover:text-[#212529] dark:hover:text-white sm:hidden"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                {/* Room for the close button, which only exists below `sm`. */}
+                <span className="block pr-5 sm:pr-0">{explanation}</span>
                 <span className="flex items-center gap-3">
                   {onOpenFirewall && r.verdict.kind === 'blocked' && (
                     <button type="button" onClick={onOpenFirewall} className="text-[#017cb6] hover:underline">
@@ -249,6 +301,7 @@ export const ReachabilityChip: React.FC<{
                 </span>
                 </span>
               </span>
+              )}
             </span>
           )}
 
