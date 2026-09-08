@@ -44,6 +44,8 @@ verified to still lead the action cluster.
 - Range limits: reset returns to 100%, zoom in clamps at 150%, zoom out clamps
   at 80%.
 
+- Physical device, Samsung SM-S948B (Galaxy S26 Ultra), Android 16 / API 36, 411 CSS px, over CDP with real touch events: no horizontal page scroll on the servers list, firewall, SSH keys, backups, network map or a server detail; both dense tables scroll inside their own wrapper and reach their last column (SSH keys 718px of table in a 362px box, disk images 676px in 362px) while the page itself stays put; the configuration summary is one line with `white-space: nowrap`; `Server:` is hidden at that width and the hostname truncates; the back control measures 24px; and a probe of the scrollbar gutter returns 0px with `(pointer: coarse)` matching and `(pointer: fine)` not, confirming the platform's overlay bar is back and costs no layout width.
+
 Noted while verifying, pre-existing and **not** changed here: the create-server
 dialog's submit sits inside the Modal's scrolling body rather than its `footer`
 slot, so at 1280x840 it starts 338px below the fold and is reached by scrolling.
