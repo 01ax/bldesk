@@ -5,6 +5,21 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.61-beta.9] - 2026-09-09
+
+### Added
+- **Network Map Touch Gestures** (#61):
+  - Added pan and pinch-to-zoom touch gesture support to the interactive Network Map on mobile and touch devices.
+  - One-finger touch pans across the canvas smoothly, and two-finger pinch zooms in and out (`[0.2, 3]` clamp range) anchored to the midpoint of the gesture.
+  - Container utilizes `touch-action: none` to prevent the browser/WebView from capturing touch events for page scrolling.
+
+### Fixed
+- **Action Polling Resilience on Dropped Requests** (#59):
+  - Action settlement poller (`pollActionToSettled`) now treats network transport drops (`TypeError: Failed to fetch`) the same as slow poll timeouts, retrying until the deadline instead of immediately failing the action as `lost`.
+  - Fixes false-positive action failures on mobile devices when long-running actions (such as server resizes) encounter radio sleeps, network handovers, or device lock/unlock cycles.
+- **Action Progress Toast Positioning on Mobile** (#60):
+  - Repositioned the action progress toast on viewports below `md` breakpoint (`fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)]`) so it clears the mobile bottom navigation bar and gesture navigation inset, keeping the toast and close button fully visible and accessible.
+
 ## [1.0.61-beta.8] - 2026-09-07
 
 ### Added
