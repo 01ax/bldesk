@@ -47,7 +47,17 @@ export function ActionToasts() {
   if (tracked.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-[55] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
+    /*
+     * Above the mobile navigation bar, not behind it.
+     *
+     * `BottomNav` is `md:hidden fixed bottom-0` and stands
+     * `3.5rem + env(safe-area-inset-bottom)` tall, so a toast at `bottom-4`
+     * sat underneath it and, on a phone with gesture navigation, ran off the
+     * bottom of the screen as well - the close button with it. The offset
+     * matches the bar's own height expression so the two cannot drift apart,
+     * and it applies only where the bar exists.
+     */
+    <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4 right-4 z-[55] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
       {tracked.map((action) => {
         const tone = TONE[action.state]
         const Icon = tone.icon
