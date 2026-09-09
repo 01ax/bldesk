@@ -177,6 +177,81 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true
     setView((v) => ({ ...v, x: d.vx + dx, y: d.vy + dy }))
   }
+  /*
+   * Touch: one finger pans, two pinch to zoom.
+   *
+   * The map had mouse and wheel handlers only, so on a phone it was a picture -
+   * you could not move it or zoom it at all. Pinch keeps the world point the
+   * fingers started on under the fingers, the same rule `zoomBy` uses for the
+   * cursor, so the map grows around what you are looking at rather than the
+   * centre - and travels with the gesture when the fingers also move.
+   *
+   * `touch-action: none` on the container matters: without it the browser
+   * claims the gesture for page scrolling and the handlers never see a move.
+   */
+  const touch = useRef<
+    | { mode: 'pan'; x: number; y: number; vx: number; vy: number }
+    | { mode: 'pinch'; dist: number; cx: number; cy: number; from: { x: number; y: number; k: number } }
+    | null
+  >(null)
+
+  const localPoint = (clientX: number, clientY: number): { x: number; y: number } => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) }
+  }
+
+  const startPan = (t: React.Touch): void => {
+    touch.current = { mode: 'pan', x: t.clientX, y: t.clientY, vx: view.x, vy: view.y }
+  }
+
+  const onTouchStart = (e: React.TouchEvent): void => {
+    if (e.touches.length === 1) {
+      startPan(e.touches[0])
+    } else if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]]
+      const mid = localPoint((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+      touch.current = {
+        mode: 'pinch',
+        dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        cx: mid.x,
+        cy: mid.y,
+        from: { ...view }
+      }
+    }
+  }
+
+  const onTouchMove = (e: React.TouchEvent): void => {
+    const t = touch.current
+    if (!t) return
+    if (t.mode === 'pan' && e.touches.length === 1) {
+      const p = e.touches[0]
+      setView((v) => ({ ...v, x: t.vx + (p.clientX - t.x), y: t.vy + (p.clientY - t.y) }))
+    } else if (t.mode === 'pinch' && e.touches.length === 2 && t.dist > 0) {
+      const [a, b] = [e.touches[0], e.touches[1]]
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+      const k = Math.min(3, Math.max(0.2, t.from.k * (dist / t.dist)))
+      /*
+       * The translation term follows the *current* midpoint; only the anchor
+       * being held is the one the gesture started on. Using the starting
+       * midpoint for both meant two fingers moving together with an unchanged
+       * span produced no movement at all - a pinch could zoom but never drag.
+       */
+      const mid = localPoint((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+      setView({
+        k,
+        x: mid.x - ((t.cx - t.from.x) * k) / t.from.k,
+        y: mid.y - ((t.cy - t.from.y) * k) / t.from.k
+      })
+    }
+  }
+
+  const onTouchEnd = (e: React.TouchEvent): void => {
+    // Lifting one finger of a pinch continues as a pan from where the view is
+    // now, rather than snapping back to where the pinch began.
+    if (e.touches.length === 1) startPan(e.touches[0])
+    else if (e.touches.length === 0) touch.current = null
+  }
+
   const onMouseUp = () => {
     const d = drag.current
     drag.current = null
@@ -322,11 +397,16 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
         <div
           ref={containerRef}
           className={`absolute inset-0 ${drag.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={{ touchAction: 'none' }}
           onWheel={onWheel}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseUp}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchEnd}
         >
           <svg ref={svgRef} className="w-full h-full select-none" style={{ fontFamily: 'inherit' }}>
             <defs>
