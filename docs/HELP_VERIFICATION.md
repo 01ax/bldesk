@@ -41,15 +41,10 @@ Supersedes, rather than contradicts, one line in **SSH address follow-up (6 Sept
   - The chip renders on a real server detail and carries a real result from the device: `Port 22 unreachable`, with the no-rules explanation, and its re-check control present. The probe ran natively; nothing was stubbed.
   - The "why" card: tapping `?` opens it `position: fixed` and screen-centred, 320px wide with 46px clear on the left and 45px on the right of a 411px viewport; tapping the close button **actually closes it**, and `?` reopens it afterwards. This is the failure that beat `blur()` and beat a `.is-dismissed` class on specificity; conditional rendering holds under a real finger.
 
-Layout results are deliberately **not** recorded here. An earlier draft of this
-entry carried four - the configuration summary on one line, `Server:` hidden,
-the back control at 24px, and a scrollbar gutter of 0px - measured on a build
-that combined this branch with the mobile-overflow work. None of the files that
-produce them is in this diff, so they are evidence for that branch and are
-recorded against it instead. Everything above was produced by
-`NetProbePlugin.java`, `MainActivity.java`, `api/mobile-bridge.ts` and
-`components/servers/ReachabilityBadge.tsx`, which are the files this branch
-changes.
+Everything above was produced by `NetProbePlugin.java`, `MainActivity.java`,
+`api/mobile-bridge.ts` and `components/servers/ReachabilityBadge.tsx`, which are
+the files this branch changes. Phone layout results belong to the branch that
+changes the layout and are recorded there.
 
 The harness is out of tree, in a temporary directory, and is not an app dependency: a copy of `scripts/showcase/launcher.cjs` whose `net:probeTcp` stub is env-driven so the failure states can be exercised, plus two check scripts. Playwright is supplied through `BLDESK_PLAYWRIGHT_MODULE` and is not installed in the repo. On Windows that variable must be a `file://` URL pointing at Playwright's `index.mjs`; `index.js` is CommonJS and its `_electron` export is not visible to a direct ESM file import.
 
