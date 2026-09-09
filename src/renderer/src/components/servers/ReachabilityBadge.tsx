@@ -24,12 +24,19 @@ import { explainUnreachablePort, describeRule, type FirewallVerdict } from '../.
  *   refused   -> something answered; the host is up, sshd is not
  *   timeout   -> silently dropped, which is what a firewall does
  *
- * Electron only. The Android build has no raw sockets and no child_process, so
- * `probeTcp` is absent there and both pieces render nothing rather than offering
- * a control that cannot work.
+ * `probeTcp` is implemented on both platforms now - the main process on the
+ * desktop, the NetProbe plugin on Android. `traceroute` is implemented on the
+ * desktop only, so the trace control renders only where it exists rather than
+ * offering a button that cannot work.
  */
 export interface Reachability {
   supported: boolean
+  /**
+   * Whether a route can actually be traced here. Separate from `supported`,
+   * which only says a TCP probe exists: Android has the probe and cannot
+   * traceroute at all, so one flag for both offered a button that threw.
+   */
+  canTrace: boolean
   result: TcpProbeResult | null
   busy: boolean
   /** Increments per completed probe; keys the one-shot blink. */
@@ -51,6 +58,13 @@ export function useReachability(
 ): Reachability {
   const api = typeof window !== 'undefined' ? window.bldeskApi : undefined
   const supported = typeof api?.probeTcp === 'function'
+  /*
+   * Kept separate from `supported`, which only says a TCP probe exists: the
+   * Android bridge implements the probe and does not implement `traceroute`,
+   * so one flag for both offered a button that threw. `IpcApi` marks it
+   * optional precisely so a platform can decline it.
+   */
+  const canTrace = typeof api?.traceroute === 'function'
 
   const [result, setResult] = useState<TcpProbeResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -90,18 +104,20 @@ export function useReachability(
   const verdict = explainUnreachablePort(timedOut ? rulesQuery.data : undefined, port)
 
   const runTrace = useCallback(async () => {
-    if (!supported || !ip) return
+    // Guarded on `canTrace`, not `supported`: the non-null assertion below is
+    // only sound where the platform actually implements it.
+    if (!canTrace || !ip) return
     setTracing(true)
     try {
       setHops((await api!.traceroute!(ip, 12)) ?? [])
     } finally {
       setTracing(false)
     }
-  }, [api, ip, supported])
+  }, [api, ip, canTrace])
 
   const clearHops = useCallback(() => setHops(null), [])
 
-  return { supported, result, busy, seq, port, probe, verdict, hops, tracing, runTrace, clearHops }
+  return { supported, canTrace, result, busy, seq, port, probe, verdict, hops, tracing, runTrace, clearHops }
 }
 
 const pill = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium'
@@ -303,15 +319,19 @@ export const ReachabilityChip: React.FC<{
                       Open firewall rules
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void r.runTrace()}
-                    disabled={r.tracing}
-                    className="inline-flex items-center gap-1 text-[#017cb6] hover:underline disabled:opacity-50"
-                  >
-                    {r.tracing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Route className="w-3 h-3" />}
-                    <span>{r.tracing ? 'Tracing…' : 'Trace route'}</span>
-                  </button>
+                  {/* Absent, not disabled: a greyed control still claims the
+                      app could do this if only you tried harder. */}
+                  {r.canTrace && (
+                    <button
+                      type="button"
+                      onClick={() => void r.runTrace()}
+                      disabled={r.tracing}
+                      className="inline-flex items-center gap-1 text-[#017cb6] hover:underline disabled:opacity-50"
+                    >
+                      {r.tracing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Route className="w-3 h-3" />}
+                      <span>{r.tracing ? 'Tracing…' : 'Trace route'}</span>
+                    </button>
+                  )}
                 </span>
                 </span>
               </span>

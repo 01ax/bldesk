@@ -25,10 +25,18 @@ const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
  * check against accidental calls, not proof that an address belongs to the
  * signed-in account.
  *
- * `probePing` and `traceroute` are deliberately absent. Both need raw sockets or
- * a shell, neither of which Android gives an app, and `IpcApi` marks them
- * optional so the UI feature-detects and hides those controls rather than
- * offering a button that cannot work.
+ * `probePing` and `traceroute` are not implemented here. `IpcApi` marks both
+ * optional so a platform can decline them, and `useReachability` exposes
+ * `canTrace` separately from `supported` so the control is not rendered where
+ * it is absent - gating on the TCP probe is not enough, because this bridge
+ * has that and no traceroute.
+ *
+ * Unimplemented, not impossible. `InetAddress.isReachable` cannot name a hop
+ * and so cannot build the list on its own, but `IP_TTL` is available through
+ * `android.system.OsConstants`, and Linux can deliver ICMP errors to an
+ * unprivileged UDP socket via `IP_RECVERR` and `recvmsg(MSG_ERRQUEUE)`.
+ * Whether that holds across the devices BLDesk supports is unverified, and
+ * building it is separate work from this bridge.
  */
 const NetProbe = registerPlugin<{
   probeTcp(options: { host: string; port: number; timeoutMs?: number }): Promise<TcpProbeResult>
