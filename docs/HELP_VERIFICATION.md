@@ -33,16 +33,23 @@ Supersedes, rather than contradicts, one line in **SSH address follow-up (6 Sept
 - `npm run typecheck`: both TypeScript projects and all five guards (mutation, UI, help, PTY, updater).
 - `npm run build`: production main, preload and renderer bundles.
 - `isIpLiteral` agreement: both implementations extracted from source verbatim and run against the same 28 cases, including hostname, port-suffix and mixed-form bypasses. Both accept and refuse identically. `1.2.3.4:22` was accepted before this change: it passes a character-class check, is not a literal, and would have reached `InetAddress.getByName`, which resolves what it cannot parse.
-- Real Electron, 1280x840 at 100%, isolated `userData` and the synthetic fleet with every cloud write rejected (0 attempted): the chip still leads the action cluster and is **not** in the title row; the "why" card opens on keyboard focus, stays 320px and `absolute`, keeps zero right padding, and its close button is present in the DOM but `display: none` above `sm`; no horizontal page overflow; no renderer errors.
+- Real Electron, 1280x840 at 100%, isolated `userData` and the synthetic fleet with every cloud write rejected (0 attempted): the "why" card opens on keyboard focus, stays 320px and `absolute`, keeps zero right padding, and its close button is present in the DOM but `display: none` above `sm`; no horizontal page overflow; no renderer errors.
 - Real Electron, `error: 'other'` injected: the pill reads `Port 22 not checked`, background `#e9ecef`, the reason in its `title`, and no firewall explanation offered - there is no rule to blame for a probe that never ran.
 
 - Physical device, Samsung SM-S948B (Galaxy S26 Ultra), Android 16 / API 36, 1440x3120 at 560dpi giving 411 CSS px, driven over `adb forward` with CDP and real `Input.dispatchTouchEvent` touches:
   - `typeof window.bldeskApi.probeTcp === 'function'` and `setProbeTargets` likewise, so `useReachability` reports `supported` on Android for the first time. `window.bldeskApi.pty` is `undefined` there, which is what makes the "no custom SSH destination on Android" row above true rather than merely untested.
   - The chip renders on a real server detail and carries a real result from the device: `Port 22 unreachable`, with the no-rules explanation, and its re-check control present. The probe ran natively; nothing was stubbed.
-  - The chip is in the action cluster, not the title row.
   - The "why" card: tapping `?` opens it `position: fixed` and screen-centred, 320px wide with 46px clear on the left and 45px on the right of a 411px viewport; tapping the close button **actually closes it**, and `?` reopens it afterwards. This is the failure that beat `blur()` and beat a `.is-dismissed` class on specificity; conditional rendering holds under a real finger.
-  - No horizontal page scroll on the servers list, firewall, SSH keys, backups, network map or a server detail; the configuration summary renders on one line; `Server:` is hidden and the hostname truncates; the back control measures 24px.
-  - A scrollbar gutter of 0px with `(pointer: coarse)` matching and `(pointer: fine)` not, so the platform's overlay bar is back and costs no layout width.
+
+Layout results are deliberately **not** recorded here. An earlier draft of this
+entry carried four - the configuration summary on one line, `Server:` hidden,
+the back control at 24px, and a scrollbar gutter of 0px - measured on a build
+that combined this branch with the mobile-overflow work. None of the files that
+produce them is in this diff, so they are evidence for that branch and are
+recorded against it instead. Everything above was produced by
+`NetProbePlugin.java`, `MainActivity.java`, `api/mobile-bridge.ts` and
+`components/servers/ReachabilityBadge.tsx`, which are the files this branch
+changes.
 
 The harness is out of tree, in a temporary directory, and is not an app dependency: a copy of `scripts/showcase/launcher.cjs` whose `net:probeTcp` stub is env-driven so the failure states can be exercised, plus two check scripts. Playwright is supplied through `BLDESK_PLAYWRIGHT_MODULE` and is not installed in the repo. On Windows that variable must be a `file://` URL pointing at Playwright's `index.mjs`; `index.js` is CommonJS and its `_electron` export is not visible to a direct ESM file import.
 
