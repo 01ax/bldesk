@@ -17,8 +17,9 @@ User-facing text this change touches, and the line that renders each:
 
 Deliberately **not** in this change, having been split out as discretionary
 desktop work: moving the reachability chip out of the action cluster, grouping
-the reboot and shutdown buttons, and changing the meta row's gap. The chip is
-verified to still lead the action cluster.
+the reboot and shutdown buttons, and changing the meta row's gap. This diff
+touches `ServerDetails.tsx` but not the chip's call site, so its position is
+unchanged from `main`.
 
 ### Checks performed
 
@@ -44,7 +45,15 @@ verified to still lead the action cluster.
 - Range limits: reset returns to 100%, zoom in clamps at 150%, zoom out clamps
   at 80%.
 
-- Physical device, Samsung SM-S948B (Galaxy S26 Ultra), Android 16 / API 36, 411 CSS px, over CDP with real touch events: no horizontal page scroll on the servers list, firewall, SSH keys, backups, network map or a server detail; both dense tables scroll inside their own wrapper and reach their last column (SSH keys 718px of table in a 362px box, disk images 676px in 362px) while the page itself stays put; the configuration summary is one line with `white-space: nowrap`; `Server:` is hidden at that width and the hostname truncates; the back control measures 24px; and a probe of the scrollbar gutter returns 0px with `(pointer: coarse)` matching and `(pointer: fine)` not, confirming the platform's overlay bar is back and costs no layout width.
+- Physical device, Samsung SM-S948B (Galaxy S26 Ultra), Android 16 / API 36, 411 CSS px, over CDP. **The build was this branch on top of `main` and nothing else** - confirmed in the run by `typeof window.bldeskApi.probeTcp === 'undefined'` and by the reachability chip being absent from the server detail, neither of which would hold on a build that also carried the Android probe work. 17 checks, all passing:
+  - No horizontal page scroll on the servers list, firewall, SSH keys, backups, or a server detail. The network map is not listed: this diff does not touch it.
+  - Both dense tables reach their last column inside their own `overflow-x: auto` wrapper while the page itself stays put - SSH keys 718px of table in a 362px box, disk images 676px in 362px.
+  - Server detail header: the configuration summary is one line with `white-space: nowrap`, `Server:` is hidden at this width, the hostname truncates, the title row does not overflow, and the back control measures 24px.
+  - A probe of the scrollbar gutter returns 0px with `(pointer: coarse)` matching and `(pointer: fine)` not, so the platform's overlay bar is back and costs no layout width.
+
+An earlier draft of this entry took its numbers from a build combining six
+branches, which is how results reached the wrong diff elsewhere in this file.
+They are re-measured here on this branch alone.
 
 Noted while verifying, pre-existing and **not** changed here: the create-server
 dialog's submit sits inside the Modal's scrolling body rather than its `footer`
