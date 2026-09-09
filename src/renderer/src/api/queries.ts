@@ -1166,6 +1166,18 @@ const isTimeoutError = (err: unknown): boolean =>
   err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
 
 /**
+ * The request never got an answer, as distinct from an answer we did not like.
+ *
+ * `fetch` rejects with a `TypeError` for every network-level failure, and on
+ * Android that is the only shape this can take: `executeFetch` tries
+ * CapacitorHttp first and, on any failure, falls through to `window.fetch`,
+ * which is cross-origin from the WebView and rejects the same way. Only the
+ * `client.GET` call sits inside the `try` below, so a `TypeError` reaching it
+ * is a transport failure rather than a bug in this function.
+ */
+const isDroppedRequest = (err: unknown): boolean => err instanceof TypeError
+
+/**
  * How an action finished, from the client's point of view.
  *
  * `awaiting-interaction` and `blocked-by-invoice` are first-class outcomes
@@ -1266,8 +1278,16 @@ export async function pollActionToSettled(
         signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
       })
     } catch (err) {
-      // One slow poll is not a lost action — the deadline above bounds the total wait.
-      if (isTimeoutError(err) && !signal?.aborted) continue
+      // Neither a slow poll nor a dropped one is a lost action — the deadline
+      // above bounds the total wait either way.
+      //
+      // On a phone the dropped one is the common case, not the rare one: a
+      // resize runs for a minute through the server's own shutdown and restart,
+      // and outlives radio sleeps and network handovers on the way. A single
+      // `TypeError: Failed to fetch` used to abort the whole poll, and the
+      // tracker reports a thrown error as `lost` — so a resize that BinaryLane
+      // completed in full was shown to the user as having failed.
+      if ((isTimeoutError(err) || isDroppedRequest(err)) && !signal?.aborted) continue
       throw err
     }
     if (poll.error) throw new Error(`Lost track of action #${actionId}: ${describeApiError(poll.error)}`)
