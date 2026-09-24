@@ -105,9 +105,21 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   // The form stays mounted with the server list, so its lists were only as fresh
   // as the last visit to Servers: a key deleted in the web panel was still
   // offered. Reload everything the form picks from each time it opens.
+  //
+  // A fresh open (not from a template) also resets the key selection to the
+  // account's current defaults, as a newly loaded web panel page does, rather
+  // than keeping last time's ticks. It is applied again once the reloaded list
+  // arrives, unless the user has already changed a key in the meantime.
+  const keysTouchedRef = useRef(false)
   useEffect(() => {
     if (!isOpen) return
-    void sshKeysQuery.refetch()
+    const fresh = !initial
+    keysTouchedRef.current = false
+    const defaultIds = (list: any[] | undefined) => (list || []).filter((k: any) => k.default).map((k: any) => k.id as number)
+    if (fresh && sshKeysQuery.data) setSelectedKeys(defaultIds(sshKeysQuery.data as any[]))
+    void sshKeysQuery.refetch().then((r) => {
+      if (fresh && !keysTouchedRef.current && r.data) setSelectedKeys(defaultIds(r.data as any[]))
+    })
     void vpcsQuery.refetch()
     void sizesQuery.refetch()
     void regionsQuery.refetch()
@@ -598,9 +610,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                           <Tile
                             key={k.id}
                             selected={on}
-                            onClick={() =>
+                            onClick={() => {
+                              keysTouchedRef.current = true
                               setSelectedKeys((prev) => (on ? prev.filter((x) => x !== k.id) : [...prev, k.id]))
-                            }
+                            }}
                           >
                             {on && <Check className="w-3 h-3" />}
                             {k.name}
@@ -774,6 +787,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
               const created = await addSshKey.mutateAsync({ name, publicKey, makeDefault })
               void updateChange(changeId, { outcome: 'completed' })
               // Tick the new key for this server, as the web panel does.
+              keysTouchedRef.current = true
               if (created?.id) setSelectedKeys((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]))
             } catch (err: any) {
               void updateChange(changeId, { outcome: 'failed', detail: err.message })
