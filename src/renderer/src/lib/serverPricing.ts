@@ -170,17 +170,14 @@ function diskSteps(max: number): number[] {
 }
 
 /**
- * A plan's default storage, on the API's steps. Where the included amount sits
- * between steps it is rounded up to the next one: std-8vcpu includes 340 GB,
- * which the API will not accept (above 200 GB it must be a multiple of 100), so
- * it defaults to 400 GB. If the plan is changed to include a valid amount, that
- * is used as it stands.
+ * A plan's default storage: the amount it includes, which is what the storage
+ * select starts at. It is not always one of the steps - std-8vcpu includes
+ * 340 GB, and above 200 GB a sent value must be a multiple of 100 - which is
+ * fine because an untouched value is never sent. Leaving `disk` null takes the
+ * plan's default, so the customer gets the included 340 GB at no extra cost.
  */
 export function defaultDisk(size: SizeLike): number {
-  const o = size.options || {}
-  if (Array.isArray(o.restricted_disk_values) && o.restricted_disk_values.length) return size.disk
-  const max = o.disk_max ?? size.disk
-  return diskSteps(Math.max(max, size.disk)).find((d) => d >= size.disk) ?? size.disk
+  return size.disk
 }
 
 /** The smallest storage a plan can have with this image: the plan's floor or the image's, whichever is larger. */
@@ -193,14 +190,17 @@ export function diskFloor(size: SizeLike, image?: ImageLike): number {
  * not the plan's included amount) or the image's minimum, whichever is larger,
  * up to `disk_max`. Windows Server with SQL needs 30 GB, so it starts there.
  *
- * Only values the API accepts are offered, so a plan whose included amount sits
- * between steps offers its rounded-up default instead (see `defaultDisk`).
- * `keep` adds a value the server already has. Where a plan sets
+ * The steps are the values the API accepts. One more is added as the untouched
+ * choice, which is never sent: `keep`, the server's own storage on its current
+ * plan, or otherwise the plan's included amount even when it sits between steps
+ * (std-8vcpu's 340 GB, see `defaultDisk`). On the current plan the included
+ * amount is not untouched - picking it would send it - so there it is offered
+ * only if it is a step. Where a plan sets
  * `restricted_disk_values`, only those are used.
  */
 export function diskChoices(size: SizeLike, image?: ImageLike, keep?: number): number[] {
   const o = size.options || {}
-  const extra = [defaultDisk(size), keep].filter((d): d is number => typeof d === 'number' && d > 0)
+  const extra = [keep ?? defaultDisk(size)].filter((d): d is number => typeof d === 'number' && d > 0)
   if (Array.isArray(o.restricted_disk_values) && o.restricted_disk_values.length) {
     return [...new Set([...(o.restricted_disk_values as number[]), ...extra])].sort((x, y) => x - y)
   }

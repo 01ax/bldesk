@@ -384,8 +384,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         ssh_keys: selectedKeys.length ? selectedKeys : undefined,
         vpc_id: vpcId,
         options: {
-          memory,
-          disk,
+          // Sent only when changed: left null, the plan's default applies, which
+          // for std-8vcpu is the included 340 GB rather than a paid 400.
+          ...(memory !== selectedSize.memory ? { memory } : {}),
+          ...(disk !== defaultDisk(selectedSize) ? { disk } : {}),
           ipv4_addresses: ipCount,
           daily_backups: daily,
           weekly_backups: showAll ? weeklyBackups : 0,

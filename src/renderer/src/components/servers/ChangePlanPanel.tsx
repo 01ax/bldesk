@@ -21,6 +21,7 @@ import {
   planUnavailableReason,
   belowImageMinimum,
   type PlanBlock,
+  type SizeLike,
   planMonthlyPrice,
   configuredCost,
   transferForResize,
@@ -64,6 +65,10 @@ type PreBackup = 'off' | 'free' | 'specified'
 
 /** A stable empty list, so "no data yet" does not invalidate every memo each render. */
 const EMPTY: any[] = []
+
+/** Shown on the page and in the confirmation whenever storage changes. */
+const STORAGE_CHANGE_NOTE =
+  "If the disk can't be resized, for example because the data doesn't fit in the new size or the disk has been changed inside the server, the change fails after the server has shut down, and the server restarts with its storage unchanged."
 
 /**
  * Change the server's plan - the `resize` action.
@@ -360,14 +365,25 @@ export const ChangePlanPanel: React.FC<{
     }
   }, [existingBackups, replaceBackupId])
 
+  /*
+   * What memory and storage start at for a plan: the server's own figures on its
+   * current plan, the plan's defaults on any other. The resize sends each only
+   * when the customer moves it off this, because the reference says to leave
+   * them null to keep the current value on the same plan, or to take the new
+   * plan's default on a different one.
+   */
+  const startingFigures = (p: SizeLike): { memory: number; disk: number } =>
+    p.slug === server.size_slug
+      ? { memory: server.memory ?? p.memory, disk: server.disk ?? defaultDisk(p) }
+      : { memory: p.memory, disk: defaultDisk(p) }
+
   const pick = (slug: string): void => {
     const p = plans.find((x) => x.slug === slug)
     if (!p) return
     setSizeSlug(slug)
-    // Back on the current plan means the server's own figures, not the plan's defaults.
-    const back = slug === server.size_slug
-    setMemory(back ? (server.memory ?? p.memory) : p.memory)
-    setDisk(back ? (server.disk ?? defaultDisk(p)) : defaultDisk(p))
+    const start = startingFigures(p)
+    setMemory(start.memory)
+    setDisk(start.disk)
   }
 
   const isCurrentPlan = (p: { slug: string }): boolean => p.slug === server.size_slug
@@ -571,7 +587,14 @@ export const ChangePlanPanel: React.FC<{
   const monthly = newCost?.total ?? 0
   const { total, gst } = billingTotal(monthly)
   const delta = total - billingTotal(oldCost?.total ?? 0).total
-  const isShrink = !!selected && (memory < (server.memory ?? 0) || disk < (server.disk ?? 0))
+  const reinstalling = !keepImage && !!newImageSlug
+  /*
+   * A storage change can fail after the server has shut down, and on a disk
+   * changed inside the server a larger size fails as well as a smaller one.
+   * Tested on both: the action errors and the server restarts with its storage
+   * and data unchanged. A reinstall rebuilds the disks instead, so it does not apply.
+   */
+  const storageChanging = !!selected && !reinstalling && disk !== (server.disk ?? 0)
   const imageMissing = !keepImage && !newImageSlug
   const unchanged = changes.length === 0
   /*
@@ -600,7 +623,6 @@ export const ChangePlanPanel: React.FC<{
    * may be reassigned, and anything pointing at it breaks. Reinstalling is the
    * worse one this change adds, because it destroys the disks outright.
    */
-  const reinstalling = !keepImage && !!newImageSlug
   const confirmExtra =
     reinstalling || ipsToRemove.length
       ? {
@@ -621,10 +643,13 @@ export const ChangePlanPanel: React.FC<{
                 ? [
                     `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
                   ]
-                : [])
+                : []),
+            ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])
           ]
         }
-      : undefined
+      : storageChanging
+        ? { notes: [STORAGE_CHANGE_NOTE] }
+        : undefined
 
   const cellClass = 'py-1.5 px-1 sm:py-2 sm:px-3'
   const selectClass =
@@ -881,13 +906,10 @@ export const ChangePlanPanel: React.FC<{
         <PlanBlockNotes blocks={blocks as PlanBlock[]} />
       </div>
 
-      {isShrink && (
+      {storageChanging && (
         <div className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900 rounded p-2.5">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-          <span>
-            Reducing memory or storage shrinks the disk. The guest has to fit inside the smaller volume, and resizing
-            back up afterwards does not restore anything lost.
-          </span>
+          <span>{STORAGE_CHANGE_NOTE}</span>
         </div>
       )}
 
@@ -1312,8 +1334,9 @@ export const ChangePlanPanel: React.FC<{
                 type: 'resize',
                 size: selected.slug,
                 options: {
-                  memory,
-                  disk,
+                  // Sent only when changed; see startingFigures.
+                  ...(memory !== startingFigures(selected).memory ? { memory } : {}),
+                  ...(disk !== startingFigures(selected).disk ? { disk } : {}),
                   ipv4_addresses: ipCount,
                   daily_backups: dailyBackups,
                   weekly_backups: weeklyBackups,
