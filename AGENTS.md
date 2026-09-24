@@ -17,6 +17,12 @@ Out of scope, and will be closed rather than reviewed:
 
 A PR that reworks the app's architecture to deliver a feature is a different product, however well built.
 
+### Public API only
+
+BLDesk uses the BinaryLane API as its public reference documents it (https://api.binarylane.com.au, vendored here as `openapi.json`). Some endpoints and fields exist for BinaryLane's own website rather than for customers: if a call, parameter or behaviour is not in the public reference, don't build on it. Ask a maintainer, who will check with BinaryLane first.
+
+Internal BinaryLane material is never the basis for a feature and is never cited in this repository, which is public: no internal source code, file paths, project or system names, issue-tracker numbers or internal URLs, in code, comments, docs, commit messages, pull requests, issues or release notes. Explain behaviour from the public API reference or from what mPanel shows customers. `scripts/check-security-guards.mjs` fails the build on known internal markers.
+
 ---
 
 ## 🏗️ Tech Stack & Structure
