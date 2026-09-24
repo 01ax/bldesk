@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Notification } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
 import { createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
@@ -65,6 +65,8 @@ function writeSettings(s: UpdaterSettings): void {
 }
 
 const isMac = process.platform === 'darwin'
+/** A Linux package install (.deb), which updates through pkexec. The AppImage updater restarts itself. */
+const isLinuxPackage = process.platform === 'linux' && !process.env.APPIMAGE
 let macPendingZipPath: string | null = null
 let macDownloading = false
 
@@ -183,6 +185,12 @@ export class UpdaterManager {
       autoUpdater.autoDownload = true
       autoUpdater.autoInstallOnAppQuit = true
     }
+    if (isLinuxPackage) {
+      // Restart with relaunchAfterExit rather than app.relaunch(); see there.
+      // electron-updater emits this only once quitAndInstall has installed.
+      autoUpdater.autoRunAppAfterInstall = false
+      nativeAutoUpdater.on('before-quit-for-update', relaunchAfterExit)
+    }
     try {
       autoUpdater.setFeedURL({
         provider: 'github',
@@ -259,6 +267,12 @@ export class UpdaterManager {
     })
     autoUpdater.on('error', (err: Error) => {
       if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return
+      if (isLinuxPackage && /pkexec/.test(err?.message || '') && hasNoNewPrivs()) {
+        // This window was restarted by an older BLDesk's app.relaunch(), so
+        // pkexec cannot gain privileges here and exits with 127.
+        this.handleCheckError(new Error('BLDesk can\'t install updates in this window. Close BLDesk completely, open it again from your app menu, then install the update.'))
+        return
+      }
       this.handleCheckError(err)
     })
 
@@ -288,7 +302,8 @@ export class UpdaterManager {
       installMacUpdate(macPendingZipPath, true)
       return
     }
-    // isSilent=false shows the installer UI on Windows; forceRunAfter restarts the app.
+    // isSilent=false shows the installer UI on Windows. The app restarts through
+    // autoRunAppAfterInstall, or relaunchAfterExit for a Linux package.
     setImmediate(() => autoUpdater.quitAndInstall(false, true))
   }
 
@@ -368,6 +383,37 @@ function isFeedUnreachable(err: any): boolean {
   const code = err?.code
   if (typeof code === 'string' && (OFFLINE_CODES.has(code) || code === 'ENOENT')) return true
   return /HttpError:\s*404|\b404\s+Not Found\b|app-update\.yml/i.test(err?.message || '')
+}
+
+/**
+ * Start BLDesk again once this process has exited, after a Linux package update.
+ *
+ * Not app.relaunch(): on Linux the instance it starts has no_new_privs set
+ * (NoNewPrivs: 1 in /proc/<pid>/status), and so does everything it runs. The
+ * next update's pkexec then cannot gain privileges and exits with 127, and sudo
+ * fails in a local terminal opened from BLDesk. A detached shell started here
+ * does not set the flag. It waits for this process to exit first, or the
+ * single-instance lock would turn the new instance away.
+ */
+function relaunchAfterExit(): void {
+  const waitThenRun = 'i=0; while kill -0 "$0" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.2; i=$((i+1)); done; exec "$@"'
+  try {
+    spawn('/bin/sh', ['-c', waitThenRun, String(process.pid), process.execPath, ...process.argv.slice(1)], {
+      detached: true,
+      stdio: 'ignore'
+    }).unref()
+  } catch (err) {
+    console.error('[Updater] Could not restart BLDesk after the update:', err)
+  }
+}
+
+/** Whether setuid programs such as pkexec are unable to gain privileges from this process. */
+function hasNoNewPrivs(): boolean {
+  try {
+    return /^NoNewPrivs:\s*1$/m.test(readFileSync('/proc/self/status', 'utf8'))
+  } catch {
+    return false
+  }
 }
 
 function notesToString(info: UpdateInfo): string | undefined {
