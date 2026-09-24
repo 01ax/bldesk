@@ -266,11 +266,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     }
   }, [selectedSize?.slug])
 
-  // Pre-select the account's default SSH key, as the web panel does.
+  // Pre-select every default SSH key, as the web panel does. Only the first was
+  // ticked, and because a key list is then sent, the other defaults were dropped.
   useEffect(() => {
     if (!sshKeys.length || selectedKeys.length) return
-    const def = sshKeys.find((k: any) => k.default)
-    if (def) setSelectedKeys([def.id])
+    const defaults = sshKeys.filter((k: any) => k.default).map((k: any) => k.id)
+    if (defaults.length) setSelectedKeys(defaults)
   }, [sshKeys])
 
   const memory = memoryMb ?? selectedSize?.memory ?? 0
@@ -740,7 +741,23 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         <AddSshKeyDialog
           onCancel={() => setAddKeyOpen(false)}
           onCreate={async (name, publicKey, makeDefault) => {
-            await addSshKey.mutateAsync({ name, public_key: publicKey, default: makeDefault } as any)
+            const changeId = await recordChange({
+              label: 'Add SSH key',
+              target: { kind: 'sshkey', name },
+              severity: 'normal',
+              changes: [
+                { label: 'Public key', to: publicKey.slice(0, 40) + '…' },
+                ...(makeDefault ? [{ label: 'Default for new installations', to: 'Yes' }] : [])
+              ],
+              source: 'ui'
+            })
+            try {
+              await addSshKey.mutateAsync({ name, publicKey, makeDefault })
+              void updateChange(changeId, { outcome: 'completed' })
+            } catch (err: any) {
+              void updateChange(changeId, { outcome: 'failed', detail: err.message })
+              throw err
+            }
             await sshKeysQuery.refetch()
             setAddKeyOpen(false)
           }}

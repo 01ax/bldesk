@@ -20,6 +20,13 @@ Key for this server in [Remote access](help:server-remote-access) stores only th
 
 Adding an account key does not automatically update every existing guest's authorized_keys.
 
+## Rename a key or make it a default
+The pencil beside a key opens Edit SSH Key, which changes its name and whether it is a default. The key itself cannot be changed: to replace one, add the new key and delete the old. The Default column shows which keys are defaults, and Add SSH Key has the same “Select this SSH Key for all new Cloud Server Installations” checkbox.
+
+The create-server form ticks every default key for you. Untick one and that server does not get it. Making a key a default shows:
+
+“New servers get this key unless you pick their keys yourself. Existing servers are not changed.”
+
 ## Worked example
 Deleting an account key shows:
 

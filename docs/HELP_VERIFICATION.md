@@ -1,5 +1,26 @@
 # Help verification
 
+## SSH key editing and defaults (24 September 2026, after 1.0.62-beta.5)
+
+Branch: `feat/ssh-key-edit`. No new runtime dependencies.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `keys.md` - "Rename a key or make it a default" section | `SshKeysManager.tsx`: the pencil (`aria-label="Edit key"`) opens `EditSshKeyDialog` (name and default only); the Default column reads `k.default`; the Add form's checkbox sends `default` | New. The API's update call is `PUT /v2/account/keys/{key_id}` with `name` and `default`; `useUpdateSshKeyMutation` always sends the current name and omits `default` when it is unchanged. |
+| “Select this SSH Key for all new Cloud Server Installations” | `EditSshKeyDialog` and the SSH Keys Add form, matching the create form's `AddSshKeyDialog` | mPanel's wording. |
+| “New servers get this key unless you pick their keys yourself. Existing servers are not changed.” | `handleEditKey` confirm summary when default is turned on | New. Per the spec's `ssh_keys` on server create: no list deploys the defaults, a list deploys only those keys. |
+| `keys.md` - "The create-server form ticks every default key for you. Untick one and that server does not get it." | `CreateServerModal.tsx` pre-selection effect | Changed: it ticked only the first default key, so with two defaults the second was dropped from new servers. |
+
+### Checks performed
+
+- `npm run typecheck`, `npm run test:terminal` and `npm run build`.
+- Dev build against a live account, with disposable keys (since deleted):
+  - Create form, "+ Add SSH Key": before, every add failed with a 400 (`public_key` was never sent; the caller passed `public_key` to a hook that reads `publicKey`). After, the key is created, with default set when ticked. History records it as Completed, and a rejected add (duplicate key) as Failed. Before, this path wrote no History entry.
+  - With two default keys, the create form pre-ticks both (before: only the first).
+  - Edit: rename plus default off, then default on alone, each confirmed with a before → after table and read back from the API. An edit with nothing changed closes without a confirm or History entry.
+  - Add SSH Key with the checkbox ticked creates a default key.
+- Table width, emulated CSS widths: at 1280 and 1600 the Actions column fits. At 1024 and below the table scrolls sideways, as it already did (59px before, 159px now, from the Default column). The column heading is "Default", with the full mPanel wording as its tooltip, so it fits at 1280.
+
 ## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, for 1.0.62-beta.5)
 
 Branch: `fix/vpc-list-paging`. No new runtime dependencies.
