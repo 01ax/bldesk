@@ -1,6 +1,6 @@
 # Help verification
 
-## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, after 1.0.62-beta.4)
+## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, for 1.0.62-beta.5)
 
 Branch: `fix/vpc-list-paging`. No new runtime dependencies.
 

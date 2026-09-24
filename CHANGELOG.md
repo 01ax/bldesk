@@ -5,11 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
-## [1.0.62-beta.4] - 2026-09-24
+## [1.0.62-beta.5] - 2026-09-24
+
+Replaces 1.0.62-beta.4, which was withdrawn; everything in it is here. Older releases have been removed from GitHub, so this is the release every desktop and Android install updates to.
 
 - **Android: install this version by hand.** 1.0.62-beta.2 and beta.3 cannot find new releases (fixed below), so download `BLDesk-android.apk` from this release and open it. It is signed with the same key as beta.2 and beta.3, so it installs over them and keeps your account; no uninstall is needed. Updates after this one arrive in the app again.
+- **Android, from a build older than 1.0.62-beta.2:** uninstall first, then install this APK. The signing key changed in beta.2 (see below), so Android will not update over an older install; add your token again afterwards.
 
 ### Fixed
+- **Long lists cut off at 20** (#94): VPCs, SSH keys, DNS records, load balancers and usage rows only ever showed the API's first page of 20. Every list now fetches all pages, so VPC 21 onwards appears in the VPC manager, the network map and every VPC picker. The VPC cards are shown 20 at a time.
 - **Android update check** (#93): since 1.0.62-beta.2 the in-app update check failed with "Failed to fetch", because the Content Security Policy blocked the local proxy Android's HTTP layer routes requests through.
 - **Android back button** (#93): back closed the app from any screen. It now steps back through the app: an open dialog, the command palette, the navigation drawer, a server's sub-tab, the server, then any tab back to Servers. On the Servers screen it sends the app to the background instead of closing it.
 
