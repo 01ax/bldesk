@@ -752,8 +752,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
               source: 'ui'
             })
             try {
-              await addSshKey.mutateAsync({ name, publicKey, makeDefault })
+              const created = await addSshKey.mutateAsync({ name, publicKey, makeDefault })
               void updateChange(changeId, { outcome: 'completed' })
+              // Tick the new key for this server, as the web panel does.
+              if (created?.id) setSelectedKeys((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]))
             } catch (err: any) {
               void updateChange(changeId, { outcome: 'failed', detail: err.message })
               throw err

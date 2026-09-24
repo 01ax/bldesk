@@ -880,7 +880,7 @@ export function useAddSshKeyMutation(client: BinaryLaneClient | null) {
       const { data, error } = await client.POST('/v2/account/keys', {
         body: { name, public_key: publicKey, default: makeDefault === true }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error) throw new Error(describeApiError(error))
       return data?.ssh_key
     },
     onSuccess: () => {
@@ -920,7 +920,7 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
       const { error } = await client.DELETE('/v2/account/keys/{key_id}', {
         params: { path: { key_id: keyId } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error) throw new Error(describeApiError(error))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sshKeys'] })

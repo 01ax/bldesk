@@ -17,6 +17,7 @@ Branch: `feat/ssh-key-edit`. No new runtime dependencies.
 - Dev build against a live account, with disposable keys (since deleted):
   - Create form, "+ Add SSH Key": before, every add failed with a 400 (`public_key` was never sent; the caller passed `public_key` to a hook that reads `publicKey`). After, the key is created, with default set when ticked. History records it as Completed, and a rejected add (duplicate key) as Failed. Before, this path wrote no History entry.
   - With two default keys, the create form pre-ticks both (before: only the first).
+  - A key added from the create form is ticked for that server straight away, as in the web panel, alongside the keys already ticked. A rejected key shows the API message (e.g. "The provided SSH key was not in a recognised format"), not the raw JSON body.
   - Edit: rename plus default off, then default on alone, each confirmed with a before → after table and read back from the API. An edit with nothing changed closes without a confirm or History entry.
   - Add SSH Key with the checkbox ticked creates a default key.
 - Table width, emulated CSS widths: at 1280 and 1600 the Actions column fits. At 1024 and below the table scrolls sideways, as it already did (59px before, 159px now, from the Default column). The column heading is "Default", with the full mPanel wording as its tooltip, so it fits at 1280.
