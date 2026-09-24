@@ -15,7 +15,7 @@ Source audit: 5 September 2026, package version 1.0.61-beta.1. This inventory de
 | Fleet heatmap | CPU/RAM/disk capacity ratios, network/IO rates, sorting, stale/missing-data states and links to Usage | `FleetHeatmap.tsx`, `lib/heatmap.ts` |
 | VPCs and load balancers | VPC create/member inspection/detach/delete; balancer create, forwarding-rule display, backend attach/detach/delete | `VpcManager.tsx`, `LoadBalancerManager.tsx` |
 | Backups | Slot/replacement selection, restore, read-only attachment/detachment, download link and nightly schedule toggle | `BackupManager.tsx`, `lib/backupSlots.ts` |
-| DNS and SSH keys | Paginated hosted zones, add/delete records, zone export before removal; account public-key add/import/copy/delete | `DnsManager.tsx`, `SshKeysManager.tsx` |
+| DNS and SSH keys | Paginated hosted zones, add/delete records, zone export before removal; account public-key add/import/copy/delete, rename and default for new servers, and key-pair generation into ~/.ssh with the system ssh-keygen (desktop only) | `DnsManager.tsx`, `SshKeysManager.tsx`, `GenerateKeyPairDialog.tsx`, `src/main/sshKeygen.ts` |
 | Account and billing | Read-only account/security fields, balances, pending charges, paginated invoices and mPanel links | `AccountOverview.tsx`, `BillingOverview.tsx` |
 | Review and History | Shared page-action review, typed irreversible confirmations, change tables/diffs, per-profile local outcomes | `context/ConfirmContext.tsx`, `HistoryView.tsx`, `lib/changelog.ts` |
 | Action tracking | Completion/error tracking and handling of actions waiting for user interaction or invoice payment | `context/ActionTrackerContext.tsx`, `ActionInteractionPrompt.tsx` |
