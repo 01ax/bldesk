@@ -5,7 +5,7 @@ keywords: [ssh, public key, private key, fingerprint, authentication]
 ---
 
 # SSH keys
-Use SSH Keys to register public keys in BinaryLane and inspect their fingerprints. These are the public keys you can select when building a server.
+Use SSH Keys to register public keys in BinaryLane and inspect their fingerprints. These are the public keys you can select when building a server. The list reloads from BinaryLane each time you open the page, and Refresh reloads it on demand, so a key added or deleted in the web panel shows here too.
 
 ## Keep private keys local
 Only paste a public key into the account form. Your SSH private key belongs on your device. The server header's local-key selector chooses a file for SSH, embedded or native; it does not upload that private key.
@@ -19,6 +19,13 @@ BLDesk never stores key passphrases. OpenSSH prompts when necessary, or your exi
 Key for this server in [Remote access](help:server-remote-access) stores only that existing file path, per profile and server. Embedded SSH can also learn the path from a session; native launches cannot. No private-key material is retained, so there is no private-key secret for BLDesk to encrypt. These local associations are separate from the public keys registered with BinaryLane and are not synced between devices.
 
 Adding an account key does not automatically update every existing guest's authorized_keys.
+
+## Rename a key or make it a default
+The pencil beside a key opens Edit SSH Key, which changes its name and whether it is a default. The key itself cannot be changed: to replace one, add the new key and delete the old. The Default column shows which keys are defaults, and Add SSH Key has the same “Select this SSH Key for all new Cloud Server Installations” checkbox.
+
+The create-server form ticks every default key for you. Untick one and that server does not get it. Making a key a default shows:
+
+“New servers get this key unless you pick their keys yourself. Existing servers are not changed.”
 
 ## Worked example
 Deleting an account key shows:

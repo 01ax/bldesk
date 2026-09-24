@@ -868,6 +868,9 @@ export function useSshKeys(client: BinaryLaneClient | null) {
         'useSshKeys'
       )
     },
+    // Keys are changed outside the app too. Every page and picker that shows
+    // them reloads on open, so a key deleted in the web panel does not linger.
+    refetchOnMount: 'always',
     enabled: !!client
   })
 }
@@ -875,12 +878,35 @@ export function useSshKeys(client: BinaryLaneClient | null) {
 export function useAddSshKeyMutation(client: BinaryLaneClient | null) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ name, publicKey }: { name: string; publicKey: string }) => {
+    mutationFn: async ({ name, publicKey, makeDefault }: { name: string; publicKey: string; makeDefault?: boolean }) => {
       if (!client) throw new Error('No client')
       const { data, error } = await client.POST('/v2/account/keys', {
-        body: { name, public_key: publicKey }
+        body: { name, public_key: publicKey, default: makeDefault === true }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error) throw new Error(describeApiError(error))
+      return data?.ssh_key
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sshKeys'] })
+    }
+  })
+}
+
+/**
+ * Rename a key, or set or clear it as a default for new installations. The API
+ * requires `name` on every update, so a default-only change resends the current
+ * name; leaving `default` undefined keeps it as it is.
+ */
+export function useUpdateSshKeyMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ keyId, name, makeDefault }: { keyId: number; name: string; makeDefault?: boolean }) => {
+      if (!client) throw new Error('No client')
+      const { data, error } = await client.PUT('/v2/account/keys/{key_id}', {
+        params: { path: { key_id: keyId } },
+        body: { name, default: makeDefault }
+      })
+      if (error) throw new Error(describeApiError(error))
       return data?.ssh_key
     },
     onSuccess: () => {
@@ -897,7 +923,7 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
       const { error } = await client.DELETE('/v2/account/keys/{key_id}', {
         params: { path: { key_id: keyId } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error) throw new Error(describeApiError(error))
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sshKeys'] })

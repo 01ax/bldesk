@@ -1,5 +1,29 @@
 # Help verification
 
+## SSH key editing and defaults (24 September 2026, after 1.0.62-beta.5)
+
+Branch: `feat/ssh-key-edit`. No new runtime dependencies.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `keys.md` - "Rename a key or make it a default" section | `SshKeysManager.tsx`: the pencil (`aria-label="Edit key"`) opens `EditSshKeyDialog` (name and default only); the Default column reads `k.default`; the Add form's checkbox sends `default` | New. The API's update call is `PUT /v2/account/keys/{key_id}` with `name` and `default`; `useUpdateSshKeyMutation` always sends the current name and omits `default` when it is unchanged. |
+| “Select this SSH Key for all new Cloud Server Installations” | `EditSshKeyDialog` and the SSH Keys Add form, matching the create form's `AddSshKeyDialog` | mPanel's wording. |
+| “New servers get this key unless you pick their keys yourself. Existing servers are not changed.” | `handleEditKey` confirm summary when default is turned on | New. Per the spec's `ssh_keys` on server create: no list deploys the defaults, a list deploys only those keys. |
+| `keys.md` - "The create-server form ticks every default key for you. Untick one and that server does not get it." | `CreateServerModal.tsx` pre-selection effect | Changed: it ticked only the first default key, so with two defaults the second was dropped from new servers. |
+
+### Checks performed
+
+- `npm run typecheck`, `npm run test:terminal` and `npm run build`.
+- Dev build against a live account, with disposable keys (since deleted):
+  - Create form, "+ Add SSH Key": before, every add failed with a 400 (`public_key` was never sent; the caller passed `public_key` to a hook that reads `publicKey`). After, the key is created, with default set when ticked. History records it as Completed, and a rejected add (duplicate key) as Failed. Before, this path wrote no History entry.
+  - With two default keys, the create form pre-ticks both (before: only the first).
+  - Opening the create form fresh (not from a template) resets the ticks to the account's current defaults: MASTER unticked and the form closed, then reopened, came back ticked; a key made default through the API while the app was open was ticked on the next open (before, the previous ticks were kept). Template opens are unchanged, since the reset is skipped when the form has a prefill; not exercised live, as no template on the account sets keys.
+  - A key added from the create form is ticked for that server straight away, as in the web panel, alongside the keys already ticked. A rejected key shows the API message (e.g. "The provided SSH key was not in a recognised format"), not the raw JSON body.
+  - Edit: rename plus default off, then default on alone, each confirmed with a before → after table and read back from the API. An edit with nothing changed closes without a confirm or History entry.
+  - Add SSH Key with the checkbox ticked creates a default key.
+  - Freshness, with keys created and deleted through the API while the app was open: the create form dropped a deleted key the next time it opened (before, it kept offering it until Servers was reopened); the SSH Keys page showed an added key and dropped a deleted one on Refresh, and on leaving and returning within 20s (before, the cached list was reused for 20s). `keys.md` - "The list reloads from BinaryLane each time you open the page, and Refresh reloads it on demand" is `refetchOnMount: always` on `useSshKeys` plus the Refresh button.
+- Table width, emulated CSS widths: at 1280 and 1600 the Actions column fits. At 1024 and below the table scrolls sideways, as it already did (59px before, 159px now, from the Default column). The column heading is "Default", with the full mPanel wording as its tooltip, so it fits at 1280.
+
 ## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, for 1.0.62-beta.5)
 
 Branch: `fix/vpc-list-paging`. No new runtime dependencies.

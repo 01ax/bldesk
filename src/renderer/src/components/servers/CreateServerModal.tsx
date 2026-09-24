@@ -102,6 +102,37 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [addKeyOpen, setAddKeyOpen] = useState(false)
   const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listServerTemplates>>>([])
 
+  // The form stays mounted with the server list, so its lists were only as fresh
+  // as the last visit to Servers: a key deleted in the web panel was still
+  // offered. Reload everything the form picks from each time it opens.
+  //
+  // A fresh open (not from a template) also resets the key selection to the
+  // account's current defaults, as a newly loaded web panel page does, rather
+  // than keeping last time's ticks. It is applied again once the reloaded list
+  // arrives, unless the user has already changed a key in the meantime.
+  const keysTouchedRef = useRef(false)
+  useEffect(() => {
+    if (!isOpen) return
+    const fresh = !initial
+    keysTouchedRef.current = false
+    const defaultIds = (list: any[] | undefined) => (list || []).filter((k: any) => k.default).map((k: any) => k.id as number)
+    if (fresh && sshKeysQuery.data) setSelectedKeys(defaultIds(sshKeysQuery.data as any[]))
+    void sshKeysQuery.refetch().then((r) => {
+      if (fresh && !keysTouchedRef.current && r.data) setSelectedKeys(defaultIds(r.data as any[]))
+    })
+    void vpcsQuery.refetch()
+    void sizesQuery.refetch()
+    void regionsQuery.refetch()
+    void imagesQuery.refetch()
+  }, [isOpen])
+
+  // A ticked key that has since been deleted must not be sent with the create.
+  useEffect(() => {
+    if (!sshKeysQuery.isSuccess) return
+    const live = new Set(sshKeys.map((k: any) => k.id))
+    setSelectedKeys((prev) => (prev.every((id) => live.has(id)) ? prev : prev.filter((id) => live.has(id))))
+  }, [sshKeys])
+
   // --- template prefill ---
   // Scalars land when the form opens; image, plan, VPC and keys are stored by
   // name in a template and resolve as each list arrives (they are cached, so
@@ -266,11 +297,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     }
   }, [selectedSize?.slug])
 
-  // Pre-select the account's default SSH key, as the web panel does.
+  // Pre-select every default SSH key, as the web panel does. Only the first was
+  // ticked, and because a key list is then sent, the other defaults were dropped.
   useEffect(() => {
     if (!sshKeys.length || selectedKeys.length) return
-    const def = sshKeys.find((k: any) => k.default)
-    if (def) setSelectedKeys([def.id])
+    const defaults = sshKeys.filter((k: any) => k.default).map((k: any) => k.id)
+    if (defaults.length) setSelectedKeys(defaults)
   }, [sshKeys])
 
   const memory = memoryMb ?? selectedSize?.memory ?? 0
@@ -578,9 +610,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                           <Tile
                             key={k.id}
                             selected={on}
-                            onClick={() =>
+                            onClick={() => {
+                              keysTouchedRef.current = true
                               setSelectedKeys((prev) => (on ? prev.filter((x) => x !== k.id) : [...prev, k.id]))
-                            }
+                            }}
                           >
                             {on && <Check className="w-3 h-3" />}
                             {k.name}
@@ -740,7 +773,26 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         <AddSshKeyDialog
           onCancel={() => setAddKeyOpen(false)}
           onCreate={async (name, publicKey, makeDefault) => {
-            await addSshKey.mutateAsync({ name, public_key: publicKey, default: makeDefault } as any)
+            const changeId = await recordChange({
+              label: 'Add SSH key',
+              target: { kind: 'sshkey', name },
+              severity: 'normal',
+              changes: [
+                { label: 'Public key', to: publicKey.slice(0, 40) + '…' },
+                ...(makeDefault ? [{ label: 'Default for new installations', to: 'Yes' }] : [])
+              ],
+              source: 'ui'
+            })
+            try {
+              const created = await addSshKey.mutateAsync({ name, publicKey, makeDefault })
+              void updateChange(changeId, { outcome: 'completed' })
+              // Tick the new key for this server, as the web panel does.
+              keysTouchedRef.current = true
+              if (created?.id) setSelectedKeys((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]))
+            } catch (err: any) {
+              void updateChange(changeId, { outcome: 'failed', detail: err.message })
+              throw err
+            }
             await sshKeysQuery.refetch()
             setAddKeyOpen(false)
           }}
