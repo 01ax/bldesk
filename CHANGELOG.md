@@ -5,6 +5,19 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.6] - 2026-09-24
+
+### Added
+- **Generate SSH key pairs** (#102, desktop only): SSH Keys → Generate Key Pair, also beside "+ Add SSH Key" on the create form. BLDesk creates an Ed25519 key pair with your system's `ssh-keygen`, saves it in `~/.ssh` and adds the public key to your account. From the create form the new key is ticked for the server and set as its SSH key, so the first connection works. The private key never leaves your device, and nothing in `~/.ssh` is overwritten: a name already in use gets the date added. The key has no passphrase; the result screen shows how to add one.
+- **Edit SSH keys** (#101): rename a key, or set it as a default for new servers, as in mPanel. Each edit is confirmed and recorded in History. SSH Keys has a Default column, a Refresh button, and the default option when adding a key.
+
+### Fixed
+- **"+ Add SSH Key" on the create form** (#101) always failed with a 400 error. It now adds the key, honours the default option, ticks the key for the server being created and records it in History.
+- **Default SSH keys on the create form** (#101): only the first default key was ticked, so other defaults were left off the new server. Every default is now ticked, the selection resets to your defaults each time the form opens, and a key deleted in mPanel is no longer offered.
+- **SSH key errors** (#101) show BinaryLane's message instead of the raw response.
+
+Android installs still on 1.0.62-beta.2 or beta.3 need one manual install; see 1.0.62-beta.5 below.
+
 ## [1.0.62-beta.5] - 2026-09-24
 
 Replaces 1.0.62-beta.4, which was withdrawn; everything in it is here. Older releases have been removed from GitHub, so this is the release every desktop and Android install updates to.
