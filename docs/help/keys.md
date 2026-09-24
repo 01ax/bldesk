@@ -1,7 +1,7 @@
 ---
 title: SSH keys
-summary: Manage account public keys and distinguish them from local private keys.
-keywords: [ssh, public key, private key, fingerprint, authentication]
+summary: Manage account public keys, generate key pairs and distinguish them from local private keys.
+keywords: [ssh, public key, private key, fingerprint, authentication, generate, key pair, ed25519, ssh-keygen, default, rename]
 ---
 
 # SSH keys
