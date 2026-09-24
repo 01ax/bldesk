@@ -1,5 +1,23 @@
 # Help verification
 
+## Plan availability per operating system (24 September 2026, after 1.0.62-beta.6)
+
+Branch: `fix/size-availability-per-image`. No new runtime dependencies. No help page describes plan availability, so no help text changes.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “We currently do not have resources available to provision a server on these plans.” | `PlanBlockNotes` in `PlanBlocks.tsx`, under the plan table on the create form and Change Plan | Changed: shown whenever any listed plan is blocked by stock, region or retirement, beside any other note. Before, a Windows image's memory note made it fall back to "Out of stock in this region." |
+| Crossed-out circle on a blocked plan | `BlockedMark`, in place of the radio on both forms | New, matching the web panel. |
+| Storage choices | `diskChoices`, `diskFloor`, `defaultDisk` in `serverPricing.ts` | Changed: from the larger of the plan's `disk_min` (20 GB on every Standard plan) and the image's `min_disk_size`, to `disk_max`, on the reference's steps (multiples of 5 GB, of 10 above 60, of 100 above 200); `restricted_disk_values` used as given. Before, the list started at the plan's included amount (100 GB on 4 vCPU). A plan whose included amount is off the steps defaults to the next step up: std-8vcpu includes 340 GB, which cannot be selected, so it defaults to 400 GB and is priced as 60 GB extra until the plan changes. |
+| Retired current plan row | `ChangePlanPanel.tsx`, `isRetiredCurrent` | New: listed in price order, ticked and greyed with its memory and storage fixed; crossed out once another plan is picked, and cannot be picked again. The notice above the table is unchanged. |
+
+### Checks performed
+
+- `npm run typecheck`, `npm run test:terminal` and `npm run build`.
+- Public API: `/v2/sizes` without `image` reports a stock figure that matches no OS. With `image=windows-2022`, std-6vcpu and std-8vcpu are out of stock in Brisbane; with `image=ubuntu-24.04`, std-4vcpu to std-8vcpu are out of stock in Melbourne; the unfiltered list showed both in stock. With `server_id`, the list is the sizes that server can be resized to, with that server's stock (lb1 could still move to cpu-2thr and cpu-4thr, which are out of stock in Brisbane in general), and it includes the server's own retired plan. `image` accepts legacy slugs (`ubuntu-24.04.0`, `cpanel-whm-rocky-8`).
+- `serverPricing.ts` bundled and run over every size and distribution image the API lists (21 x 27, 45 hidden as below the image minimum): no storage or memory value offered that the reference's rules reject, none below the plan's or image's floor, none above the maximum; CPU Optimised plans offer exactly their `restricted_disk_values`. Memory stays the doubling list from the included amount to `memory_max`, all valid values. In the app: a 4 vCPU server's Change Plan lists 20 to 2000 GB with its 100 GB selected, and std-8vcpu shows 400 GB at $163.40 with 340 not offered.
+- Dev build against a live account, compared with the web panel by Blake: Brisbane Windows Server 2022 server on a retired plan (Change Plan: 1 GB hidden, current plan first and ticked at $17.50, 6 and 8 vCPU and 6 and 8 threads crossed out, then crossed out itself after picking 1 VCPU / 2 GB); create form Brisbane + Windows Server 2022 (6 and 8 vCPU crossed out, 1 GB hidden), Melbourne + Ubuntu 24.04 (4 to 8 vCPU crossed out, 1 GB listed), Sydney + Windows Server 2022 (all listed from 2 GB). A server on a current plan (std-4vcpu) behaves as before, apart from the "(current)" label, which is gone as in the web panel.
+
 ## Generate SSH key pairs (24 September 2026, after 1.0.62-beta.5)
 
 Branch: `feat/ssh-keygen` (#100). No new runtime dependencies: generation uses the system's `ssh-keygen`, found on PATH like `ssh`.
