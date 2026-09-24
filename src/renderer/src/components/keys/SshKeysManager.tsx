@@ -1,6 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X, Pencil } from 'lucide-react'
+import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X, Pencil, RefreshCw } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
@@ -173,6 +173,15 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => sshKeysQuery.refetch()}
+            disabled={sshKeysQuery.isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-60"
+            title="Reload the keys from BinaryLane"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${sshKeysQuery.isFetching ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
           <button
             onClick={() => setIsAdding(true)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"

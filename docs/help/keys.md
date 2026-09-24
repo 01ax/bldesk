@@ -5,7 +5,7 @@ keywords: [ssh, public key, private key, fingerprint, authentication]
 ---
 
 # SSH keys
-Use SSH Keys to register public keys in BinaryLane and inspect their fingerprints. These are the public keys you can select when building a server.
+Use SSH Keys to register public keys in BinaryLane and inspect their fingerprints. These are the public keys you can select when building a server. The list reloads from BinaryLane each time you open the page, and Refresh reloads it on demand, so a key added or deleted in the web panel shows here too.
 
 ## Keep private keys local
 Only paste a public key into the account form. Your SSH private key belongs on your device. The server header's local-key selector chooses a file for SSH, embedded or native; it does not upload that private key.

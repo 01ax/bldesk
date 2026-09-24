@@ -20,6 +20,7 @@ Branch: `feat/ssh-key-edit`. No new runtime dependencies.
   - A key added from the create form is ticked for that server straight away, as in the web panel, alongside the keys already ticked. A rejected key shows the API message (e.g. "The provided SSH key was not in a recognised format"), not the raw JSON body.
   - Edit: rename plus default off, then default on alone, each confirmed with a before → after table and read back from the API. An edit with nothing changed closes without a confirm or History entry.
   - Add SSH Key with the checkbox ticked creates a default key.
+  - Freshness, with keys created and deleted through the API while the app was open: the create form dropped a deleted key the next time it opened (before, it kept offering it until Servers was reopened); the SSH Keys page showed an added key and dropped a deleted one on Refresh, and on leaving and returning within 20s (before, the cached list was reused for 20s). `keys.md` - "The list reloads from BinaryLane each time you open the page, and Refresh reloads it on demand" is `refetchOnMount: always` on `useSshKeys` plus the Refresh button.
 - Table width, emulated CSS widths: at 1280 and 1600 the Actions column fits. At 1024 and below the table scrolls sideways, as it already did (59px before, 159px now, from the Default column). The column heading is "Default", with the full mPanel wording as its tooltip, so it fits at 1280.
 
 ## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, for 1.0.62-beta.5)

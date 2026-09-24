@@ -102,6 +102,25 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [addKeyOpen, setAddKeyOpen] = useState(false)
   const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listServerTemplates>>>([])
 
+  // The form stays mounted with the server list, so its lists were only as fresh
+  // as the last visit to Servers: a key deleted in the web panel was still
+  // offered. Reload everything the form picks from each time it opens.
+  useEffect(() => {
+    if (!isOpen) return
+    void sshKeysQuery.refetch()
+    void vpcsQuery.refetch()
+    void sizesQuery.refetch()
+    void regionsQuery.refetch()
+    void imagesQuery.refetch()
+  }, [isOpen])
+
+  // A ticked key that has since been deleted must not be sent with the create.
+  useEffect(() => {
+    if (!sshKeysQuery.isSuccess) return
+    const live = new Set(sshKeys.map((k: any) => k.id))
+    setSelectedKeys((prev) => (prev.every((id) => live.has(id)) ? prev : prev.filter((id) => live.has(id))))
+  }, [sshKeys])
+
   // --- template prefill ---
   // Scalars land when the form opens; image, plan, VPC and keys are stored by
   // name in a template and resolve as each list arrives (they are cached, so

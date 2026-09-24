@@ -868,6 +868,9 @@ export function useSshKeys(client: BinaryLaneClient | null) {
         'useSshKeys'
       )
     },
+    // Keys are changed outside the app too. Every page and picker that shows
+    // them reloads on open, so a key deleted in the web panel does not linger.
+    refetchOnMount: 'always',
     enabled: !!client
   })
 }
