@@ -1,9 +1,10 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X, Pencil, RefreshCw } from 'lucide-react'
+import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X, Pencil, RefreshCw, KeyRound } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
+import { GenerateKeyPairDialog, canGenerateKeyPair } from './GenerateKeyPairDialog'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 
@@ -16,6 +17,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
   const [keyName, setKeyName] = useState('')
   const [publicKey, setPublicKey] = useState('')
   const [makeDefault, setMakeDefault] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [editingKey, setEditingKey] = useState<{ id: number; name: string; isDefault: boolean } | null>(null)
   const [localKeys, setLocalKeys] = useState<{ name: string; publicKey: string }[]>([])
   const [copiedId, setCopiedId] = useState<number | null>(null)
@@ -27,12 +29,13 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
 
   const keys = sshKeysQuery.data || []
 
-  useEffect(() => {
+  const scanLocalKeys = () => {
     // Scan local ~/.ssh directory
     if (window.bldeskApi?.getLocalSshKeys) {
       window.bldeskApi.getLocalSshKeys().then(setLocalKeys)
     }
-  }, [])
+  }
+  useEffect(scanLocalKeys, [])
 
   const handleCopyKey = (id: number, keyText: string) => {
     navigator.clipboard.writeText(keyText)
@@ -182,6 +185,15 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
             <RefreshCw className={`w-3.5 h-3.5 ${sshKeysQuery.isFetching ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
+          {canGenerateKeyPair() && (
+            <button
+              onClick={() => setGenerating(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Generate Key Pair</span>
+            </button>
+          )}
           <button
             onClick={() => setIsAdding(true)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
@@ -373,6 +385,14 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
             </form>
           </div>
         </div>
+      )}
+
+      {generating && (
+        <GenerateKeyPairDialog
+          client={client}
+          onClose={() => setGenerating(false)}
+          onAdded={() => { void sshKeysQuery.refetch(); scanLocalKeys() }}
+        />
       )}
 
       {editingKey && (

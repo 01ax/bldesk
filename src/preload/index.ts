@@ -36,6 +36,8 @@ const api: IpcApi = {
   // SSH Keys
   getLocalSshKeys: (paths) => ipcRenderer.invoke('vault:getLocalSshKeys', paths),
   chooseSshKeyFile: () => ipcRenderer.invoke('vault:chooseSshKeyFile'),
+  generateSshKeyPair: (request) => ipcRenderer.invoke('vault:generateSshKeyPair', request),
+  showSshKeyInFolder: (privateKeyPath) => ipcRenderer.invoke('vault:showSshKeyInFolder', privateKeyPath),
 
   // System Notifications
   sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),

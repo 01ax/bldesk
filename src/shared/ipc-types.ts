@@ -145,6 +145,11 @@ export interface LocalSshKey {
   privateKeyPath?: string
 }
 
+/** A key pair generated into ~/.ssh by the system ssh-keygen (#100). */
+export type GenerateSshKeyPairResult =
+  | { ok: true; name: string; publicKey: string; privateKeyPath: string }
+  | { ok: false; code: 'invalid-name' | 'no-ssh-keygen' | 'failed'; message: string }
+
 // --- Auto-update ---
 
 export type UpdateChannel = 'stable' | 'beta'
@@ -222,6 +227,10 @@ export interface IpcApi extends HelpApi {
   // SSH Keys & Local FS
   getLocalSshKeys: (selectedPaths?: string[]) => Promise<LocalSshKey[]>
   chooseSshKeyFile?: () => Promise<LocalSshKey | null>
+  /** Desktop only: absent on Android, which has no native key generation. */
+  generateSshKeyPair?: (request: { name: string; takenNames: string[] }) => Promise<GenerateSshKeyPairResult>
+  /** Reveal a generated key in the file manager. Only paths inside ~/.ssh are accepted. */
+  showSshKeyInFolder?: (privateKeyPath: string) => Promise<void>
 
   // System Notifications
   sendNotification: (options: SystemNotificationOptions) => Promise<void>

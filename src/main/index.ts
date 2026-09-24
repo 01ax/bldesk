@@ -1,11 +1,12 @@
-import { app, BrowserWindow, ipcMain, nativeImage, NativeImage, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, NativeImage, dialog, shell } from 'electron'
 import { existingKeyFiles } from './sshKeyFiles'
-import { join } from 'path'
+import { generateKeyPair } from './sshKeygen'
+import { dirname, join } from 'path'
 import { pathToFileURL } from 'url'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { VaultManager } from './safeStorage'
-import { launchNativeTerminal } from './terminal'
+import { findOnPath, launchNativeTerminal } from './terminal'
 import { registerPtyHandlers, closeAll as closeAllPtys } from './pty'
 import { UpdaterManager } from './updater'
 import { probeTcp, probePing, traceroute, setAllowedTargets } from './reachability'
@@ -298,6 +299,19 @@ function registerIpcHandlers(): void {
       console.error('[Main] Failed to read local SSH keys:', err)
       return selected
     }
+  })
+  ipcMain.handle('vault:generateSshKeyPair', async (event, request: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Key generation is restricted to the main window.')
+    const r = request as { name?: unknown; takenNames?: unknown }
+    if (!r || typeof r.name !== 'string' || r.name.length > 200 || !Array.isArray(r.takenNames) || r.takenNames.length > 10000 || r.takenNames.some((n) => typeof n !== 'string')) {
+      throw new Error('Invalid key generation request.')
+    }
+    return generateKeyPair(join(app.getPath('home'), '.ssh'), { name: r.name, takenNames: r.takenNames as string[] }, findOnPath('ssh-keygen'))
+  })
+  ipcMain.handle('vault:showSshKeyInFolder', async (event, privateKeyPath: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Restricted to the main window.')
+    if (typeof privateKeyPath !== 'string' || dirname(privateKeyPath) !== join(app.getPath('home'), '.ssh') || !existsSync(privateKeyPath)) throw new Error('Not a key in ~/.ssh.')
+    shell.showItemInFolder(privateKeyPath)
   })
 
   // Notifications

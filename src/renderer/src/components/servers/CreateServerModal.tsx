@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
 import { recordChange, updateChange } from '../../lib/changelog'
-import { X, Loader2, AlertTriangle, Check, ChevronDown, Plus } from 'lucide-react'
+import { X, Loader2, AlertTriangle, Check, ChevronDown, Plus, KeyRound } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { components } from '@shared/api/schema'
 import {
@@ -15,6 +15,8 @@ import {
   useAddSshKeyMutation
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
+import { setKeyAssociation } from '../../lib/sshKeyAssociations'
+import { GenerateKeyPairDialog, canGenerateKeyPair } from '../keys/GenerateKeyPairDialog'
 import { listServerTemplates, imageSupportsUserData, TEMPLATES_EVENT, TEMPLATE_KIND, type ServerTemplate, type CreateServerPrefill } from '../../lib/serverTemplates'
 import {
   planMonthlyPrice,
@@ -58,9 +60,11 @@ interface CreateServerModalProps {
   initial?: CreateServerPrefill | null
   /** Turn the form as it stands into a template draft in the Templates tab. */
   onSaveAsTemplate?: (draft: ServerTemplate) => void
+  /** Active profile, so a key pair generated here can be set as the new server's SSH key. */
+  profileId?: string
 }
 
-export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, onClose, client, onCreated, initial, onSaveAsTemplate }) => {
+export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, onClose, client, onCreated, initial, onSaveAsTemplate, profileId }) => {
   const sizesQuery = useSizes(client)
   const regionsQuery = useRegions(client)
   const imagesQuery = useDistributionImages(client)
@@ -100,6 +104,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [agreed, setAgreed] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [addKeyOpen, setAddKeyOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  /** Key id -> private key path, for pairs generated in this form. */
+  const [generatedKeys, setGeneratedKeys] = useState<Record<number, string>>({})
   const [templates, setTemplates] = useState<Awaited<ReturnType<typeof listServerTemplates>>>([])
 
   // The form stays mounted with the server list, so its lists were only as fresh
@@ -378,6 +385,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         outcome: 'completed',
         detail: created?.id ? `BinaryLane accepted the request; server #${created.id} is being built.` : 'BinaryLane accepted the request.'
       })
+      // A pair generated here becomes the new server's SSH key, so it connects first time.
+      const generatedPath = selectedKeys.map((id) => generatedKeys[id]).find(Boolean)
+      if (created?.id && generatedPath) setKeyAssociation(profileId, created.id, generatedPath, 'manual')
       onCreated?.({ id: created?.id, name: hostname.trim() })
       onClose()
     } catch (err: any) {
@@ -623,6 +633,11 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                       <Tile selected={false} onClick={() => setAddKeyOpen(true)}>
                         <Plus className="w-3 h-3" /> Add SSH Key
                       </Tile>
+                      {canGenerateKeyPair() && (
+                        <Tile selected={false} onClick={() => setGenerateOpen(true)}>
+                          <KeyRound className="w-3 h-3" /> Generate Key Pair
+                        </Tile>
+                      )}
                     </TileRow>
                   </Field>
 
@@ -795,6 +810,21 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
             }
             await sshKeysQuery.refetch()
             setAddKeyOpen(false)
+          }}
+        />
+      )}
+
+      {generateOpen && (
+        <GenerateKeyPairDialog
+          client={client}
+          initialName={hostname.trim()}
+          z={80}
+          onClose={() => setGenerateOpen(false)}
+          onAdded={(keyId, privateKeyPath) => {
+            keysTouchedRef.current = true
+            setGeneratedKeys((prev) => ({ ...prev, [keyId]: privateKeyPath }))
+            setSelectedKeys((prev) => (prev.includes(keyId) ? prev : [...prev, keyId]))
+            void sshKeysQuery.refetch()
           }}
         />
       )}

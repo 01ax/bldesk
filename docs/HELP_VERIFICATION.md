@@ -1,5 +1,25 @@
 # Help verification
 
+## Generate SSH key pairs (24 September 2026, after 1.0.62-beta.5)
+
+Branch: `feat/ssh-keygen` (#100). No new runtime dependencies: generation uses the system's `ssh-keygen`, found on PATH like `ssh`.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `keys.md` - "Generate a key pair" section | `GenerateKeyPairDialog.tsx`, opened from the SSH Keys header and beside Add SSH Key on the create form; `src/main/sshKeygen.ts` | New. Buttons render only when `window.bldeskApi.generateSshKeyPair` exists, so not on Android. |
+| "The name you give is used for both the file in ~/.ssh and the key on your account ... the date is added to it" | `resolveKeyName` in `sshKeygen.ts`, fed the live account key names | Checked: a clash on disk or on the account gets `-YYYYMMDD-HHMM`, then `-2` and up. An empty name becomes `bldesk-YYYYMMDD-HHMM`. |
+| "Nothing in ~/.ssh is ever overwritten, and ~/.ssh is created if it does not exist." | `generateKeyPair`, `ensureSshDir`; `ssh-keygen` runs with no stdin | Checked: an existing file is skipped by name; if one appears mid-call, `ssh-keygen`'s overwrite prompt reads end-of-file and exits 1, file unchanged. |
+| "ssh-keygen writes it, and BLDesk reads only the .pub file" | `generateKeyPair` reads `${privateKeyPath}.pub` only | The private key is never opened. |
+| "becomes its Key for this server once the create is accepted" | `CreateServerModal.tsx` calls `setKeyAssociation` with the generated key's path after `POST /v2/servers` returns an id | Checked live, below. |
+
+### Checks performed
+
+- `npm run typecheck`, `npm run test:terminal` and `npm run build`.
+- `sshKeygen.ts` bundled and run against a temporary home, with both Microsoft's `C:\Windows\System32\OpenSSH\ssh-keygen.exe` (9.5p2) and Git for Windows' `ssh-keygen`: missing `.ssh` created; disk clash, account clash and empty name resolved as above with the first file's hash unchanged; `../evil`, `config`, `x.pub`, `.hidden`, `has space` rejected; missing `ssh-keygen` reported; `ssh-keygen -y` on each private key reproduces its `.pub`. Microsoft's `ssh-keygen` sets the private key's own ACL (the user, SYSTEM, Administrators); Git's inherits the same from the profile. Both are accepted by Microsoft's OpenSSH.
+- Dev build against a live account: generated from the SSH Keys page (the key appears on the account with the same public key as the local `.pub`, and under the local ~/.ssh card as Linked), and again with the same name (dated name). "config" disables Generate with the reason shown. From the create form, the dialog prefilled the hostname and the new key was ticked beside MASTER.
+- End to end: created a std-min Ubuntu 26.04 server in Sydney from the create form with a generated key. BLDesk stored the key's path as that server's key, and Remote Access showed it as Key for this server. `ssh -i <key> -o IdentitiesOnly=yes -o BatchMode=yes -o PasswordAuthentication=no root@<ip>` logged in, and the key was in `authorized_keys`. The server, the test keys and their files were deleted afterwards.
+- Not exercised: macOS and Linux. The code paths there are `chmod 0700` on a newly created `~/.ssh`, and `ssh-keygen` from PATH (`/usr/bin` on both). They need a check on each before this ships.
+
 ## SSH key editing and defaults (24 September 2026, after 1.0.62-beta.5)
 
 Branch: `feat/ssh-key-edit`. No new runtime dependencies.
