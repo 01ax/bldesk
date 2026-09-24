@@ -391,6 +391,7 @@ function MainDashboard() {
                   onSelectServer={handleSelectServer}
                   onOpenTerminal={handleOpenTerminalForIp}
                   onOpenTemplates={() => setActiveTab('templates')}
+                  profileId={activeProfile?.id}
                 />
               )
             )}

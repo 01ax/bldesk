@@ -400,6 +400,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
       <CreateServerModal
         isOpen={!!create}
         client={client}
+        profileId={profileId}
         initial={create?.prefill ?? null}
         onClose={() => setCreate(null)}
         onSaveAsTemplate={(t) => { setCreate(null); setEditing({ template: t }) }}

@@ -45,6 +45,7 @@ interface ServerListProps {
   onOpenTemplates?: () => void
   /** Called once a create is accepted (the Templates tab applies firewall rules and tags after this). */
   onCreated?: (created: { id?: number; name: string }) => void
+  profileId?: string
 }
 
 export const ServerList: React.FC<ServerListProps> = ({
@@ -54,7 +55,8 @@ export const ServerList: React.FC<ServerListProps> = ({
   onSelectServer,
   onOpenTerminal: _onOpenTerminal,
   onOpenTemplates,
-  onCreated
+  onCreated,
+  profileId
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
@@ -572,6 +574,7 @@ export const ServerList: React.FC<ServerListProps> = ({
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         client={client}
+        profileId={profileId}
         onCreated={(created) => {
           onCreated?.(created)
           setIsCreateOpen(false)

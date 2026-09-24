@@ -20,6 +20,13 @@ Key for this server in [Remote access](help:server-remote-access) stores only th
 
 Adding an account key does not automatically update every existing guest's authorized_keys.
 
+## Generate a key pair
+On the desktop app, Generate Key Pair creates a new Ed25519 key pair with your system's ssh-keygen, saves it to ~/.ssh, and adds the public key to your account. It is on the SSH Keys page, and beside Add SSH Key on the create-server form, where the new key is ticked for the server and becomes its Key for this server once the create is accepted.
+
+The name you give is used for both the file in ~/.ssh and the key on your account, so they always match. The create form fills in the hostname if you have entered one; if you leave it empty, a dated name such as bldesk-20260924-1830 is used. If the name is already taken on your account or in ~/.ssh, the date is added to it. Nothing in ~/.ssh is ever overwritten, and ~/.ssh is created if it does not exist.
+
+The private key never leaves your device and BLDesk does not read it: ssh-keygen writes it, and BLDesk reads only the .pub file. It has no passphrase; to add one, run ssh-keygen -p -f with the key's path. BinaryLane only has the public key, so back the private key up. If you lose it you cannot SSH in with it, and you will need the server's web console or rescue mode to get back in. Key generation is not available on Android.
+
 ## Rename a key or make it a default
 The pencil beside a key opens Edit SSH Key, which changes its name and whether it is a default. The key itself cannot be changed: to replace one, add the new key and delete the old. The Default column shows which keys are defaults, and Add SSH Key has the same “Select this SSH Key for all new Cloud Server Installations” checkbox.
 
