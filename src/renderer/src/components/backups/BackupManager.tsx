@@ -246,8 +246,16 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     const c = await confirmAction({
       title: `${enable ? 'Enable' : 'Disable'} automated backups`,
       target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
-      summary: enable ? 'BinaryLane takes a nightly backup on the server\'s schedule.' : 'Nightly backups stop. Existing backups are kept until they age out.',
-      severity: enable ? 'normal' : 'destructive',
+      summary: enable
+        ? 'BinaryLane takes a nightly backup on the server\'s schedule.'
+        : 'Changes the server\'s options to remove its daily backups. This is not a pause: BinaryLane removes them, including any you took with Take Backup into a daily slot, and does not ask again.',
+      severity: enable ? 'normal' : 'irreversible',
+      notes: enable
+        ? undefined
+        : [
+            'BinaryLane does this only when the server has the two daily backups that enabling automated backups creates.',
+            'Temporary backups you took with Take Backup are not removed.'
+          ],
       changes: [{ label: 'Automated backups', from: enable ? 'off' : 'on', to: enable ? 'on' : 'off' }]
     })
     if (!c.ok) return
