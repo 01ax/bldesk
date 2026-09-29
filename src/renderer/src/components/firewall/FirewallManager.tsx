@@ -15,6 +15,7 @@ import {
   Share2,
   FileJson,
   Grid3x3,
+  RefreshCw,
   X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -74,6 +75,9 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [isCloning, setIsCloning] = useState(false)
 
   const currentRules = (firewallQuery.data || []) as any[]
+  // Every save writes the whole list back, so edits are only offered while the
+  // last read of this server's rules succeeded. A failed read is not "no rules".
+  const canEdit = firewallQuery.isSuccess
 
   // Handle Preset Selection
   const confirmAction = useConfirm()
@@ -137,7 +141,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     e.preventDefault()
     setErrorMsg(null)
 
-    if (!activeServerId) return
+    if (!activeServerId || !canEdit) return
 
     const newRule: any = {
       action: ruleAction,
@@ -205,7 +209,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
   // Handle Move Up/Down (Re-ordering)
   const handleMoveRule = async (index: number, direction: 'up' | 'down') => {
-    if (!activeServerId) return
+    if (!activeServerId || !canEdit) return
     const newIndex = direction === 'up' ? index - 1 : index + 1
     if (newIndex < 0 || newIndex >= currentRules.length) return
 
@@ -230,7 +234,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
   // Handle Delete
   const handleDeleteRule = async (index: number) => {
-    if (!activeServerId) return
+    if (!activeServerId || !canEdit) return
     const rule = currentRules[index]
     const filtered = currentRules.filter((_, i) => i !== index)
     const c = await confirmAction({
@@ -256,7 +260,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
   // Handle Disable / Flush Firewall
   const handleFlushFirewall = async () => {
-    if (!activeServerId) return
+    if (!activeServerId || !canEdit) return
     const c = await confirmAction({
       title: 'Disable firewall',
       target: fwTarget(),
@@ -296,6 +300,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setImportError(null)
+    if (!canEdit) return
 
     try {
       const parsed = JSON.parse(importJsonText)
@@ -443,7 +448,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
           <button
             onClick={() => setIsImportOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm"
+            disabled={!canEdit}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-40"
             title="Import rules from JSON"
           >
             <Upload className="w-3.5 h-3.5" />
@@ -462,7 +468,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
           <button
             onClick={() => setIsAdding((prev) => !prev)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
+            disabled={!canEdit && !isAdding}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-40"
           >
             <Plus className="w-4 h-4" />
             <span>{isAdding ? 'Close Form' : 'Add Rule'}</span>
@@ -610,8 +617,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </button>
             <button
               type="submit"
-              disabled={updateFirewall.isPending}
-              className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+              disabled={updateFirewall.isPending || !canEdit}
+              className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
             >
               {updateFirewall.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <span>Save Rule</span>
@@ -630,9 +637,11 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               </span>
               {/* `whitespace-nowrap`: squeezed into the leftover column it broke
                   across two lines as "(16" / "rules)". */}
-              <span className="text-xs font-normal whitespace-nowrap text-[#6c757d] dark:text-slate-400">
-                ({currentRules.length} rules)
-              </span>
+              {firewallQuery.data && (
+                <span className="text-xs font-normal whitespace-nowrap text-[#6c757d] dark:text-slate-400">
+                  ({currentRules.length} rules)
+                </span>
+              )}
             </h3>
             <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
               Rules are evaluated sequentially from top to bottom. The first matching rule applies.
@@ -642,8 +651,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           {currentRules.length > 0 && (
             <button
               onClick={handleFlushFirewall}
-              disabled={updateFirewall.isPending}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition border border-rose-300 dark:border-rose-800"
+              disabled={updateFirewall.isPending || !canEdit}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition border border-rose-300 dark:border-rose-800 disabled:opacity-40"
             >
               <Unlock className="w-3.5 h-3.5" />
               <span>Disable Firewall</span>
@@ -651,14 +660,41 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           )}
         </div>
 
-        {firewallQuery.isLoading && (
+        {firewallQuery.isPending && firewallQuery.fetchStatus !== 'idle' && (
           <div className="flex items-center justify-center p-12 text-xs text-[#6c757d]">
             <Loader2 className="w-6 h-6 animate-spin text-[#017cb6] mr-2" />
             <span>Fetching firewall rules from edge hypervisors...</span>
           </div>
         )}
 
-        {!firewallQuery.isLoading && currentRules.length === 0 && (
+        {firewallQuery.isError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 p-3 rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs"
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-px" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <p className="font-semibold break-words">
+                {firewallQuery.data
+                  ? "Couldn't refresh this server's firewall rules."
+                  : "Couldn't read this server's firewall rules."}
+              </p>
+              <p className="break-words line-clamp-3">{firewallQuery.error?.message}</p>
+              {firewallQuery.data && <p>The list below is from the last successful load.</p>}
+              <p>Editing is switched off until they load, because every save writes the whole list back.</p>
+              <button
+                onClick={() => void firewallQuery.refetch()}
+                disabled={firewallQuery.isFetching}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${firewallQuery.isFetching ? 'animate-spin' : ''}`} />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {firewallQuery.isSuccess && currentRules.length === 0 && (
           <div className="text-xs text-[#6c757d] p-8 text-center bg-[#f8f9fa] dark:bg-[#212529] border border-dashed border-[#ced4da] dark:border-[#373b3e] rounded-lg space-y-2">
             <Unlock className="w-8 h-8 text-[#6c757d]/50 mx-auto" />
             <div className="font-semibold text-[#212529] dark:text-white">Firewall Inactive / Open</div>
@@ -699,7 +735,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                       <div className="flex flex-col">
                         <button
                           onClick={() => handleMoveRule(idx, 'up')}
-                          disabled={idx === 0}
+                          disabled={idx === 0 || !canEdit}
                           className="text-[#6c757d] hover:text-[#017cb6] disabled:opacity-20 transition"
                           title="Move Rule Up"
                         >
@@ -707,7 +743,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                         </button>
                         <button
                           onClick={() => handleMoveRule(idx, 'down')}
-                          disabled={idx === currentRules.length - 1}
+                          disabled={idx === currentRules.length - 1 || !canEdit}
                           className="text-[#6c757d] hover:text-[#017cb6] disabled:opacity-20 transition"
                           title="Move Rule Down"
                         >
@@ -753,7 +789,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                   {/* Actions */}
                   <button
                     onClick={() => handleDeleteRule(idx)}
-                    className="p-1.5 text-[#6c757d] hover:text-rose-500 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                    disabled={!canEdit}
+                    className="p-1.5 text-[#6c757d] hover:text-rose-500 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition disabled:opacity-30"
                     title="Delete Rule"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -835,8 +872,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 </button>
                 <button
                   type="submit"
-                  disabled={updateFirewall.isPending}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+                  disabled={updateFirewall.isPending || !canEdit}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                 >
                   {updateFirewall.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>Apply Rules</span>

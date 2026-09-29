@@ -12,6 +12,8 @@ BinaryLane evaluates rules in order, with the first match deciding the result an
 
 Review the before-and-after diff when replacing a ruleset. Imported or copied rules can remove your current access rules.
 
+If BinaryLane does not return the rule list, the tab says so and switches editing off instead of showing an empty list. See [when the rules cannot be read](help:firewall#when-the-rules-cannot-be-read).
+
 ## Worked example
 To copy a known ruleset to several servers, use the top-level Firewall page's Fleet matrix. Its confirmation is titled “Copy firewall rules”; it includes a separate diff for every target.
 
