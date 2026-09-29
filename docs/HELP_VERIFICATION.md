@@ -48,6 +48,37 @@ Branch: `feat/ssh-keygen` (#100). No new runtime dependencies: generation uses t
 - Linux: `sshKeygen.ts` bundled and run with Node 18 on Ubuntu 24.04 as a new user with no `~/.ssh` (OpenSSH 9.6, `/usr/bin/ssh-keygen` from PATH). `~/.ssh` was created 700, the private key 600 and the `.pub` 644; the clash, no-overwrite and `ssh-keygen -y` checks passed as on Windows; with the `.pub` in that user's `authorized_keys`, sshd (StrictModes on, the default) accepted a key-only login. This exercises the main-process generator, not the Linux app window.
 - Not exercised: macOS. The build is not sandboxed (DMG and zip, no Mac App Store target), `ssh-keygen` is `/usr/bin/ssh-keygen`, which is on the PATH a Finder-launched app gets, and a new `~/.ssh` is chmodded 700 as on Linux. It needs a check on a Mac before this ships.
 
+## Firewall rules that could not be read (29 September 2026, after 1.0.62-beta.7)
+
+Branch: `fix/firewall-failed-read-not-empty`. No new runtime dependencies. The Firewall tab and a server's Firewall sub-tab are the same component, `FirewallManager.tsx`; `useFirewallRules` in `queries.ts` is also read by the reachability chip in `ReachabilityBadge.tsx`.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `firewall.md`, section "When the rules cannot be read"; one sentence and link in `server-firewall.md` | The alert card and disabled controls below | New. The link target is checked by `check-help-guards.mjs`. |
+| “Couldn't read this server's firewall rules.” | `FirewallManager.tsx`, the `role="alert"` card above the rule list when `firewallQuery.isError` and no list has loaded | New. Before, `useFirewallRules` answered a failed read with `[]`, so the tab showed “Firewall Inactive / Open” and offered every edit. |
+| “Couldn't refresh this server's firewall rules.” | Same card, when `firewallQuery.data` holds a list from an earlier read | New. Before, a failed refetch replaced the loaded list with `[]`. |
+| The line under the heading | `firewallQuery.error?.message`, thrown by `useFirewallRules`: `describeApiError` of the response body, or `HTTP <status>` when a JSON error has no body. A dropped connection reads “Failed to fetch”; an empty non-JSON error reads “HTTP 500 Internal Server Error” (from `safeNormalizeResponse`). Clamped to three lines. | New. |
+| “The list below is from the last successful load.” | Same card, only when `firewallQuery.data` holds a list | New. |
+| “Editing is switched off until they load, because every save writes the whole list back.” | Same card | New. True of Add Rule (unless the form is already open, when it reads Close Form), Import, Save Rule, the import dialog's Apply Rules, Disable Firewall and each rule's move and delete buttons: all `disabled` unless `firewallQuery.isSuccess`, and the add, move, delete, disable and import handlers return early on the same test. Clone and Export are not covered: with no list read they are already off, and with a list from an earlier read they still work from it, as the page says. |
+| Retry | `firewallQuery.refetch()`; the icon spins while `isFetching` | New. Leaving the tab and coming back also refetches, because a failed query is retried on mount. |
+| “Firewall Inactive / Open” | Now rendered only when `firewallQuery.isSuccess` and the list is empty | Changed. Before, also shown when the read failed and while a first read had not started (offline). |
+| “(N rules)” beside the heading | Rendered once a list has loaded | Changed. Before, “(0 rules)” while loading and after a failed read. |
+| “Fetching firewall rules from edge hypervisors...” | `isPending && fetchStatus !== 'idle'` | Changed. Also shown while the first read is paused because the machine is offline, where the card was empty. |
+| Reachability chip, “Port 22 did not answer from this network. Nothing was refused, which is what a drop looks like.” | `explainTimeout` in `ReachabilityBadge.tsx`, `default` branch, now reached when the rule read fails | Changed. Before, a failed read gave `[]` and the “No BinaryLane firewall rules are set for this server…” sentence, which is false for a read that failed. |
+
+### Checks performed
+
+- `npm run typecheck` (including the help guard: 50 quotes, five more than before, all found in the source), `npm run test:terminal` and `npm run build`.
+- Real Electron, isolated user data, a fabricated profile, every request to the API answered from fixtures (no request left the process; name resolution was also disabled), writes captured. The build at `f06a6fc` (BASE) and this branch's build (FIXED) were driven with real mouse and key events through the same scenarios.
+- Read fails (500, 502, 503, 401, 403, 404, an HTML 502 page, a long HTML 502 page, an empty-body 500 with and without a JSON content type, a dropped connection), on a server whose fixture list has 12 rules. BASE: the tab reads “Firewall Inactive / Open”, Add Rule and Import are enabled, Add's confirmation shows a lone `+accept tcp 22 from 0.0.0.0/0 — Allow SSH`, and its POST carries one rule; Import says “Replaces the current 0 rules with the 1 imported.” and also POSTs one rule. FIXED: the card above, Add Rule, Import, Clone and Export disabled, no POST possible, Retry enabled. The error appears about 2.7 s after the tab opens, because the app's default retry runs the read three times.
+- Recovery: first read cycle fails, then succeeds. FIXED: Retry shows the real 12 rules, every control is enabled, and Add's diff is the 12 rules plus one, POSTing 13. A single blip (one 500, then 200) recovers by itself in about 1 s with no error shown. BASE: no control; the empty state stays.
+- Genuinely empty list (200 with `firewall_rules: []`, and 200 with `{}`): BASE and FIXED alike show “Firewall Inactive / Open”, Add Rule, Import and “Add First Filter Rule” enabled, and Add POSTs one rule.
+- A list that loaded, then a refresh fails (right after the customer's own write; on returning to the tab after 20 s): BASE wipes the tab to “Firewall Inactive / Open”, and a further Add POSTs one rule over the 13 the server then held. FIXED keeps the 12-rule list on screen under “Couldn't refresh this server's firewall rules.”, with editing off until Retry, after which the 13 rules show.
+- Loading (a read that never answers, which the hook has no timeout for): BASE enables Add Rule and Import and POSTs one rule; FIXED has every write control disabled, and still does after 22 s.
+- Other readers of the same query, BASE against FIXED. Reachability chip with a timed-out port and a failing read: BASE says no rules are set; FIXED says the port did not answer. With a genuinely empty list, and with a 12-rule list, the chip text is unchanged. The fleet matrix (“1 could not be read”) and the clone dialog's own read of its target (“Replaces the 0 rules on … with the 12 from …”) do not call the hook and are identical in both.
+- Zoom, driven with ctrl+plus, ctrl+minus and ctrl+0 through `sendInputEvent`: 80%, 100%, 125% and 150% at 1280 x 840 and 1024 x 680, for the never-read and the stale-list card. Retry, Add Rule and Import reach the viewport, the page never scrolls sideways, the card text is intact. Zoom stops at 150% and 80% by key and by the View menu; Actual Size returns to 100%. The card was also checked in the light theme.
+- The two help pages, opened in the app: the new section renders as written, and the link on the server firewall page opens it.
+
 ## SSH key editing and defaults (24 September 2026, after 1.0.62-beta.5)
 
 Branch: `feat/ssh-key-edit`. No new runtime dependencies.

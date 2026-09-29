@@ -292,10 +292,15 @@ export function useFirewallRules(client: BinaryLaneClient | null, serverId: numb
     queryKey: ['firewallRules', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
         params: { path: { server_id: serverId } }
       })
-      if (error) return []
+      // A failed read must not become "no rules": every save writes the whole
+      // list back, so an empty list built from a failure let one added rule
+      // replace all of the server's real ones. Throw instead, so the query
+      // reports the failure and keeps any list that did load. A failure with an
+      // empty body leaves `error` unset (openapi-fetch), so the status counts too.
+      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
       return data?.firewall_rules || []
     },
     enabled: !!client && !!serverId

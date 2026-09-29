@@ -12,6 +12,19 @@ BinaryLane's external firewall uses ordered first-match rules, with no implicit 
 
 Before applying an import or clone, inspect the complete diff. Allowing SSH in this list cannot start sshd or override a guest firewall.
 
+## When the rules cannot be read
+Every save in Server mode writes the server's whole rule list back, so BLDesk offers a change only after it has read that list. “Firewall Inactive / Open” means the list was read and is empty. If BinaryLane does not return it, the card says:
+
+“Couldn't read this server's firewall rules.”
+
+It shows what went wrong and the note:
+
+“Editing is switched off until they load, because every save writes the whole list back.”
+
+Add Rule, Import, Clone and Export stay off. Retry asks again, and so does leaving the tab and coming back.
+
+If the rules loaded and a later refresh fails, the card is headed “Couldn't refresh this server's firewall rules.” and the last list stays on screen under the note “The list below is from the last successful load.” Add Rule, Import, Disable Firewall and each rule's move and delete buttons are off until Retry succeeds. Export and Clone still use the list on screen.
+
 ## Copy a ruleset
 ### Worked example
 Suppose source web-base has three rules and you select two different servers in a tag or local group. In Fleet matrix, filter to that set, choose the source, select the intended targets and start the copy.
