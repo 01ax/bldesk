@@ -5,6 +5,24 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.8] - 2026-09-29
+
+**Seven fixes from testing the app screen by screen.**
+
+### Fixed
+- **Android: a successful delete no longer runs twice** (#193). Deleting an SSH key, DNS record, VPC, load balancer or server, and flushing the DNS cache, sent the request twice on Android. The second attempt got "not found", so the app said "Delete failed" for something that had worked, and the list stayed out of date. Each now runs once.
+- **Firewall: a failed read is no longer shown as "no rules"** (#192). If BinaryLane could not return a server's firewall rules, the tab said "Firewall Inactive / Open", and adding a rule then replaced the server's real rules with just that one. It now says the rules couldn't be read, with a Retry button, and editing stays off until they have loaded.
+- **Confirmation dialogs: Enter on Cancel cancels** (#180). Pressing Enter with Cancel focused ran the action. A focused button now does what it says (Cancel, close, help, the side action); Enter elsewhere in the dialog still confirms.
+- **HA partner** (#182). Choosing a partner server removed the partnership instead of setting it, because BLDesk sent the wrong field. It now sets it.
+- **Create Server: unticking every SSH key** (#184). This still deployed the account's default keys. It now deploys none.
+- **DNS: adding a record** (#183). The form always failed, because it sent a TTL BinaryLane doesn't accept. It now sends none, so BinaryLane's default of 3600 applies.
+- **Disabling automated backups** (#181, #194). The confirmation said existing backups are kept. BinaryLane removes the daily backups when you disable them; temporary backups you took with Take Backup are not removed. The dialog now says so, and the change is recorded in History.
+
+### Changed
+- A GUI test harness for developers (`scripts/gui-test`) runs the app against a fake API. Nothing in the app itself changes (#168).
+
+**Linux (.deb):** if this update fails to install with a message to close BLDesk and open it again from your app menu, do that once and install again. It is needed only if BLDesk restarted itself after its last update.
+
 ## [1.0.62-beta.7] - 2026-09-25
 
 ### Fixed
