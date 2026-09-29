@@ -170,8 +170,11 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Escape is handled by the Modal shell; Enter confirms from anywhere in it.
-      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) {
+      // Escape is handled by the Modal shell. Enter confirms from anywhere in the dialog except
+      // a focused button, which keeps its own Enter: Cancel cancels, the side action runs.
+      const dialog = primaryRef.current?.closest('[role="dialog"]')
+      const onButton = e.target instanceof Element && !!dialog?.contains(e.target) && !!e.target.closest('button')
+      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !onButton) {
         e.preventDefault()
         finish(true)
       }
