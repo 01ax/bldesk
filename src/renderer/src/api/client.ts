@@ -121,7 +121,15 @@ async function executeFetch(
         data: parsedData
       })
 
-      const responseBody = typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
+      // A null-body status (204, 205, 304) must have no body: the Response
+      // constructor throws for any body, '' included, and the catch below would
+      // then send the request a second time.
+      const nullBody = res.status === 204 || res.status === 205 || res.status === 304
+      const responseBody = nullBody
+        ? null
+        : typeof res.data === 'string'
+          ? res.data
+          : JSON.stringify(res.data)
       return new Response(responseBody, {
         status: res.status,
         statusText: res.status === 200 ? 'OK' : '',
