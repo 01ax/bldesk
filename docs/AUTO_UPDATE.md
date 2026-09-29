@@ -65,13 +65,13 @@ Switching from GitHub to the anycast network is a config change only: set `build
 |---|---|---|
 | `updater:getState` | invoke | → `UpdaterState` |
 | `updater:check` | invoke | → `UpdaterState` |
-| `updater:install` | invoke | quits and installs if status is `ready` |
+| `updater:install` | invoke | quits and installs if status is `ready`; the status becomes `installing` first, so a repeated request is ignored |
 | `updater:setChannel` | invoke | `'stable' \| 'beta'` → `UpdaterState` |
 | `updater:state` | main → renderer | `UpdaterState` on every change |
 
 ```ts
 interface UpdaterState {
-  status: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error'
+  status: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'error'
   currentVersion: string
   channel: 'stable' | 'beta'
   supported: boolean       // false in dev builds and on mobile

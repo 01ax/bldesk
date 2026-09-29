@@ -43,6 +43,7 @@ Actions complete after about 2.5 seconds. Power actions, resize, backups and fir
 Control endpoints (POST JSON to the mock, for example `curl -sk -X POST -d '{"empty":true}' https://127.0.0.1:8443/__mock/config`):
 
 - `/__mock/config`: `{"empty":true}` an account with nothing in it; `{"rejectAuth":true}` every call returns 401; `{"unpaid":true}` the unpaid-invoice banner; `{"actionMs":8000}` slower actions; `{"actionOutcome":"errored"}` actions fail with an error message; `{"latencyMs":1500}` slow responses.
+- `/__mock/config` `{"updateVersion":"1.0.62-beta.9"}` also offers a newer version through the mock GitHub feed, so a packaged app (`--bin`) finds, downloads and shows "Restart to update". The download is a stand-in file, not a real package: do not click Restart against a real `pkexec`, which would ask for your password and try to install it. To test the install path, put a stand-in `pkexec` that just sleeps and exits 0 first on the app's `PATH`. A build made with `electron-builder --dir` also needs a `resources/package-type` file containing `deb`, or electron-updater treats it as an inactive AppImage and the check never finishes.
 - `/__mock/fail`: `{"match":"advanced_firewall","status":500,"count":3}` injects HTTP errors (500, 429...) on paths matching a regex.
 - `/__mock/reset`: restore the fixtures.
 

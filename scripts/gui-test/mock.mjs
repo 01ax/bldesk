@@ -3,6 +3,7 @@
 // Normally started by launch.mjs; see README.md. Environment: PORT, MOCK_TOKEN, CERT and KEY (or HTTP=1), LOG, SPEC.
 import https from 'node:https'
 import http from 'node:http'
+import { createHash } from 'node:crypto'
 import { readFileSync, appendFileSync } from 'node:fs'
 import { devNull } from 'node:os'
 
@@ -12,6 +13,9 @@ const TOKEN = process.env.MOCK_TOKEN
 if (!TOKEN) throw new Error('MOCK_TOKEN is required')
 const LOG = process.env.LOG || devNull
 const S = SPEC.components.schemas
+// A stand-in installer for the update scenario: the real bytes are never installed by this harness.
+const DEB = Buffer.from('not a real package: BLDesk GUI test update payload\n')
+const DEB_SHA = createHash('sha512').update(DEB).digest('base64')
 const VERSION = process.env.APP_VERSION || JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
 
 // ---------- schema-driven generator ----------
@@ -146,7 +150,7 @@ function reset() {
     mkServer({ id: 9009, name: 'multi-ip-v6-01', size_slug: 'std-4vcpu', region: 'mel', image: 'almalinux-9', vpc_id: 903, ip: '192.0.2.98', extra_ips: ['192.0.2.99', '192.0.2.100'], v6: true, failover: ['192.0.2.150'] }),
     mkServer({ id: 9010, name: 'cpanel-host-01', size_slug: 'std-6vcpu', region: 'syd', image: 'cpanel-whm-rocky-8', vpc_id: 901, ip: '203.0.113.101' })
   )
-  actions = new Map(); nextId = 50000; backupsAdded = []; fails = []; cfg = { empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0 }
+  actions = new Map(); nextId = 50000; backupsAdded = []; fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0 }
   keys = [['ops-laptop', true], ['deploy-ci', false], ['old-key-2024', false], ['a-key-with-a-particularly-long-name-to-test-wrapping-in-the-table', false]].map(([name, def], i) => mk('SshKeysResponse', 'ssh_keys', {
     id: 9100 + i, name, default: def, public_key: `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI${'x'.repeat(30)}${i} ${name}@host`, fingerprint: `SHA256:${'abcdefghijklmnop'.repeat(2)}${i}`
   }))
@@ -321,6 +325,7 @@ async function handleApi(req, res, u, body) {
   return json(res, 404, { id: 'not_found', message: `Mock: unhandled ${m} ${p}` })
 }
 
+const feedVersion = () => cfg.updateVersion || VERSION
 const helpJson = (u) => u.pathname.endsWith('/suggest') ? { suggestions: ['how do I add an SSH key', 'how do I resize a server', 'what is a VPC'] }
   : { answer: 'This is a canned answer from the mock help service. Open the linked article for the full steps.', id: '42', results: [{ title: 'Adding an SSH key', url: 'https://support.binarylane.com.au/support/solutions/articles/1000000001-ssh-keys' }] }
 
@@ -338,10 +343,11 @@ const server = create(async (req, res) => {
   }
   if (host === 'uai.adamhomenet.com') return u.pathname.endsWith('/feedback') ? json(res, 204) : json(res, 200, helpJson(u))
   if (host === 'github.com' || host === 'api.github.com') {
-    if (u.pathname.endsWith('.atom')) { res.writeHead(200, { 'content-type': 'application/atom+xml' }); return res.end(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Repository/1/v${VERSION}</id><updated>2026-09-25T00:00:00Z</updated><link rel="alternate" type="text/html" href="https://github.com/termau/bldesk/releases/tag/v${VERSION}"/><title>${VERSION}</title></entry></feed>`) }
-    if (u.pathname.endsWith('.yml')) { res.writeHead(200, { 'content-type': 'text/yaml' }); return res.end(`version: ${VERSION}\nfiles:\n  - url: BLDesk-${VERSION}-linux-amd64.deb\n    sha512: AAAA\n    size: 1\npath: BLDesk-${VERSION}-linux-amd64.deb\nsha512: AAAA\nreleaseDate: '2026-09-25T00:00:00.000Z'\n`) }
-    if (u.pathname.endsWith('/releases/latest')) return json(res, 200, { tag_name: `v${VERSION}`, prerelease: false, assets: [] })
-    if (u.pathname.includes('/releases')) return json(res, 200, [{ tag_name: `v${VERSION}`, prerelease: false, assets: [] }])
+    if (u.pathname.endsWith('.atom')) { res.writeHead(200, { 'content-type': 'application/atom+xml' }); return res.end(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Repository/1/v${feedVersion()}</id><updated>2026-09-25T00:00:00Z</updated><link rel="alternate" type="text/html" href="https://github.com/termau/bldesk/releases/tag/v${feedVersion()}"/><title>${VERSION}</title></entry></feed>`) }
+    if (u.pathname.endsWith('.deb')) { res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': DEB.length }); return res.end(DEB) }
+    if (u.pathname.endsWith('.yml')) { res.writeHead(200, { 'content-type': 'text/yaml' }); return res.end(`version: ${feedVersion()}\nfiles:\n  - url: BLDesk-${feedVersion()}-linux-amd64.deb\n    sha512: ${DEB_SHA}\n    size: ${DEB.length}\npath: BLDesk-${feedVersion()}-linux-amd64.deb\nsha512: ${DEB_SHA}\nreleaseDate: '2026-09-25T00:00:00.000Z'\n`) }
+    if (u.pathname.endsWith('/releases/latest')) return json(res, 200, { tag_name: `v${feedVersion()}`, prerelease: false, assets: [] })
+    if (u.pathname.includes('/releases')) return json(res, 200, [{ tag_name: `v${feedVersion()}`, prerelease: false, assets: [] }])
     return json(res, 404, {})
   }
   if (u.pathname.startsWith('/__console/')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html><body style="background:#111;color:#0f0;font-family:monospace"><h3>Mock console</h3></body></html>') }
