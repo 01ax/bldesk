@@ -286,7 +286,7 @@ export class UpdaterManager {
 
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
-    if (this.state.status === 'checking' || this.state.status === 'downloading') return this.getState()
+    if (this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'installing') return this.getState()
     this.setState({ status: 'checking', error: undefined })
     try {
       await autoUpdater.checkForUpdates()
@@ -302,6 +302,12 @@ export class UpdaterManager {
       installMacUpdate(macPendingZipPath, true)
       return
     }
+    // The install runs synchronously and blocks this process for several seconds, so
+    // the window looks frozen and a second click on Restart was queued and delivered
+    // afterwards. electron-updater ignores that repeat call but clears its own
+    // "already installing" flag when it does, so the quit handler then installed
+    // again. Leaving 'ready' first removes the button and makes repeats no-ops.
+    this.setState({ status: 'installing' })
     // isSilent=false shows the installer UI on Windows. The app restarts through
     // autoRunAppAfterInstall, or relaunchAfterExit for a Linux package.
     setImmediate(() => autoUpdater.quitAndInstall(false, true))

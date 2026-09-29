@@ -118,7 +118,7 @@ export const UpdateMenu: React.FC = () => {
     }
   }, [open])
 
-  const busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'available'
+  const busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'available' || state.status === 'installing'
   const ready = state.status === 'ready'
 
   const check = () => window.bldeskApi?.checkForUpdates?.()
@@ -180,6 +180,12 @@ export const UpdateMenu: React.FC = () => {
               <ArrowDownToLine className="w-3.5 h-3.5" />
               <span>Download APK (v{state.availableVersion})</span>
             </button>
+          )}
+
+          {state.status === 'installing' && (
+            <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
+              Installing BLDesk {state.availableVersion}. This window may not respond for a few seconds, and BLDesk restarts when it is done.
+            </div>
           )}
 
           {state.status === 'check-failed' && (
@@ -257,6 +263,12 @@ const StatusPill: React.FC<{ state: UpdaterState }> = ({ state }) => {
       return (
         <span className={`${base} bg-[#017cb6]/15 text-[#017cb6]`}>
           <ArrowDownToLine className="w-3 h-3" /> {state.availableVersion ?? 'Update'} {state.progress != null ? `${state.progress}%` : ''}
+        </span>
+      )
+    case 'installing':
+      return (
+        <span className={`${base} bg-[#f1ca00]/25 text-amber-700 dark:text-[#f1ca00]`}>
+          <Loader2 className="w-3 h-3 animate-spin" /> Installing
         </span>
       )
     case 'ready':
