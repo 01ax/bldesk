@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.9] - 2026-09-29
+
+**Updates show that they are installing**
+
+### Fixed
+- **Installing an update no longer looks frozen or runs twice** (#195). On Linux the install blocks the window for ten seconds or more, with "Restart to update" still on screen, and a second click could make the same package install a second time. The button now changes to "Installing" straight away, the update menu says what is happening, and repeat clicks are ignored.
+
+### Changed
+- The GUI test harness can offer a newer version to a packaged app (`scripts/gui-test`), for testing updates. Nothing in the app itself changes.
+
 ## [1.0.62-beta.8] - 2026-09-29
 
 **Seven fixes from testing the app screen by screen.**
