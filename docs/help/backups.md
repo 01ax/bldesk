@@ -26,7 +26,7 @@ The note says:
 Verify the server name and image in the change table. Type the target name, then choose “Restore”. Follow the action in History and check the guest once complete. Your dialog substitutes the actual image name and ID.
 
 ## Disabling automatic backups
-“Disable Schedule” is not a pause. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. BLDesk treats it as irreversible. The dialog title is “Disable automated backups”, and you type the server's name before the button is enabled.
+“Disable Schedule” is not a pause. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. The dialog title is “Disable automated backups”. Its button is red but asks for no typed name, so read the summary before you confirm. The request is recorded in History.
 
 The summary says:
 

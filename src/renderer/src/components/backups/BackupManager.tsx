@@ -249,7 +249,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       summary: enable
         ? 'BinaryLane takes a nightly backup on the server\'s schedule.'
         : 'Changes the server\'s options to remove its daily backups. This is not a pause: BinaryLane removes them, including any you took with Take Backup into a daily slot, and does not ask again.',
-      severity: enable ? 'normal' : 'irreversible',
+      severity: enable ? 'normal' : 'destructive',
       notes: enable
         ? undefined
         : [
