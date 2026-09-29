@@ -66,6 +66,8 @@ npm run dev
 npm run start
 ```
 
+**GUI test harness.** `scripts/gui-test/` runs the real app (and, with a throwaway build, the Android app) against a fake BinaryLane API with a fictitious token, for checking how screens render and what requests they send. Manual only; see its README. It never talks to the real API.
+
 ### 3. Local Packaging (Non-publishing)
 ```bash
 # Package local unpacked directory build:
