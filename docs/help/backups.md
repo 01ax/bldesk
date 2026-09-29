@@ -26,8 +26,18 @@ The note says:
 Verify the server name and image in the change table. Type the target name, then choose “Restore”. Follow the action in History and check the guest once complete. Your dialog substitutes the actual image name and ID.
 
 ## Disabling automatic backups
-The confirmation says:
+“Disable Schedule” is not a pause. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. The dialog title is “Disable automated backups”. Its button is red but asks for no typed name, so read the summary before you confirm. The request is recorded in History.
 
-“Nightly backups stop. Existing backups are kept until they age out.”
+The summary says:
 
-This view has no delete-image action. Disabling the schedule is not a way to retain an image indefinitely; keep an independent copy of data you must preserve.
+“Changes the server's options to remove its daily backups. This is not a pause: BinaryLane removes them, including any you took with Take Backup into a daily slot, and does not ask again.”
+
+The notes say:
+
+“BinaryLane does this only when the server has the two daily backups that enabling automated backups creates.”
+
+“Temporary backups you took with Take Backup are not removed.”
+
+The reference says previous backups will no longer be available. When this page was last checked against BinaryLane, the daily backups were removed and a temporary backup was kept, so the dialog says only that.
+
+Before you disable, use Download on any image you need to keep.
