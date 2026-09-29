@@ -32,7 +32,7 @@ Component basenames above are under `src/renderer/src/components/`; `lib/`, `con
 - **Profiles:** switching is implemented; a merged cross-account fleet is not.
 - **Review:** the palette uses its own target-list panel, not the shared change-table/diff dialog. Create Server uses its form as the review. History is local to this installation/profile, not an account-wide audit service.
 - **Networking:** VPC route/MTU editing is not exposed. Load-balancer health-check path/protocol settings exist in mPanel/API but have no BLDesk editor.
-- **DNS:** the page adds/deletes records; it does not edit existing records. Its add form fixes TTL at 300 and has no priority/weight/port inputs. The palette accepts a priority.
+- **DNS:** the page adds/deletes records; it does not edit existing records. Its add form sends no TTL (the API reference gives 3600 as the default and only supported value) and has no priority/weight/port inputs. The palette accepts a priority.
 - **Monitoring:** map exposure is inferred from firewall rules, not measured connectivity. CPU utilisation is summed across vCPUs. Power state uses sample freshness and post-action checks rather than a guaranteed live hypervisor feed.
 - **Backup safety:** palette backup uses a free temporary slot first, otherwise replaces the oldest unlocked, unattached temporary backup.
 - **Templates:** tags apply locally immediately; firewall follow-up is an in-memory job, polling for up to 15 minutes. Reloading/quitting abandons it. Unmatched VPC/key names and unsupported cloud-init do not block creation; inspect the final form.

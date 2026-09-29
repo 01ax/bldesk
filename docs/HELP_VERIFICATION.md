@@ -1,5 +1,28 @@
 # Help verification
 
+## DNS record TTL (29 September 2026, after 1.0.62-beta.7)
+
+Branch: `fix/dns-record-ttl`. No new runtime dependencies. Reference wording for `DomainRecordRequest.ttl` in `openapi.json`: "The default and only supported value is 3600. Leave null to accept this default."
+
+Checked against the live API on 2026-09-29 with a disposable zone: adding a record without `ttl` succeeds and is stored with TTL 3600; `"ttl":3600` and `"ttl":null` also succeed with 3600; `"ttl":300`, the value the form used to send, is refused with 400 "The default TTL of 3600 may not be changed." So before this change the Add Record form could never create a record: every submit failed. The sentence in `dns.md` that said the form sends 300 seconds described a form that did not work.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `dns.md`, "The form sends no TTL, so BinaryLane's default applies: its API reference gives 3600 seconds as the default and only supported value." | `handleCreateRecord` in `DnsManager.tsx`: the request body is `type`, `name` and `data` only | Changed from "This form sends TTL 300 seconds". The palette's `dns add` also sends no `ttl` (`CommandPalette.tsx`). |
+| `dns.md`, "There is no TTL input, existing-record editor or priority/weight/port input." | The Add Record form in `DnsManager.tsx` has type, host and target fields only; nothing in `src/` calls the record update endpoint | Unchanged, rechecked. |
+| `dns.md`, "previous answers may remain until their TTL expires" | `handleDeleteRecord` summary in `DnsManager.tsx` | Unchanged, still true. |
+| TTL column in the records table; "TTL 3600s" beside each zone | `{r.ttl}` and `{domain.ttl}` in `DnsManager.tsx` | Unchanged: shows what the API reports, so a record created earlier with 300 still reads 300. No help page describes either column. A zone whose `ttl` is null or missing reads "TTL s"; not changed here. |
+| `FEATURES.md`, DNS boundary | Same form | Changed from "fixes TTL at 300". |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts) and `npm run build`.
+- Real Electron builds with isolated user data, name resolution blocked and every API request answered by a local fixture (nothing sent to BinaryLane), driven through the page over the debugging port. The fixture follows the live results above: `ttl` absent, null or 3600 is accepted and stored as 3600; any other `ttl` is a 400 with the message above. The zone had an existing record at TTL 300.
+  - Base build (before this change), Add Record with type A, host `www`, target `192.0.2.99`: sent `POST /v2/domains/example.com/records` with `{"type":"A","name":"www","data":"192.0.2.99","ttl":300}` and got the 400. The UI reported it only as an alert, "Failed to add record: The default TTL of 3600 may not be changed."; the Add Record dialog stayed open with the fields filled, no row was added, and History showed "Add DNS record" as Failed.
+  - This branch, same input: body `{"type":"A","name":"www","data":"192.0.2.99"}`, no `ttl` key, accepted; the dialog closed and a new row appeared with TTL 3600. The existing 300 row still read 300. The form has no TTL text or input.
+  - This branch, command palette `dns add A palette.example.com 192.0.2.50`, Run: body `{"type":"A","name":"palette","data":"192.0.2.50","priority":null}`, no `ttl` key, "1 of 1 submitted", and the new row appeared with TTL 3600.
+  - The 400 message text and the stored 3600 come from the live check; the fixture's error envelope (`title`, `status`, `detail`) is an approximation of the reference's problem-details shape.
+
 ## Plan availability per operating system (24 September 2026, after 1.0.62-beta.6)
 
 Branch: `fix/size-availability-per-image`. No new runtime dependencies. No help page describes plan availability, so no help text changes.
