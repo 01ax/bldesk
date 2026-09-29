@@ -328,6 +328,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (disk < floor) setDiskGb(floor)
   }, [selectedSize?.slug, image?.slug, disk])
 
+  // The backups the request sends, and the total prices. The simple view
+  // collapses the three retention dropdowns into one choice.
+  const backups = showAll
+    ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups }
+    : { daily: simpleBackups === 'none' ? 0 : 2, weekly: 0, monthly: 0, offsite: simpleBackups === 'both' }
+
   const monthly = useMemo(() => {
     if (!selectedSize) return 0
     return configuredCost({
@@ -336,12 +342,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       memoryMb: memory,
       diskGb: disk,
       ipCount,
-      dailyBackups,
-      weeklyBackups,
-      monthlyBackups,
-      offsiteBackups
+      dailyBackups: backups.daily,
+      weeklyBackups: backups.weekly,
+      monthlyBackups: backups.monthly,
+      offsiteBackups: backups.offsite
     }).total
-  }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
+  }, [selectedSize, image, memory, disk, ipCount, backups.daily, backups.weekly, backups.monthly, backups.offsite])
 
   const { total: monthlyIncGst, gst } = billingTotal(monthly)
 
@@ -356,10 +362,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const blocked = planUnavailableReason(selectedSize, region, image)
     if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
-
-    // The simple view collapses the three retention dropdowns into one choice.
-    const daily = showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2
-    const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
     // The form is the review, so this records rather than confirms — and the
     // id must be resolved either side of the request or History says
@@ -392,10 +394,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           ...(memory !== selectedSize.memory ? { memory } : {}),
           ...(disk !== defaultDisk(selectedSize) ? { disk } : {}),
           ipv4_addresses: ipCount,
-          daily_backups: daily,
-          weekly_backups: showAll ? weeklyBackups : 0,
-          monthly_backups: showAll ? monthlyBackups : 0,
-          offsite_backups: offsite
+          daily_backups: backups.daily,
+          weekly_backups: backups.weekly,
+          monthly_backups: backups.monthly,
+          offsite_backups: backups.offsite
         },
         user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
       } as any)
