@@ -33,7 +33,7 @@ export interface ExistingBackup {
   id: number
   created_at?: string | null
   name?: string | null
-  backup_info?: { type?: string | null } | null
+  backup_info?: { type?: string | null; locked?: boolean | null } | null
 }
 
 /**
@@ -62,6 +62,31 @@ export function freeBackupSlots(
   if ((options?.weekly_backups ?? 0) - held('weekly') > 0) out.push('weekly')
   if ((options?.monthly_backups ?? 0) - held('monthly') > 0) out.push('monthly')
   return out
+}
+
+/**
+ * The backup `replacement_strategy: 'oldest'` replaces when a backup is taken
+ * into `slot`, or null when nothing is replaced. The reference: "Use any free
+ * slots of the provided backup type, and if there are no free slots replace the
+ * oldest unlocked and un-attached backup of the provided backup type."
+ *
+ * `certain` says the replacement will happen rather than may. Daily, weekly and
+ * monthly retention is a count in `selected_size_options`, so a full slot is
+ * known. The reference gives no count for temporary backups, so holding one only
+ * means it is replaced if there is no free temporary slot.
+ */
+export function replacedByOldest(
+  slot: BackupSlot,
+  options: { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null } | null | undefined,
+  existing: ExistingBackup[],
+  attachedId?: number | null
+): { backup: ExistingBackup; certain: boolean } | null {
+  if (slot !== 'temporary' && freeBackupSlots(options, existing).includes(slot)) return null
+  const age = (b: ExistingBackup) => Date.parse(b.created_at ?? '') || Infinity
+  const oldest = existing
+    .filter((b) => b.backup_info?.type === slot && !b.backup_info.locked && b.id !== attachedId)
+    .sort((a, b) => (age(a) === age(b) ? a.id - b.id : age(a) - age(b)))[0]
+  return oldest ? { backup: oldest, certain: slot !== 'temporary' } : null
 }
 
 /** "Daily - 2026-09-03 10:46" for a replace-this-one picker. */

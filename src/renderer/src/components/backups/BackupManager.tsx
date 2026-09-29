@@ -26,7 +26,7 @@ import {
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
-import { availableBackupSlots, BACKUP_SLOT_LABELS } from '../../lib/backupSlots'
+import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest } from '../../lib/backupSlots'
 
 interface BackupManagerProps {
   /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
@@ -93,6 +93,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     e.preventDefault()
     if (!activeServerId) return
 
+    // The backups list has no polling, so a backup locked elsewhere since it loaded would be named as replaceable.
+    // Read it again before asking. A failed read comes back as an empty list, which keeps the list on screen.
+    const fresh = (await backupsQuery.refetch()).data ?? []
+    const current = fresh.length === 0 && backups.length > 0 ? backups : fresh
+
     let replacementStrategy: 'oldest' | 'specified' = 'oldest'
     let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
     let backupIdToReplace: number | undefined
@@ -106,13 +111,51 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       replacementStrategy = 'oldest'
     }
 
-    const changeId = await recordChange({
-      label: 'Take Backup',
-      target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
-      severity: 'normal',
-      summary: backupLabel.trim() ? `Label "${backupLabel.trim()}"` : undefined,
-      source: 'ui'
-    })
+    // What this take will replace, when it will (or, for a temporary slot, may) replace something.
+    // A locked or attached backup is never replaced, so naming one would be untrue.
+    const attachedId = activeServer?.attached_backup?.id
+    const chosen = current.find((b) => b.id === backupIdToReplace)
+    const replaced =
+      replacementStrategy === 'specified'
+        ? chosen && !chosen.backup_info?.locked && chosen.id !== attachedId
+          ? { backup: chosen, certain: true }
+          : null
+        : replacedByOldest(backupType ?? 'temporary', activeServer?.selected_size_options, current, attachedId)
+    const newType = backupType ?? chosen?.backup_info?.type
+
+    let changeId: string | undefined
+    if (replaced) {
+      const c = await confirmAction({
+        title: 'Take Backup',
+        helpSlug: 'backups#take-backup',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        summary:
+          replacementStrategy === 'specified'
+            ? 'This backup replaces the backup you chose. The replaced backup will no longer be available.'
+            : replaced.certain
+              ? `No ${backupType} slot is free, so this backup replaces the oldest ${backupType} backup that is not locked or attached. The replaced backup will no longer be available.`
+              : 'If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.',
+        severity: 'destructive',
+        changes: [
+          {
+            label: replaced.certain ? 'Replaced backup' : 'Replaced if no slot is free',
+            from: `${replaced.backup.name ?? 'Backup'} (#${replaced.backup.id}), ${describeBackup(replaced.backup)}`,
+            to: newType ? `New ${newType} backup` : 'New backup'
+          },
+          ...(backupLabel.trim() ? [{ label: 'Label', to: backupLabel.trim() }] : [])
+        ]
+      })
+      if (!c.ok) return
+      changeId = c.changeId
+    } else {
+      changeId = await recordChange({
+        label: 'Take Backup',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        severity: 'normal',
+        summary: backupLabel.trim() ? `Label "${backupLabel.trim()}"` : undefined,
+        source: 'ui'
+      })
+    }
     try {
       const queued = await takeBackupMutation.mutateAsync({
         label: backupLabel.trim() || undefined,

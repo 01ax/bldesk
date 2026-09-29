@@ -12,6 +12,25 @@ Take Backup creates an image; Restore overwrites the server's current disk. Atta
 
 Purchased daily, weekly and monthly counts and offsite options are in Change Plan. Retention and scheduling belong to BinaryLane; see [automated backups](https://support.binarylane.com.au/support/solutions/articles/11000033794-automated-backups). Keeping BLDesk open is not required for the schedule.
 
+## Take Backup
+Take Backup asks which slot to use and for an optional name. A backup taken into a full slot replaces an existing one, which will no longer be available. BLDesk asks first and names that backup where it can. A backup into a free slot goes straight through. Both are recorded in [History](help:history).
+
+For the daily, weekly and monthly slots, the number a slot keeps is the retention set in [Change Plan](help:server-change-plan). Suppose a server keeps two daily backups and already holds two, and you choose the daily slot. The dialog title is “Take Backup”, its button is red but asks for no typed name, and it says:
+
+“No daily slot is free, so this backup replaces the oldest daily backup that is not locked or attached. The replaced backup will no longer be available.”
+
+The row “Replaced backup” gives the name, ID, slot and date of the backup that goes, and the row shows it changing to “New daily backup”. History records the entry as destructive. When BinaryLane picks the oldest backup, it skips locked and attached ones.
+
+BinaryLane's API reference does not say how many temporary backups a server can hold, so BLDesk cannot tell whether the temporary slot is full. If the server already has a temporary backup that is not locked or attached, the dialog is worded as a possibility, with the row “Replaced if no slot is free”:
+
+“If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.”
+
+Choosing a backup under “Replace Existing Image” replaces exactly that backup, and the dialog says:
+
+“This backup replaces the backup you chose. The replaced backup will no longer be available.”
+
+If the backup you chose is locked or attached, BLDesk does not claim it will be replaced: it shows no dialog, sends the request and shows BinaryLane's answer. Use Download on any image you need to keep before you take a backup that could replace it.
+
 ## Worked example
 Suppose you want to restore example image before-upgrade, ID 123, to the selected server. Take another backup first if you may need its current state. Choose Restore on the intended image.
 

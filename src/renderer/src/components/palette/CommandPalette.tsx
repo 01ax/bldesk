@@ -37,6 +37,7 @@ import { openServerSsh } from '../../lib/openServerSsh'
 import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
+import { describeBackup, replacedByOldest } from '../../lib/backupSlots'
 import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags } from '../../lib/serverGroups'
 import {
   POWER_VERBS,
@@ -145,6 +146,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [stage, setStage] = useState<Stage>('input')
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [replaceLines, setReplaceLines] = useState<string[]>([])
+  /** The backup each server's take may replace, by server id: recorded in History with the run. */
+  const replaceMap = useRef(new Map<number, string>())
+  const checkRun = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
@@ -156,6 +162,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Domains are only fetched once the user is actually typing a dns command.
   const domainsQuery = useDomains(parsed?.kind === 'dns-add' ? client : null)
+
+  // A backup check that is still running when the review is left has nothing to report to.
+  useEffect(() => {
+    if (stage === 'input') {
+      checkRun.current++
+      setChecking(false)
+    }
+  }, [stage])
 
   // Reset when (re)opened so a half-typed destructive command never survives a close.
   useEffect(() => {
@@ -185,6 +199,41 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // ---------------------------------------------------------------------
 
   const close = () => onClose()
+
+  /**
+   * `backup` sends replacement_strategy `oldest`: with no free temporary slot,
+   * BinaryLane replaces the oldest temporary backup that is not locked or
+   * attached. The palette only has each server's backup ids, so before the review
+   * can be confirmed it reads the backups of every server that holds any (the read
+   * the Backups tab makes) and names the one that would go.
+   */
+  const checkReplacements = async (targets: ServerResponse[]) => {
+    if (!client) return
+    const run = ++checkRun.current
+    setChecking(true)
+    setReplaceLines([])
+    replaceMap.current = new Map()
+    const found = await Promise.all(
+      targets
+        .filter((s) => s.backup_ids?.length)
+        .map(async (s) => {
+          try {
+            const { data, error } = await client.GET('/v2/servers/{server_id}/backups', { params: { path: { server_id: s.id } } })
+            if (error || !data) throw new Error('no backup list')
+            const hit = replacedByOldest('temporary', undefined, data.backups, s.attached_backup?.id)
+            if (!hit) return null
+            const what = `${hit.backup.name ?? 'Backup'} (#${hit.backup.id}), ${describeBackup(hit.backup)}`
+            replaceMap.current.set(s.id, what)
+            return `${s.name}: ${what}`
+          } catch {
+            return `${s.name}: could not list its backups, so BLDesk cannot say which would be replaced`
+          }
+        })
+    )
+    if (run !== checkRun.current) return
+    setReplaceLines(found.filter((l): l is string => !!l))
+    setChecking(false)
+  }
 
   const openServer = (s: ServerResponse, subTab?: DeepLinkServerSubTab) => {
     onSelectServer(s)
@@ -585,10 +634,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             // Sequential on purpose: N parallel POSTs to one account is exactly the
             // burst the client's anti-spam layer exists to prevent.
             for (const m of eligible) {
+              const replaces = parsed.kind === 'backup' ? replaceMap.current.get(m.server.id) : undefined
               const changeId = await recordChange({
                 label,
                 target: { kind: 'server', id: m.server.id, name: m.server.name },
-                severity: parsed.kind === 'power' && (parsed.verb === 'poweroff' || parsed.verb === 'cycle') ? 'destructive' : 'normal',
+                severity: replaces || (parsed.kind === 'power' && (parsed.verb === 'poweroff' || parsed.verb === 'cycle')) ? 'destructive' : 'normal',
+                changes: replaces ? [{ label: 'Replaced if no slot is free', from: replaces, to: 'New temporary backup' }] : undefined,
                 summary: `Palette: ${query.trim()}`,
                 source: 'palette'
               })
@@ -604,7 +655,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             return results
           }
         }
-        primary = () => setStage('confirm')
+        primary = () => {
+          setStage('confirm')
+          if (parsed.kind === 'backup') void checkReplacements(eligible.map((m) => m.server))
+        }
       }
       return { rows, header, primary, plan }
     }
@@ -624,7 +678,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // ---------------------------------------------------------------------
 
   const execute = async () => {
-    if (!plan || stage !== 'confirm') return
+    if (!plan || stage !== 'confirm' || checking) return
     setStage('running')
     setOutcomes([])
     try {
@@ -764,7 +818,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         {/* Confirm stage */}
         {(stage === 'confirm' || stage === 'running') && plan && (
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-3 max-h-[calc(100vh-8rem)] overflow-y-auto">
             <div className="flex items-center gap-2 text-sm font-semibold text-[#212529] dark:text-white">
               {stage === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-[#017cb6]" /> : <AlertTriangle className="w-4 h-4 text-[#f1ca00]" />}
               <span>
@@ -778,11 +832,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </li>
               ))}
             </ul>
+            {checking && <p className="text-xs text-[#6c757d] dark:text-slate-400">Checking which backups would be replaced…</p>}
+            {replaceLines.length > 0 && (
+              <div className="p-2.5 rounded border border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs leading-relaxed space-y-1">
+                <p>If a server has no free temporary slot, BinaryLane replaces its oldest temporary backup that is not locked or attached, and the replaced backup will no longer be available. The backup that would be replaced on each server is listed below.</p>
+                <ul className="max-h-40 overflow-y-auto font-mono space-y-0.5">
+                  {replaceLines.map((l) => (
+                    <li key={l} className="break-words">
+                      › {l}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {stage === 'confirm' && (
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={() => void execute()}
-                  className="px-3 py-1.5 rounded bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-semibold flex items-center gap-1.5"
+                  disabled={checking}
+                  className="px-3 py-1.5 rounded bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <CornerDownLeft className="w-3 h-3" /> Run
                 </button>
