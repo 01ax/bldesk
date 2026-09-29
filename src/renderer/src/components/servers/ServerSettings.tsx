@@ -308,7 +308,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     const partnerServer = allServers.find((s) => s.id === partnerId)
     await executeAction(
       'Change Partner Server',
-      { type: 'change_partner', partner_id: partnerId },
+      { type: 'change_partner', partner_server_id: partnerId },
       { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from: server.partner_id ? `#${server.partner_id}` : undefined, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : undefined }] }
     )
   }
