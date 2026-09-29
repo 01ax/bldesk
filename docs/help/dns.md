@@ -8,7 +8,7 @@ keywords: [dns, zone, record, ttl, a, aaaa, cname, mx, export]
 Use DNS to browse hosted zones, add records and delete records. The zone list pages through the account rather than stopping at the first batch; unused zones are labelled for review.
 
 ## Add and delete records
-Choose a zone and Add Record, then enter its type, name and value. This form sends TTL 300 seconds; there is no TTL input, existing-record editor or priority/weight/port input. The palette accepts a priority for MX or SRV records. These are limits of BLDesk's current controls, not a claim that the DNS API cannot edit records.
+Choose a zone and Add Record, then enter its type, name and value. The form sends no TTL, so BinaryLane's default applies: its API reference gives 3600 seconds as the default and only supported value. There is no TTL input, existing-record editor or priority/weight/port input. The palette accepts a priority for MX or SRV records. These are limits of BLDesk's current controls, not a claim that the DNS API cannot edit records.
 
 Deleting a record does not flush resolver caches: previous answers may remain until their TTL expires.
 

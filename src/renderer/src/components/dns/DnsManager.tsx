@@ -124,7 +124,6 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [recordType, setRecordType] = useState('A')
   const [recordName, setRecordName] = useState('@')
   const [recordData, setRecordData] = useState('')
-  const [recordTtl] = useState(300)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const domainsQuery = useDomains(client)
@@ -180,11 +179,11 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     try {
       const { error } = await client.POST('/v2/domains/{domain_name}/records', {
         params: { path: { domain_name: selectedDomain } },
+        // No ttl: the API reference gives 3600 as the default and only supported value.
         body: {
           type: recordType as any,
           name: recordName.trim(),
-          data: recordData.trim(),
-          ttl: Number(recordTtl)
+          data: recordData.trim()
         }
       })
       if (error) throw new Error(describeApiError(error))
