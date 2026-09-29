@@ -381,7 +381,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         region,
         size: selectedSize.slug,
         image: image.slug,
-        ssh_keys: selectedKeys.length ? selectedKeys : undefined,
+        // Unticking every key means deploy none, which is an empty list: leaving it
+        // out deploys the account's default keys. It is still left out when the
+        // picker was never touched, so that path is unchanged.
+        ssh_keys: selectedKeys.length || keysTouchedRef.current ? selectedKeys : undefined,
         vpc_id: vpcId,
         options: {
           // Sent only when changed: left null, the plan's default applies, which
