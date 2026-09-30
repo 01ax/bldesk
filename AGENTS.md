@@ -23,6 +23,14 @@ BLDesk uses the BinaryLane API as its public reference documents it (https://api
 
 Internal BinaryLane material is never the basis for a feature and is never cited in this repository, which is public: no internal source code, file paths, project or system names, issue-tracker numbers or internal URLs, in code, comments, docs, commit messages, pull requests, issues or release notes. Explain behaviour from the public API reference or from what mPanel shows customers. `scripts/check-security-guards.mjs` fails the build on known internal markers.
 
+### Pricing must come from the source
+
+Never hardcode pricing into BLDesk's application code. Monetary amounts, unit rates, minimum charges, image/licence fees and tax rates must come from the authoritative public API or provider data source. Do not embed price tables or fallback prices in the app.
+
+BLDesk may calculate estimates from that data, including quantities, included allowances, surcharges and the account's tax treatment. Use the same calculation for totals and option price differences. A source price or allowance change must flow through after the data refreshes without an app update; missing pricing data must not silently become a zero-cost estimate.
+
+Fictional prices in isolated test fixtures and clearly dated examples in documentation are allowed, but must never supply production pricing. Reject pricing changes that can drift from the authoritative source.
+
 ---
 
 ## 🏗️ Tech Stack & Structure
