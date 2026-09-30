@@ -339,11 +339,12 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
       const map = new Map<number, any[] | null>()
       if (!client) return map
       const results = await mapLimitNullable(serverIds, 4, async (id) => {
-        const { data, error } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+        const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
           params: { path: { server_id: id } },
           signal: AbortSignal.timeout(20_000)
         })
-        if (error) throw new Error(describeApiError(error))
+        // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+        if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
         return data?.firewall_rules || []
       })
       serverIds.forEach((id, i) => map.set(id, results[i]))

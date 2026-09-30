@@ -73,6 +73,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [isCloneOpen, setIsCloneOpen] = useState(false)
   const [targetServerId, setTargetServerId] = useState<number | null>(null)
   const [isCloning, setIsCloning] = useState(false)
+  const [cloneError, setCloneError] = useState<string | null>(null)
 
   const currentRules = (firewallQuery.data || []) as any[]
   // Every save writes the whole list back, so edits are only offered while the
@@ -344,15 +345,22 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const handleCloneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!client || !targetServerId) return
+    setCloneError(null)
 
     const targetName = servers.find((s) => s.id === targetServerId)?.name || String(targetServerId)
     // Read the target's current list first so the diff is a true before → after.
-    let targetRules: any[] = []
+    // A clone replaces the whole list, so a target that cannot be read is not
+    // written to: the empty list a failed read would give looks like "0 rules".
+    let targetRules: any[] | null = null
     try {
-      const { data } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', { params: { path: { server_id: targetServerId } } })
-      targetRules = data?.firewall_rules || []
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', { params: { path: { server_id: targetServerId } } })
+      if (!error && response.ok) targetRules = data?.firewall_rules || []
     } catch {
-      // shown as "unknown" below rather than blocking the clone
+      // a dropped connection is an unreadable target too
+    }
+    if (!targetRules) {
+      setCloneError(`Couldn't read the firewall rules on ${targetName}. Nothing was changed: a clone replaces the target's whole list, so it needs the current one first.`)
+      return
     }
     const c = await confirmAction({
       title: 'Clone firewall rules',
@@ -437,7 +445,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </div>
 
           <button
-            onClick={() => setIsCloneOpen(true)}
+            onClick={() => {
+              setCloneError(null)
+              setIsCloneOpen(true)
+            }}
             disabled={!activeServerId || currentRules.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-40"
             title="Clone rules to another server"
@@ -912,7 +923,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 </label>
                 <select
                   value={targetServerId || ''}
-                  onChange={(e) => setTargetServerId(Number(e.target.value))}
+                  onChange={(e) => {
+                    setTargetServerId(Number(e.target.value))
+                    setCloneError(null)
+                  }}
                   className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
                 >
                   <option value="">Select a server...</option>
@@ -925,6 +939,13 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                     ))}
                 </select>
               </div>
+
+              {cloneError && (
+                <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{cloneError}</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
                 <button

@@ -23,6 +23,12 @@ It shows what went wrong and the note:
 
 Add Rule, Import, Clone and Export stay off. Retry asks again, and so does leaving the tab and coming back.
 
+Clone replaces the destination's list, so it needs the destination's current rules too. It reads them when you press Apply Rules. If BinaryLane does not return them, the dialog stays open and says, for an example destination web-base:
+
+“Couldn't read the firewall rules on web-base. Nothing was changed: a clone replaces the target's whole list, so it needs the current one first.”
+
+No confirmation opens and nothing is sent. Press Apply Rules again to try again.
+
 If the rules loaded and a later refresh fails, the card is headed “Couldn't refresh this server's firewall rules.” and the last list stays on screen under the note “The list below is from the last successful load.” Add Rule, Import, Disable Firewall and each rule's move and delete buttons are off until Retry succeeds. Export and Clone still use the list on screen.
 
 ## Copy a ruleset
@@ -40,6 +46,9 @@ The note says:
 Review each target's diff, not just the count. Choose “Write to 2 servers”. Targets already matching the source are reported and skipped; the button count excludes them.
 
 Check individual History outcomes and test connectivity. A partial failure leaves successful targets changed. Do not assume an all-or-nothing transaction.
+
+### Servers that cannot be read
+A copy replaces a server's whole list, so Fleet matrix needs each server's current rules first. A server whose rules could not be read is marked “unreadable”. It cannot be chosen as the source, its checkbox in the target list stays off, and the everyone link leaves it out, so a copy never writes to it. Refresh reads the fleet again.
 
 ## Port 22 unreachable
 Use the badge and [troubleshooting steps](help:troubleshooting#port-22-unreachable) to separate local routing, external rules, guest rules and the SSH service.
