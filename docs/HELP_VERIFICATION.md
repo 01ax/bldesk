@@ -183,6 +183,39 @@ Branch: `security/honest-storage`.
 | Vault title "API Token Vault" (was "Hardware Encrypted Vault") | `AuthModal.tsx` header | The old title was untrue for the keyring-less and pre-fix fallback cases. |
 | Template capture note: "User data is copied exactly as it is on the server, including any passwords, keys or tokens in it: remove those before saving or sharing the template." | `ServerDetails.tsx` Cloud-init tab, above "Save server as template" | `templateFromServer` copies `userData` verbatim into `spec.cloudInit`; nothing strips secrets from it. |
 
+## Prices use the account's tax code (30 September 2026, after 1.0.62-beta.9)
+
+Branch: `fix/price-tax-from-account-tax-code`. No new runtime dependencies. No help page or `FEATURES.md` sentence changes: none of them states a rate, a tax name, or that a total includes tax.
+
+Service facts, from `openapi.json` only. `Account.tax_code` is "The tax code that currently applies to transactions for this account." A `TaxCode` has a required `name` ("The name of this tax code.") and a required `type`: `none` ("No tax is applied to any transaction.") or `scalar` ("A fixed fraction of the value of all transactions is added as tax."). `fixed_percent` is a percentage where 100 = 100%: "if the type is 'scalar' and the value of this is '10' then 10% of the value of all transactions will be added as tax." The reference does not say whether `Size.price_monthly`, the size option costs, `DistributionSurcharges` or `Software.cost_per_licence_per_month` include tax (each is described only as an amount "in AU$"). The forms have always treated them as amounts before tax; that is unchanged, and it is the app's assumption, not something the reference states.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “$<total> (incl. $<tax> <tax code name>)” after “Monthly Total” and after “New monthly total” | `billingTotal` in `lib/serverPricing.ts` (its `note`), shown in the Billing box of `CreateServerModal.tsx` and in the Billing block and the line beside the Accept button in `ChangePlanPanel.tsx` | Changed. A fixed 10% and a fixed tax name were used for every account. Now a `scalar` tax code adds `fixed_percent` % of the amount before tax and is named by the tax code's own `name`. |
+| “$<total>” with nothing after it | Same places, when the tax code's `type` is `none` | New. The total is the amount before tax and no tax is mentioned. |
+| “$<total> before tax” and “+$<change> before tax” after “Monthly Change” | Same places, when the tax is unknown: a `type` other than `none` or `scalar`, a `scalar` without a usable `fixed_percent`, an account that has not loaded, or a failed account read | New. No rate is assumed; the amount is shown before tax and says so. |
+| “Monthly Change” | `delta` in `ChangePlanPanel.tsx`: the new total minus the old total, both from `billingTotal` with the same tax code | Changed. Both sides had a fixed 10% added before. |
+| “Monthly (before tax)” | The Monthly row in `changes` in `ChangePlanPanel.tsx`, shown in the Summary of changes table and in the confirmation | Changed from a label that named GST. The row is `oldCost.total` to `newCost.total`, which never had tax added, so the new label holds for every tax code. |
+| “$<licences> before tax” after “of which licences” | Billing block in `ChangePlanPanel.tsx` | Changed from a suffix that named GST. The value is unchanged: `licenceCost`, from `Software.cost_per_licence_per_month`. |
+| “All prices are in AUD and before tax unless stated otherwise. Charges are pro-rated from the time the change is applied.” | Billing block in `ChangePlanPanel.tsx` | Changed from a sentence that named GST. “unless stated otherwise” covers the “(incl. …)” totals. “AUD” is untouched: the reference words its prices as “in AU$” and has no currency field. |
+| Tax code row on Account Details | `AccountOverview.tsx` prints `name` and `fixed_percent` from `useAccount` | Unchanged, rechecked. The forms read the same `useAccount` query, so both screens show the same tax code. |
+| `server-change-plan.md` "The final review includes the resulting monthly cost."; `billing.md` "The Create Server and Change Plan forms show proposed recurring costs."; `servers.md` "Check the price and terms before submitting." | Same forms | Unchanged, rechecked, still true. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts), `npm run test:terminal` and `npm run build`.
+- Repo-wide search for `GST`, `GST_RATE`, `billingTotal`, `incl.` and the old labels across `src`, `docs`, `FEATURES.md` and `README.md`. Every rendered occurrence is in the table above. What remains is comments in `lib/serverPricing.ts` and `lib/licences.ts` that describe amounts as excluding GST (untouched) and history lines in `CHANGELOG.md`.
+- Real Electron builds with isolated user data, name resolution blocked and every API request answered by the harness's local fake API with a fictitious token (nothing sent to BinaryLane), driven over the debugging port. Base is the build of `origin/main` at `ae12d03`; fixed is this branch. The fake API's account `tax_code` was varied with a temporary local edit of the harness mock, which is not part of this change. Text was read from the Create Server Billing box (4 vCPU plan chosen) and from Change Plan on a Linux server (to a larger and to a smaller plan) and on a Windows server with a licence.
+  - Base, with tax codes of 15%, 20% named VAT, `none`, an unknown type, a `scalar` without `fixed_percent`, and a 500 on the account read: every one showed a tax of exactly 10% of the amount before tax, named GST, and the same for the Change Plan delta.
+  - Fixed, 10% named GST (the shape a live Australian account returns): the same figures as base; only the three relabelled strings above differ.
+  - Fixed, 15% GST and 20% VAT: the tax was 15% and 20% of the amount before tax, named by the tax code (“GST”, “VAT”). The Change Plan delta between two plans equalled the difference of the before-tax totals times 1.1, 1.15 and 1.2 for 10%, 15% and 20%.
+  - Fixed, `none`: no tax text after any total, the total and the delta were the before-tax figures.
+  - Fixed, an unknown type (also carrying a `fixed_percent`), a `scalar` without `fixed_percent`, and the fake API's own account shape, which has no `type`: “before tax” after Monthly Total, New monthly total and Monthly Change, no rate.
+  - Fixed, account read answering 500: the same “before tax” forms after the retries, no page error. Account read delayed by 5 seconds: “before tax” first, then the tax code's text once the account arrived, without reopening the form.
+  - Account Details, base and fixed, for four tax codes: the Tax code row read the same on both.
+- Real Electron zoom: the fixed build launched with Playwright's Electron support, isolated user data, Ctrl+minus, Ctrl+equals and Ctrl+0 sent with `webContents.sendInputEvent`, in windows of about 1280×840 and 1024×680 at 80, 100, 125 and 150% (CSS widths 1600, 1280, 1024, 853 and 1280, 1024, 819, 683). The Create Server Billing box and the Change Plan summary, with a 20% VAT total on the Windows server and the “before tax” forms on the Linux server, had no clipped or overflowing text, nothing past the right edge and no horizontal page scroll (40 measurements). The View menu was not exercised for this change.
+- Not verified: a live account (the fake API's tax codes stand in for it; the Australian shape `GST`, `scalar`, 10 is as reported from a read of one live account, not checked in this change), the Android build, and the wording on a real non-Australian account.
+
 ## Server order, Archived, map zoom keys (23 September 2026, after 1.0.61-beta.10)
 
 Branch: `fix/issues-66-71`. No new runtime dependencies.

@@ -11,6 +11,7 @@ import {
   useDistributionImages,
   useSshKeys,
   useVpcs,
+  useAccount,
   useCreateServerMutation,
   useAddSshKeyMutation
 } from '../../api/queries'
@@ -73,6 +74,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const imagesQuery = useDistributionImages(client)
   const sshKeysQuery = useSshKeys(client)
   const vpcsQuery = useVpcs(client)
+  const accountQuery = useAccount(client)
   const createServer = useCreateServerMutation(client)
   const addSshKey = useAddSshKeyMutation(client)
 
@@ -343,7 +345,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     }).total
   }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
 
-  const { total: monthlyIncGst, gst } = billingTotal(monthly)
+  const { total: monthlyTotal, note: taxNote } = billingTotal(monthly, accountQuery.data?.tax_code)
 
   if (!isOpen) return null
 
@@ -727,7 +729,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 <div className="flex gap-8">
                   <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Total</span>
                   <span className="text-[#212529] dark:text-white">
-                    ${monthlyIncGst.toFixed(2)} (incl. ${gst.toFixed(2)} GST)
+                    ${monthlyTotal.toFixed(2)}{taxNote && ` ${taxNote}`}
                   </span>
                 </div>
                 <p className="text-[#6c757d] dark:text-[#adb5bd] leading-relaxed">
