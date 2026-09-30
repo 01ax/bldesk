@@ -20,6 +20,7 @@ import {
 import { DarkModeToggle } from './DarkModeToggle'
 import logoFull from '../../assets/logo-binarylane.png'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
+import { MPANEL_URL } from '../ui/LinkOut'
 
 export type ActiveTab =
   | 'servers'
@@ -109,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ]
 
   const handleOpenMpanel = () => {
-    window.bldeskApi?.openExternal('https://home.binarylane.com.au/mpanel')
+    window.bldeskApi?.openExternal(MPANEL_URL)
   }
 
   const handleItemClick = (id: ActiveTab) => {
