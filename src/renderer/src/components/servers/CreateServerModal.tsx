@@ -334,7 +334,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups }
     : { daily: simpleBackups === 'none' ? 0 : 2, weekly: 0, monthly: 0, offsite: simpleBackups === 'both' }
 
-  const monthly = useMemo(() => {
+  // The total and each simple-view backup option are both priced here, so an
+  // option can only show what choosing it adds to the total.
+  const priceWith = (b: typeof backups) => {
     if (!selectedSize) return 0
     return configuredCost({
       size: selectedSize,
@@ -342,12 +344,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       memoryMb: memory,
       diskGb: disk,
       ipCount,
-      dailyBackups: backups.daily,
-      weeklyBackups: backups.weekly,
-      monthlyBackups: backups.monthly,
-      offsiteBackups: backups.offsite
+      dailyBackups: b.daily,
+      weeklyBackups: b.weekly,
+      monthlyBackups: b.monthly,
+      offsiteBackups: b.offsite
     }).total
-  }, [selectedSize, image, memory, disk, ipCount, backups.daily, backups.weekly, backups.monthly, backups.offsite])
+  }
+  const monthly = priceWith(backups)
+  const optionCost = (daily: number, offsite: boolean) =>
+    priceWith({ daily, weekly: 0, monthly: 0, offsite }) - priceWith({ daily: 0, weekly: 0, monthly: 0, offsite: false })
 
   const { total: monthlyIncGst, gst } = billingTotal(monthly)
 
@@ -590,8 +595,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 <Field label="Backups">
                   {(
                     [
-                      ['onsite', `Onsite daily backups, stored for 2 days (+$${(2 * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)})`],
-                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${(2 * disk * ((selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0) + (selectedSize?.options?.offsite_backups_cost_per_gigabyte || 0))).toFixed(2)})`],
+                      ['onsite', `Onsite daily backups, stored for 2 days (+$${optionCost(2, false).toFixed(2)})`],
+                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${optionCost(2, true).toFixed(2)})`],
                       ['none', 'Backups are not required']
                     ] as const
                   ).map(([val, label]) => (
