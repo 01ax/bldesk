@@ -15,7 +15,7 @@ Checked against the live API on 2026-09-29 with a disposable zone: adding a reco
 | `dns.md`, "The form sends no TTL, so BinaryLane's default applies: its API reference gives 3600 seconds as the default and only supported value." | `handleCreateRecord` in `DnsManager.tsx`: the request body is `type`, `name` and `data` only | Changed from "This form sends TTL 300 seconds". The palette's `dns add` also sends no `ttl` (`CommandPalette.tsx`). |
 | `dns.md`, "There is no TTL input, existing-record editor or priority/weight/port input." | The Add Record form in `DnsManager.tsx` has type, host and target fields only; nothing in `src/` calls the record update endpoint | Unchanged, rechecked. |
 | `dns.md`, "previous answers may remain until their TTL expires" | `handleDeleteRecord` summary in `DnsManager.tsx` | Unchanged, still true. |
-| TTL column in the records table; "TTL 3600s" beside each zone | `{r.ttl}` and `{domain.ttl}` in `DnsManager.tsx` | Unchanged: shows what the API reports, so a record created earlier with 300 still reads 300. No help page describes either column. A zone whose `ttl` is null or missing reads "TTL s"; not changed here. |
+| TTL column in the records table; "TTL 3600s" beside each zone | `{r.ttl}` and `{domain.ttl}` in `DnsManager.tsx` | Unchanged: shows what the API reports, so a record created earlier with 300 still reads 300. No help page describes either column. A zone whose `ttl` is null or missing used to read "TTL s"; it now shows no TTL text (#171). A real 0 still reads "TTL 0s". |
 | `FEATURES.md`, DNS boundary | Same form | Changed from "fixes TTL at 300". |
 
 ### Checks performed
