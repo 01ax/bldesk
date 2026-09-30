@@ -298,7 +298,7 @@ const readBody = (req) => new Promise((r) => { const c = []; req.on('data', (d) 
 async function handleApi(req, res, u, body) {
   const p = u.pathname, m = req.method, q = u.searchParams
   let mt
-  if (m === 'GET' && p === '/v2/account') return json(res, 200, { account: mk('AccountResponse', 'account', { email: 'operator@example.com', status: 'active', email_verified: true, two_factor_authentication_enabled: true, configured_payment_methods: ['credit-card'], additional_ipv4_limit: 64, tax_code: { name: 'GST', fixed_percent: 10 } }) })
+  if (m === 'GET' && p === '/v2/account') return json(res, 200, { account: mk('AccountResponse', 'account', { email: 'operator@example.com', status: 'active', email_verified: true, two_factor_authentication_enabled: true, configured_payment_methods: ['credit-card'], additional_ipv4_limit: 64, tax_code: { name: 'GST', type: 'scalar', fixed_percent: 10 } }) })
   if (m === 'GET' && p === '/v2/account/keys') return json(res, 200, page(keys, q, 'ssh_keys'))
   if (m === 'POST' && p === '/v2/account/keys') { const k = mk('SshKeysResponse', 'ssh_keys', { id: nextId++, name: body.name, default: !!body.default, public_key: body.public_key, fingerprint: 'SHA256:newkey' }); if (k.default) { /* keep other defaults */ } keys.push(k); return json(res, 200, { ssh_key: k }) }
   if ((mt = p.match(/^\/v2\/account\/keys\/(\d+)$/))) {
