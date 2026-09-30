@@ -282,17 +282,25 @@ function registerIpcHandlers(): void {
       if (!existsSync(sshDir)) return selected
       const files = readdirSync(sshDir)
       const pubFiles = files.filter(f => f.endsWith('.pub'))
-      const discovered = pubFiles.map(f => {
+      const discovered = pubFiles.flatMap(f => {
         const baseName = f.replace('.pub', '')
         const privPath = join(sshDir, baseName)
         const pubPath = join(sshDir, f)
         const hasPriv = existsSync(privPath)
-        return {
+        let publicKey: string
+        try {
+          publicKey = readFileSync(pubPath, 'utf8').trim()
+        } catch (err) {
+          // One unreadable .pub must not hide the keys that can be read.
+          console.error(`[Main] Skipping unreadable SSH public key ${pubPath}:`, err)
+          return []
+        }
+        return [{
           name: baseName,
-          publicKey: readFileSync(pubPath, 'utf8').trim(),
+          publicKey,
           pubPath,
           privateKeyPath: hasPriv ? privPath : undefined
-        }
+        }]
       })
       return [...discovered, ...selected.filter((key) => !discovered.some((k) => k.privateKeyPath === key.privateKeyPath))]
     } catch (err) {
