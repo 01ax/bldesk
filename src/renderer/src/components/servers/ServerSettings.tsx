@@ -213,7 +213,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     if (!size || size < 1) return
     await executeAction(
       'Add Disk',
-      { type: 'add_disk', size },
+      { type: 'add_disk', size_gigabytes: size },
       { summary: 'Attaches a new, empty secondary disk. It appears as an unformatted block device inside the OS.', changes: [{ label: 'New disk', to: `${size} GB` }] }
     )
   }
@@ -227,7 +227,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       : ''
     const ok = await executeAction(
       'Resize Disk',
-      { type: 'resize_disk', disk_id: disk.id, size },
+      { type: 'resize_disk', disk_id: disk.id, size_gigabytes: size },
       {
         summary: isShrink ? 'Shrinks the disk at the block level.' : 'Grows the disk. The filesystem inside the OS still has to be extended to use the space.',
         severity: isShrink ? 'destructive' : 'normal',
