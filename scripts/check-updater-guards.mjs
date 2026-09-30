@@ -1,9 +1,11 @@
 // Structural guard for auto-updater: prevents regression of unsigned macOS
 // auto-update support, Squirrel.Mac code signing traps, and quit handlers.
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import ts from 'typescript'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
+import { runInNewContext } from 'node:vm'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const failures = []
@@ -46,29 +48,36 @@ if (!indexContent.includes('UpdaterManager.onAppQuit()')) {
   failures.push('index.ts: app.on("before-quit") must invoke UpdaterManager.onAppQuit()')
 }
 
-// 6. Test bash syntax of the update script template
-const tempScript = resolve(root, 'scripts/.test-update-syntax.sh')
-try {
-  const dummyScript = `#!/bin/bash
-PID=99999
-while kill -0 $PID 2>/dev/null; do
-  sleep 0.1
-done
-TARGET="/tmp/Test.app"
-STAGED="/tmp/Staged.app"
-STAGING_DIR="/tmp/Staging"
-rm -rf "$TARGET"
-cp -R "$STAGED" "$TARGET"
-rm -rf "$STAGING_DIR"
-xattr -cr "$TARGET" 2>/dev/null || true
-open "$TARGET"
-`
-  writeFileSync(tempScript, dummyScript, { mode: 0o755 })
-  execFileSync('bash', ['-n', tempScript])
-} catch (err) {
-  failures.push(`Update script template has invalid bash syntax: ${err.message}`)
-} finally {
-  try { unlinkSync(tempScript) } catch {}
+// 6. Test bash syntax of the script installMacUpdate writes out and runs. Its
+// template is read from updater.ts, so the check cannot drift from what ships,
+// and filled with stand-in values once for each forceRunAfter branch.
+let scriptTemplate = null
+const updaterAst = ts.createSourceFile(updaterFile, updaterContent, ts.ScriptTarget.Latest, true)
+function findScriptTemplate(node) {
+  if (ts.isVariableDeclaration(node) && node.name.getText(updaterAst) === 'scriptContent' && node.initializer && ts.isTemplateLiteral(node.initializer)) {
+    scriptTemplate = node.initializer.getText(updaterAst)
+  }
+  ts.forEachChild(node, findScriptTemplate)
+}
+findScriptTemplate(updaterAst)
+if (!scriptTemplate) {
+  failures.push('updater.ts: installMacUpdate must build its script as "const scriptContent = `...`" so the guard can syntax-check the script that ships')
+} else {
+  for (const forceRunAfter of [true, false]) {
+    try {
+      const script = runInNewContext(scriptTemplate, {
+        process: { pid: 99999 },
+        zipPath: '/tmp/Update.zip',
+        stagingDir: '/tmp/Staging',
+        stagedApp: '/tmp/Staging/BLDesk.app',
+        targetApp: '/tmp/Test.app',
+        forceRunAfter
+      })
+      execFileSync('bash', ['-n'], { input: script, stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (err) {
+      failures.push(`installMacUpdate script (forceRunAfter=${forceRunAfter}) failed the bash syntax check, or could not be built (a new variable in its template needs a stand-in value in this guard): ${err.message}`)
+    }
+  }
 }
 
 if (failures.length > 0) {
