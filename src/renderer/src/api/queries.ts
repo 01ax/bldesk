@@ -250,15 +250,16 @@ export function useDataUsage(client: BinaryLaneClient | null) {
     queryFn: async () => {
       if (!client) return []
       // One entry per server, so past 20 servers the rest had no usage shown.
-      try {
-        return await fetchAllPages<any>(
-          (page, per_page) => client.GET('/v2/data_usages/current', { params: { query: { page, per_page } as any } }),
-          'data_usages',
-          'useDataUsage'
-        )
-      } catch {
-        return []
-      }
+      // A failed read throws, so the query reports it rather than an empty list.
+      return fetchAllPages<any>(
+        async (page, per_page) => {
+          const res = await client.GET('/v2/data_usages/current', { params: { query: { page, per_page } as any } })
+          // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+          return res.response.ok ? res : { ...res, error: res.error || `HTTP ${res.response.status}` }
+        },
+        'data_usages',
+        'useDataUsage'
+      )
     },
     enabled: !!client
   })
