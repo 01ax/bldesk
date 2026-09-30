@@ -22,7 +22,7 @@ import { AccountOverview } from './components/account/AccountOverview'
 import { ActionInteractionPrompt } from './components/actions/ActionInteractionPrompt'
 import { ActionToasts } from './components/actions/ActionToasts'
 import { ActionTrackerProvider } from './context/ActionTrackerContext'
-import { ConfirmProvider } from './context/ConfirmContext'
+import { ConfirmProvider, useConfirm } from './context/ConfirmContext'
 import { HistoryView } from './components/history/HistoryView'
 import { HelpView } from './components/help/HelpView'
 import { HELP_OPEN_EVENT, type HelpLocation } from './lib/helpNavigation'
@@ -537,6 +537,41 @@ function MainDashboard() {
   )
 }
 
+function ResetCacheButton() {
+  const confirmAction = useConfirm()
+  const reset = async () => {
+    // The desktop app keeps History and templates as files; only Android and the web build keep them in local storage.
+    const alsoLost = [
+      !window.bldeskApi?.changelogList && 'the History of changes made through BLDesk',
+      !window.bldeskApi?.templatesList && 'your cloud-init templates'
+    ].filter(Boolean)
+    const c = await confirmAction({
+      title: 'Reset cache and reload',
+      summary: "Deletes the data BLDesk has saved in this app's local storage on this device, then reloads. Nothing in your BinaryLane account changes.",
+      severity: 'destructive',
+      notes: [
+        'Deleted: server groups and tags, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.',
+        alsoLost.length
+          ? `Also deleted on this device: ${alsoLost.join(' and ')}.`
+          : 'History and cloud-init templates are kept: the desktop app stores them as files.'
+      ],
+      confirmLabel: 'Reset and reload',
+      log: false
+    })
+    if (!c.ok) return
+    localStorage.clear()
+    window.location.reload()
+  }
+  return (
+    <button
+      onClick={reset}
+      className="px-4 py-2 bg-[#017cb6] hover:bg-[#02699a] text-white rounded text-sm font-medium transition-colors"
+    >
+      Reset Cache & Reload
+    </button>
+  )
+}
+
 interface ErrorBoundaryProps {
   children: React.ReactNode
 }
@@ -572,15 +607,10 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
             {this.state.error?.message || 'An unexpected rendering error occurred.'}
           </p>
           <div className="flex gap-3">
-            <button
-              onClick={() => {
-                localStorage.clear()
-                window.location.reload()
-              }}
-              className="px-4 py-2 bg-[#017cb6] hover:bg-[#02699a] text-white rounded text-sm font-medium transition-colors"
-            >
-              Reset Cache & Reload
-            </button>
+            {/* This screen sits outside MainDashboard's provider, so it carries its own. */}
+            <ConfirmProvider>
+              <ResetCacheButton />
+            </ConfirmProvider>
             <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-[#343a40] hover:bg-[#495057] text-[#f8f9fa] rounded text-sm font-medium transition-colors"

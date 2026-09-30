@@ -313,6 +313,37 @@ See [SSH key verification](SSH_KEYS_VERIFICATION.md) for automated results and t
 
 Implementation branch: `feat/help-and-ask-binarylane`. No version bump or new runtime dependencies.
 
+## Reset Cache & Reload asks first (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/reset-cache-confirm`. No new runtime dependencies. No help page changed: none mentions the crash screen or the reset (searched `docs/help` for "reset cache", "reload" and "something went wrong"), so only the new dialog's text needed checking.
+
+Where it is reached: only the “Reset Cache & Reload” button on the “Something went wrong” screen, which `AppErrorBoundary` in `App.tsx` shows when a component throws while rendering. It is the only `localStorage.clear()` in `src/`; there is no menu item, palette command or shortcut for it. The screen sits outside `MainDashboard`'s `ConfirmProvider`, so the button is now a small component (`ResetCacheButton`) wrapped in its own `ConfirmProvider`; the dialog is the normal `useConfirm()` shell, `destructive`, `log: false`. `destructive` and not `irreversible` because it is local-only (AGENTS.md rules 3 and 7), there is no target name to type, and it is not a whole-resource action. The reset itself is unchanged: `localStorage.clear()` then `window.location.reload()`.
+
+What the reset deletes, by reading every `localStorage` caller in `src/renderer/src`: server groups and tags (`lib/serverGroups.ts`), SSH key associations and connect-address preferences (`lib/sshKeyAssociations.ts`), palette recents (`lib/commands.ts`), recent Help searches (`HelpView.tsx`), the theme (`ThemeContext.tsx`), the cached server list (`api/queries.ts`), and the terminal-tab list and native-terminal preference (`lib/terminalSessions.ts`, `lib/openSsh.ts`). Two more stores are local storage only where the desktop bridge is absent: History (`lib/changelog.ts`, which says it uses the main process's `<userData>/changelog/<profile>.jsonl` and falls back to local storage on Android and web) and cloud-init templates (`lib/serverTemplates.ts`; `<userData>/templates` on desktop through `src/main/templates.ts`). `api/mobile-bridge.ts` leaves `changelogList` and `templatesList` undefined, which is how the dialog tells the two cases apart. On Android the profiles and API tokens are in the platform secure store (`SecureStorage`) and the active profile id in `Preferences`, not local storage, except a legacy copy that could not be migrated (see below); on desktop they are in the main-process vault (`src/main/safeStorage.ts`). The dialog makes no claim about tokens.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “Reset cache and reload” (title); “Reset and reload” (confirm button) | `ResetCacheButton` in `App.tsx`, `title` and `confirmLabel` | New. The button on the crash screen still reads “Reset Cache & Reload”. |
+| “Deletes the data BLDesk has saved in this app's local storage on this device, then reloads. Nothing in your BinaryLane account changes.” | `summary` | New. The handler makes no API call; the reload refetches, which is a read. |
+| “Deleted: server groups and tags, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.” | First `notes` entry | New. Each item is one of the stores listed above; the list is of what the stores hold, so an item you never set is simply absent. |
+| “Also deleted on this device: the History of changes made through BLDesk and your cloud-init templates.” | Second `notes` entry when `window.bldeskApi` has no `changelogList` (History) or no `templatesList` (templates); names only the one that applies | New. Android and web. |
+| “History and cloud-init templates are kept: the desktop app stores them as files.” | Second `notes` entry when both bridge methods exist | New. Desktop. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts), `npm run test:terminal` and `npm run build`.
+- Real Electron, isolated user data, fabricated profile, every API request answered by the local mock. A real render crash was provoked without touching the code: the cached server list for the profile was set to `[{"id":1}]` and the app reloaded, which throws “Cannot read properties of undefined (reading 'toLowerCase')” and shows the crash screen (a plain Reload would crash again; the reset is what recovers). Seeded through the app: a tag and a palette command (palette), a Reboot in History (palette, confirmed), the theme switched away from the system default, and a legacy-format template file placed in the run's own `templates` folder (saving a template through the UI fails on this Windows machine with an `fsync` EPERM, a separate defect).
+- BASE (`304975b`): clicking the button shows no dialog and reloads at once; `localStorage` goes from the cached servers, palette recents, tags, terminal-tab list and theme to cached servers (refetched), terminal-tab list and theme (back to the system default). The profile, the active profile, the History entry and the template all survive.
+- FIXED, same steps: the dialog opens over the crash screen with `localStorage` unchanged and the page not reloaded. Cancel, Escape, the backdrop and the X each leave the crash screen, `localStorage` and the page as they were. A double-click opens one dialog. Confirming reloads and leaves exactly BASE's state afterwards. The crash screen's markup is identical to BASE's.
+- Android and web path: the built renderer opened in a plain browser takes the mobile bridge (`platform` “web”, no `changelogList` or `templatesList`), the same code path as Android's History and template storage. With a History key, a template key and a tag seeded, forcing the real `AppErrorBoundary` into its fallback and pressing the button shows the “Also deleted on this device” sentence, Cancel leaves all three keys, and confirming removes them. All non-local requests were blocked in that run.
+- Zoom, driven with ctrl+plus, ctrl+minus and ctrl+0 through `sendInputEvent`: 80%, 100%, 125% and 150% at 1280 x 840 and 1024 x 680. The dialog, its close button, Cancel and confirm stay inside the viewport every time, the body never needs to scroll, nothing clips, and the page never scrolls sideways. Also rendered with the light theme class.
+
+### Not verified
+
+- Not run on an Android device or emulator: the Android claims come from the code above and from the plain-browser run, not from the app on a phone. The layout at phone width was looked at only as a narrow browser window.
+- On Android, a token that could not be migrated to the secure store stays in the older store, and only if that store was local storage would this reset remove it (`getStoredProfiles` in `mobile-bridge.ts`). Whether any install is in that state was not checked; this is why the dialog says nothing about tokens.
+- Crashes from other causes were not tried; any render error reaches the same screen.
+
 ## Content accuracy review (5 September 2026)
 
 The initial runtime pass below verified rendering and interaction, not sentence-by-sentence factual accuracy. PR #48's review exposed that gap. This follow-up checks bundled BLDesk documentation against the UI handlers and shared helpers, and distinguishes controls offered by BLDesk from capabilities offered by BinaryLane's API and mPanel. It does not audit or change Ask BinaryLane's answer-generation controls.
