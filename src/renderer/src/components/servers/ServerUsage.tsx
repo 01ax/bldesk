@@ -417,33 +417,32 @@ const UsageSvgChart: React.FC<{
 export const ServerUsage: React.FC<ServerUsageProps> = ({ client, server }) => {
   const [activeWindow, setActiveWindow] = useState<TimeWindow>('Day')
 
-  const { interval, start, end } = useMemo(() => {
-    const now = new Date()
-    let startIso: string
+  const { interval, windowMs } = useMemo(() => {
+    let windowMs: number
     let durationType: 'five-minute' | 'half-hour' | 'four-hour' | 'day'
 
     switch (activeWindow) {
       case 'Day':
-        startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+        windowMs = 24 * 60 * 60 * 1000
         durationType = 'five-minute'
         break
       case 'Week':
-        startIso = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+        windowMs = 7 * 24 * 60 * 60 * 1000
         durationType = 'half-hour'
         break
       case 'Month':
-        startIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+        windowMs = 30 * 24 * 60 * 60 * 1000
         durationType = 'four-hour'
         break
       case 'Year':
-        startIso = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString()
+        windowMs = 365 * 24 * 60 * 60 * 1000
         durationType = 'day'
         break
     }
-    return { interval: durationType, start: startIso, end: now.toISOString() }
+    return { interval: durationType, windowMs }
   }, [activeWindow])
 
-  const samplesQuery = useSampleSets(client, server.id, interval, start, end)
+  const samplesQuery = useSampleSets(client, server.id, interval, windowMs)
   const latestMetricsQuery = useServerMetrics(client, server.id)
 
   const samples = useMemo(() => {
