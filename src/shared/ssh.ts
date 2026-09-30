@@ -146,9 +146,12 @@ export function shQuote(word: string): string {
   return `'${word.replace(/'/g, `'\\''`)}'`
 }
 
-/** PowerShell single-quote a word (no expansion inside; inner quotes are doubled). */
+/**
+ * PowerShell single-quote a word (no expansion inside; inner quotes are doubled). PowerShell also
+ * reads the typographic quotes U+2018, U+2019, U+201A and U+201B as single quotes, so those are doubled too.
+ */
 export function psQuote(word: string): string {
-  return `'${word.replace(/'/g, "''")}'`
+  return `'${word.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`
 }
 
 const POSIX_SAFE = /^[A-Za-z0-9@%+=:,./_-]+$/
