@@ -30,11 +30,15 @@ import {
   useServerConsole,
   useServerUserData,
   useVpcs,
+  useAccount,
+  useServerSoftware,
   useServerActionMutation,
   useServerDiagnosticMutation,
   useCancelServerMutation
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
+import { billingTotal, currentMonthlyCost } from '../../lib/serverPricing'
+import { currentLicenceCost } from '../../lib/licences'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { VpcBadge } from '../vpcs/VpcBadge'
 import { describeStatus } from '../../lib/serverStatus'
@@ -77,6 +81,11 @@ interface ServerDetailsProps {
   /** Change sub-tab from inside the view, e.g. "check firewall rules". */
   onSelectSubTab?: (tab: ServerSubTab) => void
   onBack: () => void
+  /**
+   * This server was cancelled. The app leaves the view only if it is still the one being viewed: the confirmation can
+   * outlast the view (another server opened meanwhile), and then the other server's view must stay.
+   */
+  onCancelled?: (serverId: number) => void
   onOpenTerminal?: (ip: string) => void
   /** The app's server list, forwarded to the Firewall sub-tab (see FirewallManagerProps.servers). */
   servers?: any[]
@@ -158,6 +167,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   activeSubTab = 'overview',
   onSelectSubTab,
   onBack,
+  onCancelled,
   servers: allServers,
   onSaveAsTemplate
 }) => {
@@ -242,6 +252,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const serverAction = useServerActionMutation(client)
   const diagnosticAction = useServerDiagnosticMutation(client, server.id)
   const cancelServer = useCancelServerMutation(client)
+  // What the Cancel Server note quotes as the monthly bill: read on that tab only, since nothing else here needs them.
+  const cancelAccountQuery = useAccount(client)
+  const cancelSoftwareQuery = useServerSoftware(client, server.id, activeSubTab === 'cancel')
   const { track } = useTrackedActions()
 
   const primaryV4 =
@@ -351,7 +364,12 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
    * either way, because once the server is gone there is nothing left to ask.
    */
   const handleCancelServer = async (): Promise<void> => {
-    const monthly = server.size?.price_monthly
+    // The figure is what the server bills (plan, extras, surcharge, backups, licences), on the account's tax: the plan's
+    // list price alone left the rest out. Licences are a separate read; until it has arrived the figure is a floor.
+    const licencesRead = cancelSoftwareQuery.isSuccess
+    const cost = currentMonthlyCost(server as any, licencesRead ? currentLicenceCost((cancelSoftwareQuery.data ?? []) as any) : 0)
+    const billed = cost && cost.total > 0 ? billingTotal(cost.total, cancelAccountQuery.data?.tax_code) : null
+    const billedText = billed ? `$${billed.total.toFixed(2)}/month${billed.note ? ` ${billed.note}` : ''}` : null
     const c = await confirmAction({
       title: 'Cancel server',
       helpSlug: 'server-cancel#worked-example',
@@ -361,8 +379,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       severity: 'irreversible',
       notes: [
         'There is no undo - BinaryLane keeps no copy of a cancelled server.',
-        ...(typeof monthly === 'number' && monthly > 0
-          ? [`This server currently bills at $${monthly.toFixed(2)}/month.`]
+        ...(billedText
+          ? [licencesRead ? `This server currently bills at ${billedText}.` : `This server currently bills at least ${billedText}: its licences have not been read.`]
           : [])
       ],
       changes: [
@@ -391,7 +409,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         outcome: 'completed',
         detail: 'BinaryLane accepted the cancellation; the server is removed within minutes.'
       })
-      onBack()
+      onCancelled ? onCancelled(server.id) : onBack()
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
       alert(`Failed to cancel the server: ${err?.message || 'unknown error'}`)

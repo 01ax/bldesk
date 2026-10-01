@@ -16,3 +16,14 @@ export function validateKeyName(name: string): string | null {
   if (name.endsWith('.pub') || RESERVED.has(name.toLowerCase())) return `"${name}" is a file OpenSSH uses. Choose another name.`
   return null
 }
+
+/**
+ * The key's name, and so its private key's file name, from its public key's file name: the `.pub` suffix removed. Only
+ * the suffix: `my.pubkey.pub` is `my.pubkey` (replacing the first `.pub` found made it `mykey.pub`). Null for a file
+ * that is not a `.pub` or has nothing before the suffix.
+ */
+export function keyNameFromPublicFile(file: string): string | null {
+  if (!file.endsWith('.pub')) return null
+  const name = file.slice(0, -'.pub'.length)
+  return name ? name : null
+}

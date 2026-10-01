@@ -332,6 +332,51 @@ export function configuredCost(i: ConfiguredCostInput): ConfiguredCost {
   }
 }
 
+/** The parts of a server (`Server`) that its monthly bill is worked out from. */
+export interface BilledServer {
+  size?: SizeLike | null
+  image?: ImageLike | null
+  memory?: number | null
+  disk?: number | null
+  selected_size_options?: {
+    ipv4_addresses?: number | null
+    daily_backups?: number | null
+    weekly_backups?: number | null
+    monthly_backups?: number | null
+    offsite_backups?: boolean | null
+    transfer?: number | null
+  } | null
+  networks?: { v4?: Array<{ type?: string | null }> | null } | null
+}
+
+/**
+ * What a server bills each month, before tax, from what it is set up with now: its plan, extra memory and storage, the
+ * image's surcharge, extra addresses, backups and offsite backups beyond what the plan includes, extra transfer, and the
+ * licences it holds (`licencesMonthly`, before tax). The server's own `selected_size_options` are read, not the plan's
+ * defaults. Change Plan compares against this, and Cancel Server quotes it, so the two cannot disagree.
+ *
+ * Null when the server has no plan to price.
+ */
+export function currentMonthlyCost(server: BilledServer, licencesMonthly: number): ConfiguredCost | null {
+  if (!server.size) return null
+  const current = server.selected_size_options ?? {}
+  const publicIps = (server.networks?.v4 ?? []).filter((n) => n.type === 'public').length
+  const ipCount = current.ipv4_addresses ?? publicIps
+  return configuredCost({
+    size: server.size,
+    image: server.image ?? undefined,
+    memoryMb: server.memory ?? 0,
+    diskGb: server.disk ?? 0,
+    ipCount: ipCount || 1,
+    dailyBackups: current.daily_backups ?? 0,
+    weeklyBackups: current.weekly_backups ?? 0,
+    monthlyBackups: current.monthly_backups ?? 0,
+    offsiteBackups: !!current.offsite_backups,
+    transferTb: current.transfer ?? server.size.transfer ?? 0,
+    licencesMonthly
+  })
+}
+
 /**
  * The transfer allowance to send with a resize.
  *

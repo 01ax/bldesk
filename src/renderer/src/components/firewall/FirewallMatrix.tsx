@@ -84,7 +84,8 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   const matrix = useMemo(() => buildMatrix(rulesByServer), [rulesByServer])
   const audits = useMemo(() => {
     const m = new Map<number, AuditFlag[]>()
-    for (const s of scoped) m.set(s.id, auditServer(rulesByServer.get(s.id) ?? null, accountAddresses))
+    // A server the fleet read has not answered about yet is still loading, not unreadable: only an answer of null is.
+    for (const s of scoped) m.set(s.id, rulesByServer.has(s.id) ? auditServer(rulesByServer.get(s.id) ?? null, accountAddresses) : [])
     return m
   }, [scoped, rulesByServer, accountAddresses])
 

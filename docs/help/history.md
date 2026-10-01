@@ -8,7 +8,7 @@ keywords: [history, audit, submitted, completed, failed, lost, jsonl]
 Use History to see cloud changes and confirmed SSH broadcasts recorded by this BLDesk installation for the selected profile. Entries include the target, review details and outcome. It is not a complete account-wide audit log of work done in mPanel or other tools.
 
 ## Submitted is not completed
-The History labels are Submitted, Completed, Errored, Failed and Lost track. Submitted means accepted, not finished; Errored means the action reported an error, while Failed means the request failed. Lost track means BLDesk stopped being able to follow it.
+The History labels are Submitted, Completed, Errored, Failed and Lost track. Submitted means accepted, not finished; Errored means the action reported an error, while Failed means the request failed. Lost track means BLDesk stopped being able to follow it, for example because you switched to another account while the action was still running; the entry stays in the account that made the change, and its result is on BinaryLane. Changes made after a template build, such as its firewall rules, are recorded in the account the server was built in, even if you switch accounts meanwhile.
 
 The separate running-action tracker can show an action waiting for an answer or blocked by an invoice. Those are not extra History labels: its History entry remains Submitted until a final outcome is recorded. Resolve the prompt or payment and check the eventual result before repeating the action.
 

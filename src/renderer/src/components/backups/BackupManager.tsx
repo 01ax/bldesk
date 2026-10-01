@@ -102,7 +102,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       (a.type === 'take_backup' || a.type === 'restore' || a.type?.includes('backup'))
   )
 
-  const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
+  // The schedule is the server's daily backups (what enabling and disabling automated backups add and remove), not the
+  // backups it holds: one on-demand backup does not make a manual-only server "Enabled". With no options to read, the
+  // API's next scheduled backup stands in.
+  const isAutoBackupEnabled = activeServer?.selected_size_options
+    ? (activeServer.selected_size_options.daily_backups ?? 0) > 0
+    : !!activeServer?.next_backup_window
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
   // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
@@ -277,8 +282,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const handleAttach = async (imageId: number, name: string) => {
     if (!activeServerId) return
     setActionProcessingId(imageId)
+    let changeId: string | undefined
     try {
-      const changeId = await recordChange({
+      changeId = await recordChange({
         label: `Attach "${name}"`,
         target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
         severity: 'normal',
@@ -295,6 +301,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         body: `Mounting "${name}" as a secondary drive.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Attach failed: ${err.message}`)
     } finally {
       setActionProcessingId(null)
@@ -323,8 +330,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Detach secondary drive
   const handleDetach = async () => {
     if (!activeServerId) return
+    let changeId: string | undefined
     try {
-      const changeId = await recordChange({
+      changeId = await recordChange({
         label: 'Detach Secondary Drive',
         target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
         severity: 'normal',
@@ -337,6 +345,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         body: `Unmounting the secondary backup drive.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Detach failed: ${err.message}`)
     }
   }
@@ -346,7 +355,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
     const enable = !isAutoBackupEnabled
     const c = await confirmAction({
-      title: `${enable ? 'Enable' : 'Disable'} automated backups`,
+      title: enable ? 'Enable automated backups' : 'Remove daily backups',
       target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
       summary: enable
         ? 'BinaryLane takes a nightly backup on the server\'s schedule.'
@@ -364,10 +373,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
     try {
       const queued = await toggleAutomatedBackups.mutateAsync(enable)
-      if (queued) track(queued, `${enable ? 'Enable' : 'Disable'} Automated Backups`, activeServer?.name, c.changeId)
+      if (queued) track(queued, enable ? 'Enable Automated Backups' : 'Remove Daily Backups', activeServer?.name, c.changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Schedule Change Requested',
-        body: `${enable ? 'Enabling' : 'Disabling'} automated backups for server #${activeServerId}.`
+        body: `${enable ? 'Enabling automated backups' : 'Removing the daily backups'} for server #${activeServerId}.`
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
@@ -456,7 +465,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 : 'text-[#017cb6] bg-[#017cb6]/10 border-[#017cb6]/30 hover:bg-[#017cb6]/20'
             }`}
           >
-            {isAutoBackupEnabled ? 'Disable Schedule' : 'Enable Nightly Backups'}
+            {isAutoBackupEnabled ? 'Remove Daily Backups' : 'Enable Nightly Backups'}
           </button>
         </div>
       )}

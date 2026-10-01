@@ -16,6 +16,8 @@ It also warns:
 
 “There is no undo - BinaryLane keeps no copy of a cancelled server.”
 
+When the server has a monthly price, a third line gives what it currently bills: the plan, extra memory and storage, the image surcharge, extra addresses, backups and licences, with the account's tax added and named. Until the server's licences have been read it says the server bills at least that amount. It is the figure Change Plan compares against, not a quote of the final invoice, which is for usage to date.
+
 Copy any files and backups you need elsewhere first. Type the server name, then choose “Cancel server”. Cancel the dialog if you only wanted to power the VM off.
 
 ## Afterwards

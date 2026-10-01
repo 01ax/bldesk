@@ -18,6 +18,7 @@ import {
   type MapServer,
   type MapVpc
 } from '../../lib/networkMap'
+import { cardFooter, estimateFooter, type MeasureFooter } from '../../lib/mapFooter'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -115,6 +116,20 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
   const layout = useMemo(() => layoutTopology(model.mapServers, model.mapVpcs, model.mapLbs), [model])
 
   // --- View state
+  // The footer's two halves are measured as the browser draws them, so the font in use (Menlo, Consolas, DejaVu) decides.
+  const measureFooter = useMemo<MeasureFooter>(() => {
+    try {
+      const ctx = document.createElement('canvas').getContext('2d')
+      if (!ctx) return estimateFooter
+      const family = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+      return (text, role) => {
+        ctx.font = role === 'port' ? `700 9px ${family}` : `9.5px ${family}`
+        return ctx.measureText(text).width
+      }
+    } catch {
+      return estimateFooter
+    }
+  }, [])
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, k: 1 })
@@ -564,6 +579,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
                   const isSel = selected === n.id
                   // Grey until the rules have been read; "?" means they could not be.
                   const portColour = s.exposure === '…' || s.exposure === '?' ? '#adb5bd' : levelColour(s.exposureLevel)
+                  const footer = cardFooter(s.exposure, s.publicIp, s.privateIp, n.w, measureFooter)
                   return (
                     <g
                       key={n.id}
@@ -583,7 +599,8 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
                       <g>
                         <rect x={n.x - 1} y={n.y + 8} width={5} height={n.h - 16} rx={2} fill={portColour} />
                         <text x={n.x + 12} y={n.y + n.h - 9} fontSize={9} fontWeight={700} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fill={portColour}>
-                          {s.exposure}
+                          <title>{s.exposure}</title>
+                          {footer.exposure}
                         </text>
                       </g>
                       {/* Power */}
@@ -592,8 +609,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
                         {s.name.length > 22 ? s.name.slice(0, 21) + '…' : s.name}
                       </text>
                       <text x={n.x + n.w - 10} y={n.y + n.h - 9} textAnchor="end" fontSize={9.5} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" className="fill-[#6c757d] dark:fill-slate-400">
-                        {s.publicIp ?? '—'}
-                        {s.privateIp ? `  ·  ${s.privateIp}` : ''}
+                        {footer.addresses}
                       </text>
                     </g>
                   )

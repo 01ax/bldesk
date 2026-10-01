@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../api/client'
 import { describeActionFailure, pollActionToSettled } from '../api/queries'
-import { updateChange } from '../lib/changelog'
+import { getChangeLogProfile, updateChange } from '../lib/changelog'
 
 type ServerAction = components['schemas']['Action']
 
@@ -88,6 +88,12 @@ export function ActionTrackerProvider({
   const queryClient = useQueryClient()
   /** One controller per tracked action, so teardown or a profile switch stops the polls. */
   const controllers = useRef(new Map<number, AbortController>())
+  /**
+   * The History entry and account of each action being followed. An entry is written to the account that started the
+   * action, not to whichever is active when the answer arrives, and one still being followed when the account is
+   * switched is closed as `lost` rather than left at "submitted".
+   */
+  const followed = useRef(new Map<number, { changeId?: string; profileId?: string }>())
 
   const update = useCallback((actionId: number, patch: Partial<TrackedAction>) => {
     setTracked((prev) => prev.map((t) => (t.actionId === actionId ? { ...t, ...patch } : t)))
@@ -121,7 +127,9 @@ export function ActionTrackerProvider({
     (action: ServerAction, label: string, resourceName?: string, changeId?: string) => {
       if (!client || !action?.id) return
       if (controllers.current.has(action.id)) return
-      void updateChange(changeId, { actionId: action.id })
+      const profileId = getChangeLogProfile()
+      followed.current.set(action.id, { changeId, profileId })
+      void updateChange(changeId, { actionId: action.id }, profileId)
 
       const controller = new AbortController()
       controllers.current.set(action.id, controller)
@@ -213,7 +221,7 @@ export function ActionTrackerProvider({
               ? 'Shutdown signal sent. The server shows as off once its OS halts; if it stays running, the OS ignored the signal — use Power off for a hard stop.'
               : undefined
             update(action.id, { state: 'completed', percentComplete: 100, detail })
-            void updateChange(changeId, { outcome: 'completed', detail })
+            void updateChange(changeId, { outcome: 'completed', detail }, profileId)
             void window.bldeskApi?.sendNotification?.({
               title: signalOnly ? `${subject}: signal sent` : `${subject} completed`,
               body: signalOnly ? 'Waiting for the OS to halt — you will be told when it is off.' : 'Finished on BinaryLane.',
@@ -231,7 +239,7 @@ export function ActionTrackerProvider({
                 const wantedOff = type === 'power_off' || type === 'shutdown'
                 const asExpected = wantedOff ? verdict === 'off' : verdict === 'on'
                 const line = verdict === 'off' ? 'Server is off.' : 'Server is running.'
-                void updateChange(changeId, { detail: asExpected ? line : `${line} Not the expected state.` })
+                void updateChange(changeId, { detail: asExpected ? line : `${line} Not the expected state.` }, profileId)
                 update(action.id, {
                   detail: asExpected
                     ? line
@@ -251,7 +259,7 @@ export function ActionTrackerProvider({
           } else if (settled.state === 'errored') {
             const detail = describeActionFailure(settled.action) ?? undefined
             update(action.id, { state: 'errored', detail, dismissed: false })
-            void updateChange(changeId, { outcome: 'errored', detail })
+            void updateChange(changeId, { outcome: 'errored', detail }, profileId)
             void window.bldeskApi?.sendNotification?.({ title: `${subject} failed`, body: detail || 'BinaryLane reported an error.', kind: 'action' })
           } else {
             update(action.id, { state: 'running' })
@@ -287,7 +295,7 @@ export function ActionTrackerProvider({
             void queryClient.invalidateQueries({ queryKey: ['firewallRules', action.resource_id] })
             void queryClient.invalidateQueries({ queryKey: ['fleet-firewalls'] })
           }
-          void updateChange(changeId, { outcome: 'lost', detail: err instanceof Error ? err.message : String(err) })
+          void updateChange(changeId, { outcome: 'lost', detail: err instanceof Error ? err.message : String(err) }, profileId)
         } finally {
           // Only retire our own controller. `finally` runs on the aborted early
           // returns above too, so an unconditional delete here would evict a
@@ -295,6 +303,7 @@ export function ActionTrackerProvider({
           // leaving it invisible to both `dismiss` and the duplicate guard.
           if (controllers.current.get(action.id) === controller) {
             controllers.current.delete(action.id)
+            followed.current.delete(action.id)
           }
         }
       })()
@@ -337,6 +346,11 @@ export function ActionTrackerProvider({
     return () => {
       controllers.current.forEach((c) => c.abort())
       controllers.current.clear()
+      // Their History entries would otherwise stay at "submitted" for ever: nothing follows them now.
+      followed.current.forEach(({ changeId, profileId }) => {
+        void updateChange(changeId, { outcome: 'lost', detail: 'BLDesk stopped following this action when the account changed. Its result is on BinaryLane: check the account\'s actions there.' }, profileId)
+      })
+      followed.current.clear()
       // The polls are gone, so their entries must go too: one left as "running" would never be updated again.
       setTracked([])
     }

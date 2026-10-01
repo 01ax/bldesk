@@ -18,6 +18,7 @@ import { registerHelpHandlers } from './help'
 import { installWindowZoom, installZoomMenu } from './zoom'
 import { installApiCorsHeaders, installIpcSenderGuard, installNavigationGuards, lockRescueConsoleSession, openExternalSafe, rescueConsoleUrl, RESCUE_CONSOLE_PARTITION, setAppEntry } from './security'
 import { ConsoleWindowOptions, SystemNotificationOptions, TerminalLaunchOptions, TrayFleetSummary, UpdateChannel } from '../shared/ipc-types'
+import { keyNameFromPublicFile } from '../shared/sshKeyNames'
 
 // Linux sandbox note: Chromium decides how to sandbox before this file runs,
 // so `--no-sandbox` cannot be added from here. The AppImage launcher
@@ -283,7 +284,8 @@ function registerIpcHandlers(): void {
       const files = readdirSync(sshDir)
       const pubFiles = files.filter(f => f.endsWith('.pub'))
       const discovered = pubFiles.flatMap(f => {
-        const baseName = f.replace('.pub', '')
+        const baseName = keyNameFromPublicFile(f)
+        if (!baseName) return []
         const privPath = join(sshDir, baseName)
         const pubPath = join(sshDir, f)
         const hasPriv = existsSync(privPath)

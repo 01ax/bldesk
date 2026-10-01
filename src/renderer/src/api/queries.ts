@@ -1903,7 +1903,7 @@ export function useOsSoftware(client: BinaryLaneClient | null, osSlug: string | 
 }
 
 /** The licences a server currently holds, used to prefill the licence controls. */
-export function useServerSoftware(client: BinaryLaneClient | null, serverId: number | null | undefined) {
+export function useServerSoftware(client: BinaryLaneClient | null, serverId: number | null | undefined, enabled = true) {
   return useQuery({
     queryKey: ['server-software', serverId],
     queryFn: async () => {
@@ -1914,7 +1914,7 @@ export function useServerSoftware(client: BinaryLaneClient | null, serverId: num
       if (error || !response.ok) throw apiFailure(error, response)
       return data?.licensed_software || []
     },
-    enabled: !!client && !!serverId,
+    enabled: !!client && !!serverId && enabled,
     staleTime: 60000
   })
 }
