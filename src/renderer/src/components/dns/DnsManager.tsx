@@ -1,6 +1,7 @@
 import { HelpLink } from '../ui/HelpLink'
+import { Modal } from '../ui/Modal'
 import React, { useEffect, useState } from 'react'
-import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight, ExternalLink} from 'lucide-react'
+import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
@@ -504,90 +505,88 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
         </div>
       </div>
 
-      {/* Add Record Modal */}
+      {/* Add Record dialog */}
       {isAddingRecord && selectedDomain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">
-                Add DNS Record to {selectedDomain}
-              </h2>
-              <button onClick={() => setIsAddingRecord(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-                <X className="w-4 h-4" />
+        <Modal
+          title={`Add DNS Record to ${selectedDomain}`}
+          size="sm"
+          onClose={() => setIsAddingRecord(false)}
+          busy={isSubmitting}
+          as="form"
+          onSubmit={handleCreateRecord}
+          footer={
+            <div className="flex justify-end gap-2 p-4">
+              <button
+                type="button"
+                onClick={() => setIsAddingRecord(false)}
+                disabled={isSubmitting}
+                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+              >
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Save Record</span>
               </button>
             </div>
-
-            <form onSubmit={handleCreateRecord} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                    Record Type
-                  </label>
-                  <select
-                    value={recordType}
-                    onChange={(e) => setRecordType(e.target.value)}
-                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                  >
-                    <option value="A">A (IPv4)</option>
-                    <option value="AAAA">AAAA (IPv6)</option>
-                    <option value="CNAME">CNAME</option>
-                    <option value="MX">MX</option>
-                    <option value="TXT">TXT</option>
-                    <option value="NS">NS</option>
-                    <option value="SRV">SRV</option>
-                    <option value="CAA">CAA</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                    Host / Subdomain
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="@ or www"
-                    value={recordName}
-                    onChange={(e) => setRecordName(e.target.value)}
-                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
-                  />
-                </div>
+          }
+        >
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                  Record Type
+                </label>
+                <select
+                  value={recordType}
+                  onChange={(e) => setRecordType(e.target.value)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                >
+                  <option value="A">A (IPv4)</option>
+                  <option value="AAAA">AAAA (IPv6)</option>
+                  <option value="CNAME">CNAME</option>
+                  <option value="MX">MX</option>
+                  <option value="TXT">TXT</option>
+                  <option value="NS">NS</option>
+                  <option value="SRV">SRV</option>
+                  <option value="CAA">CAA</option>
+                </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Target / Value
+                  Host / Subdomain
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 103.x.x.x or hostname.com"
-                  value={recordData}
-                  onChange={(e) => setRecordData(e.target.value)}
+                  placeholder="@ or www"
+                  value={recordName}
+                  onChange={(e) => setRecordName(e.target.value)}
                   className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
                 />
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingRecord(false)}
-                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
-                >
-                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Save Record</span>
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Target / Value
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. 103.x.x.x or hostname.com"
+                value={recordData}
+                onChange={(e) => setRecordData(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
+              />
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
       {/* Right-click menu: the list is the only place a full domain name is on
           screen, and it is the thing most often needed elsewhere. */}

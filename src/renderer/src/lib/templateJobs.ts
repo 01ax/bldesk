@@ -3,6 +3,7 @@ import { recordChange, updateChange } from './changelog'
 import { loadTags, saveTags, withTag } from './serverGroups'
 import type { FwRule } from './firewallMatrix'
 import { ruleSignature } from './firewallMatrix'
+import { toRuleRequest } from './firewallRules'
 
 /**
  * The part of "new server from template" that happens after BinaryLane accepts
@@ -104,7 +105,8 @@ async function run(
   job: TemplateJob,
   input: { templateName: string; created: { id?: number; name: string }; profileId?: string; firewallRules?: FwRule[]; tags?: string[] }
 ): Promise<void> {
-  const rules = input.firewallRules ?? []
+  // The reference requires a destination on every rule; a template rule that names none is written as "any".
+  const rules = (input.firewallRules ?? []).map(toRuleRequest)
   const tags = input.tags ?? []
   if (!rules.length && !tags.length) {
     set(job, { status: 'done', detail: 'Server requested. The template had no firewall rules or tags to apply.' })

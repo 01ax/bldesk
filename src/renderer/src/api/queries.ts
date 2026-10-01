@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tansta
 import { BinaryLaneClient } from './client'
 import { components } from '@shared/api/schema'
 import type { FleetMetricResult } from '../lib/heatmap'
+import { toRuleRequest } from '../lib/firewallRules'
 import { ApiError, apiFailure, describeApiError, fetchAllPages, isFinalFailure } from './errors'
 export { ApiError, apiFailure, describeApiError, isFinalFailure }
 
@@ -314,30 +315,43 @@ export function useVpcs(client: BinaryLaneClient | null) {
 /** How long a firewall rules read may take before it is reported as failed (the fleet reads use the same limit). */
 const FIREWALL_READ_TIMEOUT_MS = 20_000
 
+/**
+ * One server's firewall rules, read now. A failed read throws rather than returning an empty list: every save writes the
+ * whole list back, so an empty list built from a failure let one added rule replace all of the server's real ones. A
+ * failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+ */
+export async function fetchFirewallRules(client: BinaryLaneClient, serverId: number): Promise<any[]> {
+  let res
+  try {
+    res = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+      params: { path: { server_id: serverId } },
+      signal: AbortSignal.timeout(FIREWALL_READ_TIMEOUT_MS)
+    })
+  } catch (err) {
+    // A read that never answers must end in a failure with a way to retry, not stay on "Fetching…".
+    if (isTimeoutError(err)) throw new ApiError(`BinaryLane did not answer within ${FIREWALL_READ_TIMEOUT_MS / 1000} seconds.`)
+    throw err
+  }
+  const { data, error, response } = res
+  if (error || !response.ok) throw apiFailure(error, response)
+  return data?.firewall_rules || []
+}
+
+/** The rules as they are now, or null when they could not be read. For a write that needs the current list to diff against. */
+export async function readFirewallRules(client: BinaryLaneClient, serverId: number): Promise<any[] | null> {
+  try {
+    return await fetchFirewallRules(client, serverId)
+  } catch {
+    return null
+  }
+}
+
 export function useFirewallRules(client: BinaryLaneClient | null, serverId: number | null) {
   return useQuery({
     queryKey: ['firewallRules', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      let res
-      try {
-        res = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
-          params: { path: { server_id: serverId } },
-          signal: AbortSignal.timeout(FIREWALL_READ_TIMEOUT_MS)
-        })
-      } catch (err) {
-        // A read that never answers must end in a failure with a way to retry, not stay on "Fetching…".
-        if (isTimeoutError(err)) throw new ApiError(`BinaryLane did not answer within ${FIREWALL_READ_TIMEOUT_MS / 1000} seconds.`)
-        throw err
-      }
-      const { data, error, response } = res
-      // A failed read must not become "no rules": every save writes the whole
-      // list back, so an empty list built from a failure let one added rule
-      // replace all of the server's real ones. Throw instead, so the query
-      // reports the failure and keeps any list that did load. A failure with an
-      // empty body leaves `error` unset (openapi-fetch), so the status counts too.
-      if (error || !response.ok) throw apiFailure(error, response)
-      return data?.firewall_rules || []
+      return fetchFirewallRules(client, serverId)
     },
     enabled: !!client && !!serverId
   })
@@ -499,7 +513,8 @@ export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, 
         params: { path: { server_id: serverId } },
         body: {
           type: 'change_advanced_firewall_rules',
-          firewall_rules: rules
+          // The reference requires a destination on every rule; one that names none is written as "any".
+          firewall_rules: rules.map(toRuleRequest)
         }
       })
       if (error || !response.ok) throw apiFailure(error, response)

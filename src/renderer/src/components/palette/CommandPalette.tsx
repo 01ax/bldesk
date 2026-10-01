@@ -55,6 +55,7 @@ import {
   type TargetMatch
 } from '../../lib/commands'
 import type { ActiveTab, ServerSubTab } from '../layout/Sidebar'
+import { isModalOpen } from '../ui/Modal'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -187,7 +188,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         if (isOpen) onClose()
-        else onOpen()
+        // A dialog owns the keyboard while it is open. A palette raised over it sits under its backdrop, and its Enter
+        // would be heard by the dialog as well.
+        else if (!isModalOpen()) onOpen()
       }
     }
     window.addEventListener('keydown', handleKeyDown)

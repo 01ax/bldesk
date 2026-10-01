@@ -1,4 +1,5 @@
 import { HelpLink } from '../ui/HelpLink'
+import { Modal } from '../ui/Modal'
 import React, { useState } from 'react'
 import {
   Layers,
@@ -8,7 +9,6 @@ import {
   UserPlus,
   Unlink,
   Trash2,
-  X,
   AlertCircle,
   Copy,
   Check,
@@ -422,14 +422,33 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
 
       {/* Create Load Balancer Modal */}
       {isCreating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-lg p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">Deploy High-Availability Load Balancer</h2>
-              <button onClick={() => setIsCreating(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-                <X className="w-4 h-4" />
+        <Modal
+          title="Deploy High-Availability Load Balancer"
+          onClose={() => setIsCreating(false)}
+          busy={createLbMutation.isPending}
+          as="form"
+          onSubmit={handleCreateLb}
+          footer={
+            <div className="flex justify-end gap-2 p-4 text-xs">
+              <button
+                type="button"
+                onClick={() => setIsCreating(false)}
+                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createLbMutation.isPending}
+                className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+              >
+                {createLbMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Provision Load Balancer</span>
               </button>
             </div>
+          }
+        >
+          <div className="p-5 space-y-4 text-xs">
 
             {createError && (
               <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
@@ -438,151 +457,133 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleCreateLb} className="space-y-4 text-xs">
+            <div>
+              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Load Balancer Name / FQDN
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. app-lb.production"
+                value={lbName}
+                onChange={(e) => setLbName(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Load Balancer Name / FQDN
+                  Region
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. app-lb.production"
-                  value={lbName}
-                  onChange={(e) => setLbName(e.target.value)}
+                <select
+                  value={lbRegion}
+                  onChange={(e) => setLbRegion(e.target.value)}
                   className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                    Region
-                  </label>
-                  <select
-                    value={lbRegion}
-                    onChange={(e) => setLbRegion(e.target.value)}
-                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                  >
-                    <option value="anycast">Global Anycast</option>
-                    {regions.map((r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.name} ({r.slug.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                    Default Protocol
-                  </label>
-                  <select
-                    value={entryProtocol}
-                    onChange={(e) => setEntryProtocol(e.target.value as any)}
-                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                  >
-                    <option value="http">HTTP (Port 80)</option>
-                    <option value="https">HTTPS (Port 443)</option>
-                  </select>
-                </div>
+                >
+                  <option value="anycast">Global Anycast</option>
+                  {regions.map((r) => (
+                    <option key={r.slug} value={r.slug}>
+                      {r.name} ({r.slug.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Select Initial Pool Servers
+                  Default Protocol
                 </label>
-                <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded">
-                  {servers.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex items-center gap-2 cursor-pointer text-xs p-1 hover:bg-[#e9ecef] dark:hover:bg-[#343a40] rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedServerIds.includes(s.id)}
-                        onChange={() => handleToggleCreateServer(s.id)}
-                        className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
-                      />
-                      <span className="font-medium text-[#212529] dark:text-white">{s.name}</span>
-                      <span className="text-[10px] text-[#6c757d] font-mono">#{s.id}</span>
-                    </label>
-                  ))}
-                </div>
+                <select
+                  value={entryProtocol}
+                  onChange={(e) => setEntryProtocol(e.target.value as any)}
+                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                >
+                  <option value="http">HTTP (Port 80)</option>
+                  <option value="https">HTTPS (Port 443)</option>
+                </select>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
-                <button
-                  type="button"
-                  onClick={() => setIsCreating(false)}
-                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLbMutation.isPending}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
-                >
-                  {createLbMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Provision Load Balancer</span>
-                </button>
+            <div>
+              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Select Initial Pool Servers
+              </label>
+              <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded">
+                {servers.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 cursor-pointer text-xs p-1 hover:bg-[#e9ecef] dark:hover:bg-[#343a40] rounded"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedServerIds.includes(s.id)}
+                      onChange={() => handleToggleCreateServer(s.id)}
+                      className="rounded border-[#ced4da] text-[#017cb6] focus:ring-0"
+                    />
+                    <span className="font-medium text-[#212529] dark:text-white">{s.name}</span>
+                    <span className="text-[10px] text-[#6c757d] font-mono">#{s.id}</span>
+                  </label>
+                ))}
               </div>
-            </form>
+            </div>
+
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Attach Modal */}
       {attachModalLb && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">Add Server to Pool</h2>
-              <button onClick={() => setAttachModalLb(null)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-                <X className="w-4 h-4" />
+        <Modal
+          title="Add Server to Pool"
+          size="sm"
+          onClose={() => setAttachModalLb(null)}
+          busy={addServerMutation.isPending}
+          as="form"
+          onSubmit={handleAttachServer}
+          footer={
+            <div className="flex justify-end gap-2 p-4 text-xs">
+              <button
+                type="button"
+                onClick={() => setAttachModalLb(null)}
+                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addServerMutation.isPending || !selectedServerToAttach}
+                className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {addServerMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Add Target</span>
               </button>
             </div>
+          }
+        >
+          <div className="p-5 space-y-4 text-xs">
 
-            <form onSubmit={handleAttachServer} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Select Server
-                </label>
-                <select
-                  value={selectedServerToAttach || ''}
-                  onChange={(e) => setSelectedServerToAttach(Number(e.target.value))}
-                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                >
-                  {servers
-                    .filter((s) => !(attachModalLb.server_ids || []).includes(s.id))
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} (#{s.id})
-                      </option>
-                    ))}
-                </select>
-              </div>
+            <div>
+              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Select Server
+              </label>
+              <select
+                value={selectedServerToAttach || ''}
+                onChange={(e) => setSelectedServerToAttach(Number(e.target.value))}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+              >
+                {servers
+                  .filter((s) => !(attachModalLb.server_ids || []).includes(s.id))
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} (#{s.id})
+                    </option>
+                  ))}
+              </select>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
-                <button
-                  type="button"
-                  onClick={() => setAttachModalLb(null)}
-                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addServerMutation.isPending || !selectedServerToAttach}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  {addServerMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Add Target</span>
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

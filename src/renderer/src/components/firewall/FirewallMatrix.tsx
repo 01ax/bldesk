@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Copy, Grid3x3, Info, Loader2, Plus, RefreshCw, ShieldAlert, Tag, Trash2, Users, X } from 'lucide-react'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
-import { useFleetFirewalls, describeApiError } from '../../api/queries'
+import { apiFailure, fetchFirewallRules, mapLimitNullable, useFleetFirewalls } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { diffLines, describeFirewallRule, type DiffLine } from '../../lib/diff'
+import { ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import { primaryIpv4 } from '../../lib/deeplinks'
 import { auditServer, buildMatrix, worstLevel, type AuditFlag, type FwRule } from '../../lib/firewallMatrix'
 import { GROUPS_EVENT, effectiveGroups, loadGroups, loadTags, newGroup, resolveGroup, saveGroups, saveTags, tagsOf, withTag, type ServerGroup, type TagMap } from '../../lib/serverGroups'
@@ -132,40 +133,66 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
     })
 
   const handleCopy = async () => {
-    if (!client || sourceId == null || !sourceRules || targets.length === 0) return
+    if (!client || sourceId == null || !sourceRules || targets.length === 0 || copying) return
     const source = servers.find((s) => s.id === sourceId)
-    const after = sourceRules.map(describeFirewallRule)
+
+    // The fleet read can be a minute old, and a copy replaces each target's whole list: a rule added to a target since
+    // would be removed by a diff that never showed it. So the source and every target are read again now, and the diff
+    // and the write are built from those reads. A server that cannot be read now is not written to.
+    setCopying(true)
+    setCopyError(null)
+    const ids = [sourceId, ...targets.map((t) => t.id)]
+    const reads = await mapLimitNullable(ids, 4, (id) => fetchFirewallRules(client, id))
+    const now = new Map<number, any[] | null>(ids.map((id, i) => [id, reads[i]]))
+    setCopying(false)
+    const sourceNow = now.get(sourceId)
+    if (!sourceNow) {
+      setCopyError(`Couldn't read the firewall rules on ${source?.name ?? sourceId}. Nothing was changed: a copy needs its current rules first.`)
+      return
+    }
+    // A copy of no rules would clear every selected server's list, which is Disable firewall on each and is confirmed as such.
+    if (sourceNow.length === 0) {
+      setCopyError(`${source?.name ?? sourceId} has no rules, so copying it would remove every rule on the selected servers. Nothing was changed. Disable the firewall on a server from its own Firewall tab if that is what you want.`)
+      return
+    }
+    const readNow = targets.filter((t) => now.get(t.id))
+    const unreadable = targets.filter((t) => !now.get(t.id))
+    if (readNow.length === 0) {
+      setCopyError(`Couldn't read the firewall rules on ${unreadable.map((t) => t.name).join(', ')}. Nothing was changed: a copy replaces a server's whole list, so it needs the current one first.`)
+      return
+    }
+    const outgoing = sourceNow.map(toRuleRequest)
+    const after = outgoing.map(describeFirewallRule)
 
     // One combined preview: a heading line per target, then that target's diff.
     const combined: DiffLine[] = []
     const perTarget = new Map<number, DiffLine[]>()
-    for (const t of targets) {
-      const before = rulesByServer.get(t.id)!.map(describeFirewallRule)
+    for (const t of readNow) {
+      const before = now.get(t.id)!.map(describeFirewallRule)
       const d = diffLines(before, after)
       perTarget.set(t.id, d)
       combined.push({ kind: 'same', text: `── ${t.name} (#${t.id}) ──` }, ...d)
     }
-    const unchanged = targets.filter((t) => !perTarget.get(t.id)?.some((l) => l.kind !== 'same'))
+    const unchanged = readNow.filter((t) => !perTarget.get(t.id)?.some((l) => l.kind !== 'same'))
 
     const c = await confirmAction({
       title: 'Copy firewall rules',
       helpSlug: 'firewall#copy-a-ruleset',
-      target: { kind: 'server', name: `${targets.length} server${targets.length === 1 ? '' : 's'}` },
-      summary: `Replaces the rule list on each selected server with the ${after.length} rule${after.length === 1 ? '' : 's'} from ${source?.name ?? sourceId}.${
+      target: { kind: 'server', name: `${readNow.length} server${readNow.length === 1 ? '' : 's'}` },
+      summary: `Replaces the rule list on each selected server with the ${ruleCount(after.length)} from ${source?.name ?? sourceId}.${
         unchanged.length ? ` ${unchanged.length} already match and will be skipped.` : ''
-      }`,
+      }${unreadable.length ? ` ${unreadable.length} could not be read just now and will not be written to: ${unreadable.map((t) => t.name).join(', ')}.` : ''}`,
       severity: 'destructive',
       notes: ['Each server is written separately and recorded separately in History, so a failure on one does not affect the others.'],
       diff: combined,
-      confirmLabel: `Write to ${targets.length - unchanged.length} server${targets.length - unchanged.length === 1 ? '' : 's'}`,
+      confirmLabel: `Write to ${readNow.length - unchanged.length} server${readNow.length - unchanged.length === 1 ? '' : 's'}`,
       log: false
     })
     if (!c.ok) return
 
     setCopying(true)
-    setCopyError(null)
-    const failures: string[] = []
-    for (const t of targets) {
+    const failures: string[] = unreadable.map((t) => `${t.name}: couldn't read its rules just now, so nothing was written.`)
+    for (const t of readNow) {
       if (unchanged.includes(t)) continue
       const changeId = await recordChange({
         label: 'Copy firewall rules',
@@ -176,11 +203,11 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
         source: 'ui'
       })
       try {
-        const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+        const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: t.id } },
-          body: { type: 'change_advanced_firewall_rules', firewall_rules: sourceRules as never }
+          body: { type: 'change_advanced_firewall_rules', firewall_rules: outgoing as never }
         })
-        if (error) throw new Error(describeApiError(error))
+        if (error || !response.ok) throw apiFailure(error, response)
         if (data?.action) track(data.action, 'Copy firewall rules', t.name, changeId)
         else void updateChange(changeId, { outcome: 'completed' })
       } catch (err: any) {
@@ -370,7 +397,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                 const r = rulesByServer.get(s.id)
                 return (
                   <option key={s.id} value={s.id} disabled={r == null}>
-                    {s.name} ({r === null ? 'unreadable' : r === undefined ? 'loading' : `${r.length} rules`})
+                    {s.name} ({r === null ? 'unreadable' : r === undefined ? 'loading' : ruleCount(r.length)})
                   </option>
                 )
               })}
@@ -470,7 +497,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                       <span className="font-semibold">{s.name}</span>
                     </button>
                     <div className="text-[10px] text-[#6c757d] font-mono pl-3.5">
-                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : rules === undefined ? 'loading' : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
+                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : rules === undefined ? 'loading' : ruleCount(rules.length)}
                     </div>
                     <div className="flex flex-wrap items-center gap-1 pl-3.5 mt-1">
                       {tagsOf(tags, s.id).map((t) => (

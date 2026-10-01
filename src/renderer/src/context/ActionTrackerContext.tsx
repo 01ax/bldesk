@@ -21,6 +21,9 @@ export interface TrackedAction {
   label: string
   /** Which machine, when we know it. */
   resourceName?: string
+  /** The server the action runs on and what it does, so a screen can tell that its own change is still being applied. */
+  resourceId?: number
+  actionType?: string
   state: TrackedActionState
   /** Populated once settled, for the failure case. */
   detail?: string
@@ -32,6 +35,11 @@ export interface TrackedAction {
    */
   stepDetail?: string
   startedAt: number
+  /**
+   * The person closed the toast while the action was still being worked on. It is still followed, out of sight, so a
+   * screen can tell its change is not finished; a failure shows the toast again.
+   */
+  dismissed?: boolean
 }
 
 interface ActionTrackerValue {
@@ -88,7 +96,17 @@ export function ActionTrackerProvider({
   /** One auto-dismiss timer per completed action; see the effect below for why. */
   const dismissTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
+  const trackedRef = useRef<TrackedAction[]>([])
+  trackedRef.current = tracked
+
   const dismiss = useCallback((actionId: number) => {
+    const entry = trackedRef.current.find((t) => t.actionId === actionId)
+    // An action still being worked on keeps being followed: stopping would lose the one record that says a change is
+    // still being applied, and the list on screen would be edited as if it had landed.
+    if (entry && (entry.state === 'running' || entry.state === 'awaiting-interaction' || entry.state === 'blocked-by-invoice')) {
+      setTracked((prev) => prev.map((t) => (t.actionId === actionId ? { ...t, dismissed: true } : t)))
+      return
+    }
     controllers.current.get(actionId)?.abort()
     controllers.current.delete(actionId)
     const timer = dismissTimers.current.get(actionId)
@@ -114,6 +132,8 @@ export function ActionTrackerProvider({
           actionId: action.id,
           label,
           resourceName,
+          resourceId: action.resource_id ?? undefined,
+          actionType: action.type,
           state: 'running',
           percentComplete: action.progress?.percent_complete,
           startedAt: Date.now()
@@ -230,7 +250,7 @@ export function ActionTrackerProvider({
             }
           } else if (settled.state === 'errored') {
             const detail = describeActionFailure(settled.action) ?? undefined
-            update(action.id, { state: 'errored', detail })
+            update(action.id, { state: 'errored', detail, dismissed: false })
             void updateChange(changeId, { outcome: 'errored', detail })
             void window.bldeskApi?.sendNotification?.({ title: `${subject} failed`, body: detail || 'BinaryLane reported an error.', kind: 'action' })
           } else {
@@ -248,13 +268,25 @@ export function ActionTrackerProvider({
             void queryClient.invalidateQueries({ queryKey: ['serverBackups', resourceId] })
             // Likewise the licences a resize's `change_licenses` just altered.
             void queryClient.invalidateQueries({ queryKey: ['server-software', resourceId] })
+            // A firewall write is applied when the action completes, not when it is queued, so a read made at queue time
+            // still shows the old list. Read it again now, or the next edit is built from that list and writes it back.
+            if (settled.action.type === 'change_advanced_firewall_rules') {
+              void queryClient.invalidateQueries({ queryKey: ['firewallRules', resourceId] })
+              void queryClient.invalidateQueries({ queryKey: ['fleet-firewalls'] })
+            }
           }
         } catch (err) {
           if (controller.signal.aborted) return
           update(action.id, {
             state: 'lost',
-            detail: err instanceof Error ? err.message : String(err)
+            detail: err instanceof Error ? err.message : String(err),
+            dismissed: false
           })
+          // Whether a firewall write landed is not known now, so the lists are read again rather than trusted.
+          if (action.type === 'change_advanced_firewall_rules' && action.resource_id) {
+            void queryClient.invalidateQueries({ queryKey: ['firewallRules', action.resource_id] })
+            void queryClient.invalidateQueries({ queryKey: ['fleet-firewalls'] })
+          }
           void updateChange(changeId, { outcome: 'lost', detail: err instanceof Error ? err.message : String(err) })
         } finally {
           // Only retire our own controller. `finally` runs on the aborted early
@@ -305,6 +337,8 @@ export function ActionTrackerProvider({
     return () => {
       controllers.current.forEach((c) => c.abort())
       controllers.current.clear()
+      // The polls are gone, so their entries must go too: one left as "running" would never be updated again.
+      setTracked([])
     }
   }, [client])
 

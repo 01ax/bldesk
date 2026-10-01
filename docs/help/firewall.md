@@ -12,6 +12,20 @@ BinaryLane's external firewall uses ordered first-match rules, with no implicit 
 
 Before applying an import or clone, inspect the complete diff. Allowing SSH in this list cannot start sshd or override a guest firewall.
 
+## Add, import and clone
+Rules are evaluated first to last, so the order in the confirmation's diff is the order that is written. A new rule goes immediately ahead of the first drop rule that would swallow it, so that it can match: one that drops its protocol (or every protocol), its ports (or all ports), its sources and its destinations, or more. If no rule would swallow it, it goes last. A drop that covers only some sources, such as a block on one address, stays in front of a new accept rule, so the block still applies. Addresses and ports are compared as written, so a range that contains another is not recognised. Adding Drop All and then an SSH rule leaves the SSH rule in front of it.
+
+BinaryLane requires every rule to name a destination, and source and destination addresses must be IPv4 addresses or ranges. A rule you add is written with 0.0.0.0/0, which is any destination, and the diff shows it.
+
+Import checks the JSON before it asks you to confirm. Each rule needs an action of accept or drop, a protocol of all, icmp, tcp or udp, and at least one source address; addresses must be IPv4 addresses or ranges and a description at most 250 characters, and the first rule that does not meet this is named. A rule with no destination addresses is written with 0.0.0.0/0 as well, and fields the API does not define are not sent. An import of an empty list removes every rule, and so does deleting a server's last rule, so both are confirmed like Disable firewall: you type the server's name.
+
+## While a change is being applied
+BinaryLane applies a firewall change as an action that finishes a few seconds after it is accepted. Until then the list on screen is the one from before the change, and the card says:
+
+“A change to this server's firewall rules is still being applied. Editing is switched off until it lands, because every save writes the whole list back.”
+
+Add Rule, Import, Clone, Disable Firewall and each rule's move and delete buttons are off meanwhile, and while the list is being read again. When the change lands the list is read again and they come back. Closing the progress toast does not bring them back early: BLDesk keeps following the action, out of sight, until it finishes.
+
 ## When the rules cannot be read
 Every save in Server mode writes the server's whole rule list back, so BLDesk offers a change only after it has read that list. “Firewall Inactive / Open” means the list was read and is empty. If BinaryLane does not return it, the card says:
 
@@ -49,6 +63,8 @@ Check individual History outcomes and test connectivity. A partial failure leave
 
 ### Servers that cannot be read
 A copy replaces a server's whole list, so Fleet matrix needs each server's current rules first. A server whose rules could not be read is marked “unreadable”. It cannot be chosen as the source, its checkbox in the target list stays off, and the everyone link leaves it out, so a copy never writes to it. Refresh reads the fleet again.
+
+The fleet read can be a minute old, so the Review diff button reads the source and every selected target again before it shows the diff, and what is written comes from those reads. A rule added to a target in the meantime appears in the diff as removed. A target that cannot be read at that point is left out and named in the confirmation; if the source cannot be read, nothing is changed. A server with no rules cannot be the source, because the copy would clear every rule on the targets: BLDesk says so and changes nothing.
 
 ## Port 22 unreachable
 Use the badge and [troubleshooting steps](help:troubleshooting#port-22-unreachable) to separate local routing, external rules, guest rules and the SSH service.

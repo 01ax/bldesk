@@ -11,7 +11,7 @@ Ctrl/Cmd+F inside an embedded SSH session opens scrollback search. Find next and
 Use Cmd on macOS and Ctrl on Windows or Linux for the command palette and desktop zoom.
 
 ## Palette
-- Cmd/Ctrl+K opens or closes the palette.
+- Cmd/Ctrl+K opens or closes the palette. It does not open while a dialog is open.
 - Up and Down select a result.
 - Tab accepts the current completion.
 - Enter opens a result or advances an action to its review.
@@ -28,7 +28,7 @@ Read the [palette grammar](help:palette). A non-mutating navigation action does 
 Desktop zoom steps are 80%, 90%, 100%, 110%, 125% and 150%. The View menu uses the same bounds. Below 768 CSS pixels wide, the desktop sidebar is hidden: use the bottom navigation's More button to open the drawer and scroll to other pages. This includes a 1024-pixel-wide window at 150%, but not a 1280-pixel-wide window at 150%. Map zoom changes the map, not the whole application.
 
 ## Dialogs and help
-Escape closes an idle dialog; busy dialogs prevent accidental dismissal. Enter submits forms when valid. Tab and Shift+Tab move focus.
+Escape closes the dialog on top when it is idle and has a close button; busy dialogs prevent accidental dismissal, and the dialog that asks for an answer about an action stays until it is answered or put off with Decide later. Enter submits forms when valid, and holding it down does not repeat. Tab and Shift+Tab stay inside the open dialog, and closing it puts focus back where it was.
 
 In Help, Up and Down choose a suggestion; Enter accepts it into the search box. Press Enter to submit a query explicitly. Escape dismisses suggestions.
 
