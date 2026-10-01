@@ -56,7 +56,7 @@ app.whenReady().then(()=>{
     else if(p.includes('/samplesets/'))body=p.endsWith('/latest')?{sample_set:sample(id)}:{sample_sets:Array.from({length:288},(_,i)=>sample(id,287-i)),meta:{total:288}}
     else if(p.endsWith('/backups'))body={backups:['Before database upgrade','Nightly · production baseline','Weekly · recovery checkpoint','Monthly · August archive'].map((name,i)=>({id:7101+i,name,created_at:new Date(Date.now()-(i+1)*86400000).toISOString(),min_disk_size:160,type:'backup',backup_type:['temporary','daily','weekly','monthly'][i],status:'available',size_gigabytes:160}))}
     else if(p.endsWith('/balance'))body={balance:{available_credit:2480,balance:2480,unbilled_total:684.2}}
-    else if(p.endsWith('/account'))body={account:{email:'operator@example.com',status:'active',email_verified:true,two_factor_authentication_enabled:true,configured_payment_methods:['credit-card'],additional_ipv4_limit:64,tax_code:{name:'GST',fixed_percent:10}}}
+    else if(p.endsWith('/account'))body={account:{email:'operator@example.com',status:'active',email_verified:true,two_factor_authentication_enabled:true,configured_payment_methods:['credit-card'],additional_ipv4_limit:64,tax_code:{name:'GST',type:'scalar',fixed_percent:10}}}
     else if(p.endsWith('/user_data'))body={user_data:'#cloud-config\npackages:\n  - nginx\n  - prometheus-node-exporter\n'}
     return Response.json(body)
   }
