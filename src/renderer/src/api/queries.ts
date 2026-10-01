@@ -7,6 +7,20 @@ type ServerResponse = components['schemas']['Server']
 
 // --- SERVERS & COMPUTE ---
 
+// What the first render reads from a cached server: `id` and `name` (keys, sorting, search), and the nested fields
+// the list calls string/array methods on or prints. Optional fields may be absent, but not another type.
+const optional = (v: unknown, type: 'string' | 'number') => v == null || typeof v === type
+function isCachedServer(s: any): boolean {
+  if (!s || typeof s !== 'object' || typeof s.id !== 'number' || typeof s.name !== 'string') return false
+  const v4 = s.networks?.v4
+  return (
+    optional(s.vcpus, 'number') && optional(s.disk, 'number') &&
+    optional(s.region?.slug, 'string') && optional(s.region?.name, 'string') &&
+    optional(s.image?.distribution, 'string') && optional(s.image?.full_name, 'string') && optional(s.image?.name, 'string') &&
+    (v4 == null || (Array.isArray(v4) && v4.every((n) => n && optional(n.ip_address, 'string'))))
+  )
+}
+
 export function useServers(client: BinaryLaneClient | null, profileId?: string) {
   return useQuery<ServerResponse[]>({
     queryKey: ['servers', profileId || 'default'],
@@ -53,7 +67,11 @@ export function useServers(client: BinaryLaneClient | null, profileId?: string) 
       if (!profileId) return undefined
       try {
         const raw = localStorage.getItem(`bldesk_cached_servers_${profileId}`)
-        return raw ? JSON.parse(raw) : undefined
+        if (!raw) return undefined
+        const cached = JSON.parse(raw)
+        // A value that parses but is not a list of servers is ignored, as if there were no cache: the first
+        // render would throw on it, and Reload reads the same value and throws again.
+        return Array.isArray(cached) && cached.every(isCachedServer) ? cached : undefined
       } catch {
         return undefined
       }
