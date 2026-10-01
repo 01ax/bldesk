@@ -1009,7 +1009,8 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
       // Default to 'oldest' replacement strategy so that if all slots of this type are occupied,
       // BinaryLane smoothly replaces/rotates the oldest existing backup instead of throwing an error.
       const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'oldest')
-      const backupType = replacementStrategy === 'specified' ? undefined : (p.backupType || 'temporary')
+      // A specified replacement is refused unless backup_type is the replaced backup's own type, so the caller passes it.
+      const backupType = replacementStrategy === 'specified' ? p.backupType : (p.backupType || 'temporary')
 
       const body: any = {
         type: 'take_backup',
