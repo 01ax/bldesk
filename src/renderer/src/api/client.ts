@@ -136,6 +136,19 @@ async function executeFetch(
         headers: new Headers(res.headers as Record<string, string>)
       })
     } catch (err) {
+      // Only an unimplemented plugin proves nothing was sent, so only that may
+      // fall back to fetch. Any other failure can come after BinaryLane already
+      // ran the request (a lost response, a timeout), and sending it again would
+      // run it twice: a second server, a second power cycle. Report it instead,
+      // as a TypeError like fetch's own network failure, which the action poll
+      // rides out.
+      if ((err as { code?: string } | null)?.code !== 'UNIMPLEMENTED') {
+        console.warn('[NativeFetch] CapacitorHttp request failed, not resent:', err)
+        throw new TypeError(
+          'No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.',
+          { cause: err }
+        )
+      }
       console.warn('[NativeFetch] CapacitorHttp fallback triggered:', err)
     }
   }

@@ -1242,9 +1242,8 @@ const isTimeoutError = (err: unknown): boolean =>
  * The request never got an answer, as distinct from an answer we did not like.
  *
  * `fetch` rejects with a `TypeError` for every network-level failure, and on
- * Android that is the only shape this can take: `executeFetch` tries
- * CapacitorHttp first and, on any failure, falls through to `window.fetch`,
- * which is cross-origin from the WebView and rejects the same way. Only the
+ * Android that is the only shape this can take: `executeFetch` throws a
+ * `TypeError` when a CapacitorHttp request fails, and does not resend it. Only the
  * `client.GET` call sits inside the `try` below, so a `TypeError` reaching it
  * is a transport failure rather than a bug in this function.
  */

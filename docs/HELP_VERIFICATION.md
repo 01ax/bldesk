@@ -102,6 +102,19 @@ Branch: `feat/ssh-keygen` (#100). No new runtime dependencies: generation uses t
 - Linux: `sshKeygen.ts` bundled and run with Node 18 on Ubuntu 24.04 as a new user with no `~/.ssh` (OpenSSH 9.6, `/usr/bin/ssh-keygen` from PATH). `~/.ssh` was created 700, the private key 600 and the `.pub` 644; the clash, no-overwrite and `ssh-keygen -y` checks passed as on Windows; with the `.pub` in that user's `authorized_keys`, sshd (StrictModes on, the default) accepted a key-only login. This exercises the main-process generator, not the Linux app window.
 - Not exercised: macOS. The build is not sandboxed (DMG and zip, no Mac App Store target), `ssh-keygen` is `/usr/bin/ssh-keygen`, which is on the PATH a Finder-launched app gets, and a new `~/.ssh` is chmodded 700 as on Linux. It needs a check on a Mac before this ships.
 
+## Android request that gets no answer (29 September 2026, after 1.0.62-beta.9)
+
+Branch: `fix/android-no-replay-after-transport-error`. No help page changed, no new runtime dependencies. One new error string; the desktop app never reaches it.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.” | Thrown as a `TypeError` by `executeFetch` in `client.ts` when the native `CapacitorHttp` call fails for any reason other than the plugin being unimplemented (a lost response, a timeout, a response that cannot be read). Callers show `err.message`: the create-server dialog's red line (`setErrorMsg(err.message)`) and History's failed detail, or an `alert()` where the caller still uses one | New. Before, the request was sent a second time through `fetch` and the second answer was shown as if it were the first. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts), `npm run test:terminal` and `npm run build`.
+- Android 15 emulator, debug build with the API address pointed at a local fixture through a test proxy that lets the fixture run a request and then closes the connection without returning its answer (nothing left the machine). BASE against FIXED: a lost answer to `POST /v2/servers`, `POST` actions, `DELETE`, `PUT`, `PATCH` and `GET` ran twice on BASE and once on FIXED, which showed the message above (on a fresh connection: on a reused keep-alive connection Android's own HTTP stack sends the request once more before the app sees any error, on BASE and FIXED alike, and this change does not touch that). The create-server dialog on FIXED showed it as the red line with the fixture's `mock.log` holding one `POST /v2/servers`. The plugin being unimplemented still falls back to `fetch`, and 200, 204, 400 and 404 answers are unchanged.
+
 ## Firewall rules that could not be read (29 September 2026, after 1.0.62-beta.7)
 
 Branch: `fix/firewall-failed-read-not-empty`. No new runtime dependencies. The Firewall tab and a server's Firewall sub-tab are the same component, `FirewallManager.tsx`; `useFirewallRules` in `queries.ts` is also read by the reachability chip in `ReachabilityBadge.tsx`.
