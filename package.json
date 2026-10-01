@@ -15,13 +15,15 @@
     "format": "prettier --write .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "lint:guards": "node scripts/check-mutation-guards.mjs && node scripts/check-ui-guards.mjs && node scripts/check-help-guards.mjs && node scripts/check-pty-guards.mjs && node scripts/check-updater-guards.mjs && node scripts/check-security-guards.mjs && npm run test:api-errors && npm run test:firewall-rules && npm run test:pricing && npm run test:network-map && npm run test:ssh-key-names",
+    "lint:guards": "node scripts/check-mutation-guards.mjs && node scripts/check-ui-guards.mjs && node scripts/check-help-guards.mjs && node scripts/check-pty-guards.mjs && node scripts/check-updater-guards.mjs && node scripts/check-security-guards.mjs && npm run test:api-errors && npm run test:firewall-rules && npm run test:pricing && npm run test:network-map && npm run test:ssh-key-names && npm run test:deeplink && npm run test:terminal-launchers",
     "test:terminal": "node scripts/test-terminal.cjs",
     "test:api-errors": "node --experimental-strip-types --no-warnings --test scripts/test-api-errors.mjs",
     "test:firewall-rules": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-rules.mjs",
     "test:pricing": "node --experimental-strip-types --no-warnings --test scripts/test-pricing.mjs",
     "test:network-map": "node --experimental-strip-types --no-warnings --test scripts/test-network-map.mjs",
     "test:ssh-key-names": "node --experimental-strip-types --no-warnings --test scripts/test-ssh-key-names.mjs",
+    "test:deeplink": "node --experimental-strip-types --no-warnings --test scripts/test-deeplink.mjs",
+    "test:terminal-launchers": "node --experimental-strip-types --no-warnings --test scripts/test-terminal-launchers.mjs",
     "gui-test": "node scripts/gui-test/launch.mjs",
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run lint:guards",
     "generate-api": "openapi-typescript ./openapi.json -o ./src/shared/api/schema.d.ts",
@@ -180,5 +182,10 @@
     "node-pty@1.1.0": true,
     "electron@44.4.5": true,
     "esbuild@0.21.5": true
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

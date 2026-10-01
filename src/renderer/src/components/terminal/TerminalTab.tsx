@@ -37,7 +37,9 @@ export function TerminalTab({ session, active, onReconnect, onClose }: {
     instance.current = term
     search.current = finder
     term.attachCustomKeyEventHandler((e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      // Cmd+F, and Ctrl+Shift+F where Cmd does not exist. Plain Ctrl+F belongs to the session: it is forward-char in a
+      // shell, a page down in vim and less, and BLDesk must not take it for itself.
+      if (((e.metaKey && !e.ctrlKey) || (e.ctrlKey && e.shiftKey)) && e.key.toLowerCase() === 'f') {
         if (e.type === 'keydown') setFinding(true)
         e.preventDefault()
         return false

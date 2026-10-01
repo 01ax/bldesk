@@ -161,7 +161,7 @@ function reset() {
     mkServer({ id: 9009, name: 'multi-ip-v6-01', size_slug: 'std-4vcpu', region: 'mel', image: 'almalinux-9', vpc_id: 903, ip: '192.0.2.98', extra_ips: ['192.0.2.99', '192.0.2.100'], v6: true, failover: ['192.0.2.150'] }),
     mkServer({ id: 9010, name: 'cpanel-host-01', size_slug: 'std-6vcpu', region: 'syd', image: 'cpanel-whm-rocky-8', vpc_id: 901, ip: '203.0.113.101' })
   )
-  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null, extraToken: null, feedStatus: null }
+  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null, extraToken: null, feedStatus: null, consoleUrl: null }
   servers.forEach((s, index) => {
     const list = s.next_backup_window ? [
       ['temporary', 'Before database upgrade', 1], ['daily', 'Nightly production baseline', 2],
@@ -296,7 +296,7 @@ const page = (list, q, key) => {
   if (cfg.empty && ['servers', 'domains', 'load_balancers', 'vpcs', 'ssh_keys', 'invoices', 'backups', 'domain_records', 'actions', 'licensed_software', 'members'].includes(key)) list = []
   const per = q.get('per_page') === '0' ? 0 : Number(q.get('per_page') || 20), pg = Number(q.get('page') || 1)
   const items = per === 0 ? [] : list.slice((pg - 1) * per, pg * per)
-  return { [key]: items, links: {}, meta: { total: list.length } }
+  return { [key]: items, links: { pages: {} }, meta: { total: list.length } }
 }
 const readBody = (req) => new Promise((r) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => { try { r(JSON.parse(Buffer.concat(c).toString() || 'null')) } catch { r(null) } }) })
 
@@ -359,7 +359,7 @@ async function handleApi(req, res, u, body) {
     return json(res, 200, page(list, q, 'sizes'))
   }
   if (m === 'GET' && p === '/v2/load_balancers') return json(res, 200, page(lbs, q, 'load_balancers'))
-  if (m === 'POST' && p === '/v2/load_balancers') { const l = mk('LoadBalancersResponse', 'load_balancers', { id: nextId++, ip: '203.0.113.200', status: 'new', server_ids: [], ...body }); lbs.push(l); return json(res, 200, { load_balancer: l, links: {} }) }
+  if (m === 'POST' && p === '/v2/load_balancers') { const l = mk('LoadBalancersResponse', 'load_balancers', { id: nextId++, ip: '203.0.113.200', status: 'new', server_ids: [], ...body }); lbs.push(l); return json(res, 200, { load_balancer: l, links: { pages: {} } }) }
   if ((mt = p.match(/^\/v2\/load_balancers\/(\d+)(\/servers)?$/))) {
     const l = lbs.find((x) => x.id === +mt[1]); if (!l) return json(res, 404, { id: 'not_found', message: 'Load balancer not found' })
     if (!mt[2] && m === 'GET') return json(res, 200, { load_balancer: l })
@@ -377,7 +377,7 @@ async function handleApi(req, res, u, body) {
   if (m === 'POST' && p === '/v2/servers') {
     const id = nextId++, s = mkServer({ id, name: body.name, size_slug: body.size, region: body.region, image: body.image, vpc_id: body.vpc_id || 901, ip: '203.0.113.' + (id % 200), status: 'new', backups: false,
       memory: body.options?.memory, disk: body.options?.disk, options: { ...(body.backups ? { daily_backups: 2 } : {}), ...body.options } })
-    servers.push(s); setTimeout(() => { s.status = 'active' }, cfg.actionMs * 2); return json(res, 200, { server: s, links: {} })
+    servers.push(s); setTimeout(() => { s.status = 'active' }, cfg.actionMs * 2); return json(res, 200, { server: s, links: { pages: {} } })
   }
   if ((mt = p.match(/^\/v2\/servers\/(\d+)(\/.*)?$/))) {
     const s = servers.find((x) => x.id === +mt[1]), sub = mt[2] || ''
@@ -407,7 +407,7 @@ async function handleApi(req, res, u, body) {
     if (sub === '/advanced_firewall_rules') return json(res, 200, { firewall_rules: fwOverride.get(s.id) ?? firewall(s) })
     if (sub === '/available_advanced_features') return json(res, 200, { available_advanced_server_features: { advanced_features: ['emulated-hyperv', 'emulated-devices', 'driver-disk', 'cloud-init', 'emulated-tpm', 'unset-uuid', 'local-rtc', 'qemu-guest-agent', 'uefi-boot'], machine_types: ['pc_i440fx_7point2point1'], processor_models: [{ id: 0, name: 'Host default' }], video_devices: ['cirrus-logic', 'standard', 'virtio', 'virtio-wide'] } })
     if (sub === '/backups') return json(res, 200, page(backupsFor(s), q, 'backups'))
-    if (sub === '/console') return json(res, 200, { console: { iframe: `https://api.binarylane.com.au/__console/${s.id}`, browser: `https://api.binarylane.com.au/__console/${s.id}`, width: 1024, height: 768, expiry: new Date(Date.now() + 600000).toISOString() } })
+    if (sub === '/console') return json(res, 200, { console: { iframe: cfg.consoleUrl || `https://api.binarylane.com.au/__console/${s.id}`, browser: cfg.consoleUrl || `https://api.binarylane.com.au/__console/${s.id}`, width: 1024, height: 768, expiry: new Date(Date.now() + 600000).toISOString() } })
     if (sub === '/software') return json(res, 200, page(s.image.distribution === 'Windows' ? [mk('LicensedSoftwaresResponse', 'licensed_software', { licence_count: 2, incompatible: false, software: softwareFor('windows-2022')[0] })] : [], q, 'licensed_software'))
     if (sub === '/threshold_alerts') return json(res, 200, { threshold_alerts: ['cpu', 'memory-used', 'storage-used', 'data-transfer-used'].map((t, i) => mk('ThresholdAlertsResponse', 'threshold_alerts', { alert_type: t, name: t, unit: '%', description: '', enabled: i !== 3, value: [90, 85, 90, 80][i], current_value: [35, 62, 48, 12][i], last_raised: null, last_cleared: null })) })
     if (sub === '/user_data') return json(res, 200, { user_data: '#cloud-config\npackages:\n  - nginx\n  - prometheus-node-exporter\nruncmd:\n  - systemctl enable --now nginx\n' })
@@ -415,7 +415,7 @@ async function handleApi(req, res, u, body) {
   if ((mt = p.match(/^\/v2\/samplesets\/(\d+)(\/latest)?$/))) {
     const s = servers.find((x) => x.id === +mt[1]) || servers[0]
     const age = s.status === 'off' ? 12 : 0 // buckets of five minutes; the app treats a sample older than about 15 minutes as "not running"
-    return mt[2] ? json(res, 200, { sample_set: sample(s, age) }) : json(res, 200, { sample_sets: Array.from({ length: 288 }, (_, i) => sample(s, age + 287 - i)), links: {}, meta: { total: 288 } })
+    return mt[2] ? json(res, 200, { sample_set: sample(s, age) }) : json(res, 200, { sample_sets: Array.from({ length: 288 }, (_, i) => sample(s, age + 287 - i)), links: { pages: {} }, meta: { total: 288 } })
   }
   if ((mt = p.match(/^\/v2\/software\/operating_system\/(.+)$/)) && m === 'GET') { const sw = softwareFor(decodeURIComponent(mt[1])); return sw ? json(res, 200, page(sw, q, 'software')) : json(res, 404, { id: 'not_found', message: 'No software' }) }
   if ((mt = p.match(/^\/v2\/actions\/(\d+)\/proceed$/))) return json(res, 204)
@@ -454,6 +454,14 @@ const server = create(async (req, res) => {
   const auth = req.headers.authorization || ''
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
   if (cfg.rejectAuth || (auth !== `Bearer ${TOKEN}` && !(cfg.extraToken && auth === `Bearer ${cfg.extraToken}`))) return json(res, 401, { id: 'unauthorized', message: 'Unauthorized (mock: token does not match).' })
+  // A second account (`extraToken`) sees its own one server, #9101, and none of the first account's: a link to a server
+  // on another profile is only found once that profile is the one in use.
+  if (cfg.extraToken && auth === `Bearer ${cfg.extraToken}` && u.pathname.startsWith('/v2/servers') && req.method === 'GET') {
+    const second = mkServer({ id: 9101, name: 'second-account-01', size_slug: 'std-1vcpu', region: 'syd', image: 'ubuntu-24.04', vpc_id: null, ip: '198.18.0.101', backups: false })
+    const one = u.pathname.match(/^\/v2\/servers\/(\d+)$/)
+    if (u.pathname === '/v2/servers') return json(res, 200, page([second], u.searchParams, 'servers'))
+    if (one) return +one[1] === 9101 ? json(res, 200, { server: second }) : json(res, 404, { id: 'not_found', message: 'Server not found' })
+  }
   const f = fails.find((x) => x.count > 0 && x.match.test(u.pathname) && (!x.method || x.method === req.method))
   if (f) { f.count--; if (f.empty) { res.writeHead(f.status); return res.end() } return json(res, f.status, { id: f.status === 429 ? 'too_many_requests' : 'server_error', message: `Injected ${f.status}` }) }
   try { await handleApi(req, res, u, body) } catch (e) { appendFileSync(LOG, `ERROR ${req.method} ${u.pathname} ${e.stack}\n`); json(res, 500, { id: 'mock_error', message: String(e) }) }

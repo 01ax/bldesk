@@ -51,6 +51,12 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
   const depsRef = useRef(deps)
   depsRef.current = deps
   const busyRef = useRef(false)
+  /**
+   * The profile a link asked to switch to, until it is the active one. The link is kept while the switch lands: acting
+   * on it sooner would look the server up in the profile still in use (and say it was not found there), or open it
+   * there.
+   */
+  const awaitingProfile = useRef<string | null>(null)
 
   // Subscribe once
   useEffect(() => {
@@ -94,8 +100,17 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
       const target = d.profiles.find(matches)
       const stripped = { ...link, account: undefined } as DeepLink
       if (target && (!d.activeProfile || d.activeProfile.id !== target.id)) {
+        awaitingProfile.current = target.id
         setPending(stripped) // re-run after the switch lands
-        void d.onSwitchProfile(target.id)
+        const giveUp = () => {
+          if (awaitingProfile.current !== target.id) return
+          awaitingProfile.current = null
+          setPending(null)
+          alert(`Couldn't switch to the account "${link.account}", so the link was not opened.`)
+        }
+        Promise.resolve(d.onSwitchProfile(target.id)).catch(giveUp)
+        // A switch that never lands must not hold the link for ever.
+        setTimeout(giveUp, 15000)
         return
       }
       if (!target) console.warn(`[DeepLink] No profile matches account "${link.account}"; using the active one`)
@@ -115,6 +130,10 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
     }
 
     // 3. Server-scoped links need a client and (ideally) the server list
+    if (awaitingProfile.current) {
+      if (d.activeProfile?.id !== awaitingProfile.current) return // the switch has not landed yet
+      awaitingProfile.current = null
+    }
     if (!d.client) return // wait for auth
     const cached = d.servers.find((s) => s.id === link.serverId)
     if (!cached && d.isLoadingServers) return // wait for the first fetch
@@ -158,13 +177,14 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
               alert(`Couldn't get a rescue console URL for ${server.name}.`)
               break
             }
-            await window.bldeskApi?.openRescueConsole?.({
+            const opened = await window.bldeskApi?.openRescueConsole?.({
               serverId: server.id,
               serverName: server.name,
               url,
               width: data?.console?.width || 1024,
               height: data?.console?.height || 768
             })
+            if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
             break
           }
         }

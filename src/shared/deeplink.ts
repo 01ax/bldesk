@@ -36,6 +36,15 @@ export function isDeepLinkUrl(value: string | undefined | null): value is string
   return typeof value === 'string' && value.toLowerCase().startsWith(`${DEEP_LINK_SCHEME}:`)
 }
 
+/**
+ * The arguments to start BLDesk again with after an update: the ones this process was started with (flags such as
+ * --user-data-dir stay), without the bldesk:// link that started it. Passing the link on would open it a second time.
+ * `argv` is `process.argv`, whose first entry is the executable.
+ */
+export function restartArguments(argv: readonly string[]): string[] {
+  return argv.slice(1).filter((arg) => !isDeepLinkUrl(arg))
+}
+
 /** Parse a bldesk:// URL. Returns null for anything malformed or unknown. */
 export function parseDeepLink(raw: string): DeepLink | null {
   if (!isDeepLinkUrl(raw)) return null

@@ -27,6 +27,6 @@ Settings also contains password reset, hard power cycle and OS rebuild. For an e
 
 “Erases the disk and reinstalls from image "ubuntu-example". Every file on the server is destroyed; the IP addresses are kept.”
 
-The actual image appears in your dialog. Take a backup, verify the target and type its name before choosing Rebuild. Rebuild is not an in-place OS upgrade. Password reset instead generates new credentials and emails the account address; anything using the old password stops authenticating.
+The actual image appears in your dialog. Take a backup, verify the target and type its name before choosing Rebuild. Rebuild is not an in-place OS upgrade. Password reset depends on the server. Where BinaryLane supports changing the password, it generates a new one and emails the account address. Where it does not (a Windows server, for example), it only clears the root or administrator password and a new one is set at the server's web console; nothing is emailed. Either way, anything using the old password stops authenticating.
 
 For guest diagnostics and booting rescue mode see [Recovery](help:server-recovery).

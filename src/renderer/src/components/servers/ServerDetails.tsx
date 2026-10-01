@@ -419,13 +419,18 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   const handleLaunchRescueConsole = () => {
     if (!consoleQuery.data) return
     const url = consoleQuery.data.browser || consoleQuery.data.iframe
-    window.bldeskApi?.openRescueConsole?.({
-      serverId: server.id,
-      serverName: server.name,
-      url,
-      width: consoleQuery.data.width || 1024,
-      height: consoleQuery.data.height || 768
-    })
+    void window.bldeskApi
+      ?.openRescueConsole?.({
+        serverId: server.id,
+        serverName: server.name,
+        url,
+        width: consoleQuery.data.width || 1024,
+        height: consoleQuery.data.height || 768
+      })
+      .then((opened) => {
+        if (opened && !opened.success) alert(`Couldn't open the rescue console for ${server.name}: ${opened.error || 'the window did not open.'}`)
+      })
+      .catch((err: any) => alert(`Couldn't open the rescue console for ${server.name}: ${err?.message || err}`))
   }
 
   const sample = metricsQuery.data?.average
