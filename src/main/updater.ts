@@ -1,7 +1,8 @@
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Notification } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
-import { createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { ensureOwnerDir, writeOwnerFileAtomic } from './ownerFiles'
 import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
@@ -244,8 +245,16 @@ export class UpdaterManager {
           const destDir = join(app.getPath('userData'), 'updates')
           ensureOwnerDir(destDir)
           const destPath = join(destDir, zipFilename)
+          // electron-updater refuses a file its feed gives no checksum for; this also needs the size. Every release's
+          // latest-mac.yml lists both.
+          const listed = zipEntry?.sha512 && zipEntry.size != null ? { sha512: zipEntry.sha512, size: zipEntry.size } : null
+          if (!listed) {
+            rmSync(destPath, { force: true })
+            throw new Error(`BLDesk ${info.version} was not downloaded: the update feed does not list the size and SHA-512 checksum of its macOS download, so it cannot be checked.`)
+          }
 
-          if (existsSync(destPath) && statSync(destPath).size > 1000000) {
+          // A zip already here may be an interrupted download: reuse it only if it matches the release's checksum.
+          if (existsSync(destPath) && !(await zipMismatch(destPath, listed))) {
             macPendingZipPath = destPath
             this.markReady(info.version)
             if (Notification.isSupported()) {
@@ -261,6 +270,11 @@ export class UpdaterManager {
           await downloadMacZip(downloadUrl, destPath, (progress) => {
             this.setState({ status: 'downloading', progress })
           })
+          const mismatch = await zipMismatch(destPath, listed)
+          if (mismatch) {
+            rmSync(destPath, { force: true })
+            throw new Error(`The download of BLDesk ${info.version} was deleted, not installed: ${mismatch}. The next check downloads it again.`)
+          }
 
           macPendingZipPath = destPath
           this.markReady(info.version)
@@ -463,6 +477,19 @@ function hasNoNewPrivs(): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Why a downloaded macOS update zip is not the file the release's `latest-mac.yml` lists, or null when it is: its size
+ * and SHA-512 must be the ones listed there, so a partial or damaged download is never installed.
+ */
+async function zipMismatch(path: string, listed: { size: number; sha512: string }): Promise<string | null> {
+  if (!existsSync(path)) return 'the file is missing'
+  const size = statSync(path).size
+  if (size !== listed.size) return `it is ${size} bytes, not the ${listed.size} the release lists`
+  const hash = createHash('sha512')
+  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  return hash.digest('base64') === listed.sha512 ? null : 'its SHA-512 checksum is not the one the release lists'
 }
 
 function notesToString(info: UpdateInfo): string | undefined {
