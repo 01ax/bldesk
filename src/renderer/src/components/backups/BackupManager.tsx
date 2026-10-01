@@ -11,11 +11,13 @@ import {
   Disc,
   Clock,
   Download,
-  RefreshCw,
-  X
+  RefreshCw
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Modal } from '../ui/Modal'
 import { BinaryLaneClient } from '../../api/client'
 import {
+  readServerBackups,
   useServerBackups,
   useServerActions,
   useTakeBackupMutation,
@@ -66,7 +68,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const actionsQuery = useServerActions(client, activeServerId)
 
   // Mutations
-  const takeBackupMutation = useTakeBackupMutation(client, activeServerId)
+  const queryClient = useQueryClient()
+  const takeBackupMutation = useTakeBackupMutation(client)
   const restoreBackupMutation = useRestoreBackupMutation(client, activeServerId)
   const { track } = useTrackedActions()
   const toggleAutomatedBackups = useToggleAutomatedBackupsMutation(client, activeServerId)
@@ -92,7 +95,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
-  // the same request again, which the client refuses, leaving a failed History entry and an alert.
+  // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
+  // cannot be closed, like every form while its request runs: closing it would not stop the take.
   const [taking, setTaking] = useState(false)
   const takingRef = useRef(false)
   const handleTakeBackup = async (e: React.FormEvent) => {
@@ -113,11 +117,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
 
     // The backups list has no polling, so a backup locked elsewhere since it loaded would be named as replaceable.
-    // Read it again before asking, and trust only that read: `fresh` stays null when it failed, or did not finish after
-    // this submit, and a take with no list to check is asked about anyway, because nothing says no backup is replaced.
-    const startedAt = Date.now()
-    const read = await backupsQuery.refetch()
-    const fresh = !read.isError && read.dataUpdatedAt >= startedAt ? (read.data ?? []) : null
+    // Read it again before asking, and trust only that read: `fresh` is null when it failed, and a take with no list to
+    // check is asked about anyway, because nothing says no backup is replaced. The read, the dialog and the request are
+    // all for `activeServerId` as it was at submit, even if the page shows another server by the time they happen.
+    const fresh = await readServerBackups(queryClient, client, activeServerId).catch(() => null)
 
     let replacementStrategy: 'oldest' | 'specified' = 'oldest'
     let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
@@ -203,6 +206,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     }
     try {
       const queued = await takeBackupMutation.mutateAsync({
+        serverId: activeServerId,
         label: backupLabel.trim() || undefined,
         backupType: newType,
         replacementStrategy,
@@ -611,81 +615,83 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         )}
       </div>
 
-      {/* Take Backup modal */}
+      {/* Take Backup dialog */}
       {isTakingBackup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">Take Backup</h2>
-              <button onClick={() => setIsTakingBackup(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-                <X className="w-4 h-4" />
+        <Modal
+          title="Take Backup"
+          size="sm"
+          onClose={() => setIsTakingBackup(false)}
+          // While the backups are checked and the request is sent the form cannot be closed, like every form while its
+          // request runs: closing it would not stop the take.
+          busy={takeBackupMutation.isPending || taking}
+          as="form"
+          onSubmit={handleTakeBackup}
+          footer={
+            <div className="flex justify-end gap-2 p-4 text-xs">
+              <button
+                type="button"
+                onClick={() => setIsTakingBackup(false)}
+                disabled={takeBackupMutation.isPending || taking}
+                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={takeBackupMutation.isPending || taking}
+                className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {(takeBackupMutation.isPending || taking) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Take Backup</span>
               </button>
             </div>
+          }
+        >
+          <div className="p-5 space-y-4 text-xs">
+            <p className="text-[#6c757d] dark:text-slate-400">
+              Captures a full point-in-time image of the active disk drive for {activeServer?.name}.
+            </p>
 
-            <form onSubmit={handleTakeBackup} className="space-y-4 text-xs">
-              <p className="text-[#6c757d] dark:text-slate-400">
-                Captures a full point-in-time image of the active disk drive for {activeServer?.name}.
-              </p>
+            <div>
+              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Backup Slot / Retention
+              </label>
+              <select
+                value={selectedSlot}
+                onChange={(e) => setSelectedSlot(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+              >
+                {availableBackupSlots(activeServer?.selected_size_options).map((slot) => (
+                  <option key={slot} value={slot}>
+                    {slot === 'temporary' ? BACKUP_SLOT_LABELS.temporary : `${BACKUP_SLOT_LABELS[slot]} Backup Slot`}
+                  </option>
+                ))}
+                {backups.length > 0 && (
+                  <optgroup label="Replace Existing Image">
+                    {backups.map((img) => (
+                      <option key={img.id} value={`replace:${img.id}`}>
+                        Replace: {img.name} (#{img.id})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
 
-              <div>
-                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Backup Slot / Retention
-                </label>
-                <select
-                  value={selectedSlot}
-                  onChange={(e) => setSelectedSlot(e.target.value)}
-                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                >
-                  {availableBackupSlots(activeServer?.selected_size_options).map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot === 'temporary' ? BACKUP_SLOT_LABELS.temporary : `${BACKUP_SLOT_LABELS[slot]} Backup Slot`}
-                    </option>
-                  ))}
-                  {backups.length > 0 && (
-                    <optgroup label="Replace Existing Image">
-                      {backups.map((img) => (
-                        <option key={img.id} value={`replace:${img.id}`}>
-                          Replace: {img.name} (#{img.id})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Backup Name / Description (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Pre-upgrade Docker backup"
-                  value={backupLabel}
-                  onChange={(e) => setBackupLabel(e.target.value)}
-                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#ced4da] dark:border-[#373b3e]">
-                <button
-                  type="button"
-                  onClick={() => setIsTakingBackup(false)}
-                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={takeBackupMutation.isPending || taking}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  {(takeBackupMutation.isPending || taking) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Take Backup</span>
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Backup Name / Description (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Pre-upgrade Docker backup"
+                value={backupLabel}
+                onChange={(e) => setBackupLabel(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+              />
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

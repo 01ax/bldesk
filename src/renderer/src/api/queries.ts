@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { BinaryLaneClient } from './client'
 import { components } from '@shared/api/schema'
 import type { FleetMetricResult } from '../lib/heatmap'
@@ -1004,6 +1004,46 @@ export function useServerBackups(client: BinaryLaneClient | null, serverId: numb
   })
 }
 
+/** How long a read of one server's backups may take before it is treated as failed. */
+const BACKUPS_READ_DEADLINE_MS = 20_000
+
+/**
+ * A new read of one server's backups, by its id, through the same cache entry as `useServerBackups`: the list on
+ * screen, the retries and a failure shown on the page are this read's. Take Backup reads the server the take was
+ * started for this way, because the hook's own `refetch()` reads whichever server the page shows by the time it runs.
+ *
+ * It answers with a list requested after this call, and gives up after 20 seconds. The first matters because a fetch
+ * that is already running (an invalidation has just started one) is shared rather than restarted, and would answer with
+ * a list requested before the call. The second matters because the form that waits for it cannot be closed meanwhile:
+ * without it a read that never answers, or one held back while the machine is offline, would lock the form.
+ */
+export function readServerBackups(queryClient: QueryClient, client: BinaryLaneClient | null, serverId: number): Promise<any[]> {
+  const queryKey = ['serverBackups', serverId]
+  const run = () =>
+    queryClient.query({
+      queryKey,
+      queryFn: async () => {
+        if (!client) throw new Error('No client')
+        return fetchServerBackups(client, serverId)
+      },
+      staleTime: 0,
+      // Do not wait for the network to come back: a read that cannot be made now is a failed read.
+      networkMode: 'always'
+    })
+  const read = (async () => {
+    // Joining a fetch that is already running would answer with a list requested before this call. Let it finish, then
+    // ask again, so the list that decides what the take replaces is one requested after the take was submitted.
+    if (queryClient.isFetching({ queryKey, exact: true }) > 0) await run().catch(() => {})
+    return run()
+  })()
+  read.catch(() => {}) // if the deadline wins, a later failure of this read is not an unhandled rejection
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ApiError(`BinaryLane did not answer within ${BACKUPS_READ_DEADLINE_MS / 1000} seconds.`)), BACKUPS_READ_DEADLINE_MS)
+  })
+  return Promise.race([read, deadline]).finally(() => clearTimeout(timer))
+}
+
 /*
  * There is deliberately no second query beside this one. BinaryLane's
  * `/v2/servers/{server_id}/snapshots` is documented as "Server snapshots are
@@ -1014,6 +1054,8 @@ export function useServerBackups(client: BinaryLaneClient | null, serverId: numb
  */
 
 export interface TakeBackupParams {
+  /** The server the take was started for. It comes with each call, not from the hook, which follows the page. */
+  serverId: number
   label?: string
   backupType?: 'daily' | 'weekly' | 'monthly' | 'temporary'
   replacementStrategy?: 'none' | 'specified' | 'oldest' | 'newest'
@@ -1036,13 +1078,15 @@ export function useServerActions(client: BinaryLaneClient | null, serverId: numb
   })
 }
 
-export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId: number | null) {
+export function useTakeBackupMutation(client: BinaryLaneClient | null) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (params: string | TakeBackupParams | undefined) => {
+    // A mutation runs the options of the latest render, so a server id held by the hook would be the one the page shows
+    // when the request is sent, not the one the take was started for. The id comes with the call instead.
+    mutationFn: async (p: TakeBackupParams) => {
+      const { serverId } = p
       if (!client || !serverId) throw new Error('No client or serverId')
 
-      const p: TakeBackupParams = typeof params === 'string' ? { label: params } : params || {}
       // Default to 'oldest' replacement strategy so that if all slots of this type are occupied,
       // BinaryLane smoothly replaces/rotates the oldest existing backup instead of throwing an error.
       const replacementStrategy = p.replacementStrategy || (p.backupIdToReplace ? 'specified' : 'oldest')
@@ -1077,7 +1121,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null, serverId:
       }
       return data?.action
     },
-    onSuccess: () => {
+    onSuccess: (_, { serverId }) => {
       queryClient.invalidateQueries({ queryKey: ['serverBackups', serverId] })
       queryClient.invalidateQueries({ queryKey: ['serverActions', serverId] })
       queryClient.invalidateQueries({ queryKey: ['servers'] })

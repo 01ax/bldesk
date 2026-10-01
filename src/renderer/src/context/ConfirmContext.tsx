@@ -236,7 +236,13 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
             </button>
             <button
               ref={primaryRef}
-              onClick={() => finish(true)}
+              // The second click of a double-click never confirms. A queued dialog opens in
+              // the place of the one just confirmed (and a dialog can open under the button
+              // that opened it), so that click was aimed at what was there before. Keyboard
+              // activation has detail 0.
+              onClick={(e) => {
+                if (e.detail <= 1) finish(true)
+              }}
               disabled={!canConfirm || busy}
               className={`px-3 py-1.5 text-xs font-semibold rounded text-white transition disabled:opacity-40 ${tone.btn}`}
             >
