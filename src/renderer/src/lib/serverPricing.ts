@@ -397,12 +397,43 @@ export function retentionOptionLabel(
   return `Take ${frequency} backups, stored for ${count} ${unit} (+$${cost.toFixed(2)} per month)`
 }
 
-export const GST_RATE = 0.1
+/** The account's tax code (`Account.tax_code`); every field is optional so a partial answer reads as unknown. */
+export interface TaxCodeLike {
+  name?: string | null
+  type?: string | null
+  fixed_percent?: number | null
+}
 
-/** Monthly total shown in the billing summary, inclusive of GST. */
-export function billingTotal(monthlyExGst: number): { total: number; gst: number } {
-  const gst = monthlyExGst * GST_RATE
-  return { total: monthlyExGst + gst, gst }
+/**
+ * Monthly total shown in the billing summary, from the amount before tax and the
+ * account's own tax code.
+ *
+ * The public reference defines two types. `none`: no tax is applied, so the
+ * total is the amount before tax. `scalar`: `fixed_percent` (100 = 100%) of the
+ * amount is added, and the tax is called what the tax code calls it.
+ *
+ * Anything else - another type, a scalar with no percentage, or no tax code at
+ * all because the account has not loaded - leaves the tax unknown. No rate is
+ * assumed then: `tax` is null and the total is the amount before tax.
+ *
+ * `note` is the wording that goes after the total: the tax included, nothing
+ * when there is none, or "before tax" when it cannot be worked out.
+ */
+export function billingTotal(
+  monthlyBeforeTax: number,
+  taxCode: TaxCodeLike | null | undefined
+): { total: number; tax: number | null; note: string } {
+  if (taxCode?.type === 'none') return { total: monthlyBeforeTax, tax: 0, note: '' }
+  const percent = taxCode?.fixed_percent
+  if (taxCode?.type === 'scalar' && typeof percent === 'number' && Number.isFinite(percent) && percent >= 0) {
+    const tax = monthlyBeforeTax * (percent / 100)
+    return {
+      total: monthlyBeforeTax + tax,
+      tax,
+      note: `(incl. $${tax.toFixed(2)} ${taxCode.name?.trim() || 'tax'})`
+    }
+  }
+  return { total: monthlyBeforeTax, tax: null, note: 'before tax' }
 }
 
 /**

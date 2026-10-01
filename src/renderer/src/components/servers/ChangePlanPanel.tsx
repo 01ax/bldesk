@@ -4,6 +4,7 @@ import { BlockedMark, CurrentMark, PlanBlockNotes } from './PlanBlocks'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import {
+  useAccount,
   useSizes,
   useDistributionImages,
   useOsSoftware,
@@ -108,6 +109,7 @@ export const ChangePlanPanel: React.FC<{
    */
   const targetImage = keepImage ? (server.image?.slug ?? server.image?.id ?? null) : newImageSlug || null
   const sizesQuery = useSizes(client, { serverId: server.id, image: targetImage })
+  const accountQuery = useAccount(client)
   /*
    * The reinstall picker asks the API for distributions rather than filtering
    * `useImages`, because `type` is only ever custom/snapshot/backup - a
@@ -569,7 +571,7 @@ export const ChangePlanPanel: React.FC<{
       }
       if (oldCost && newCost) {
         changed.push({
-          label: 'Monthly (ex-GST)',
+          label: 'Monthly (before tax)',
           from: `$${oldCost.total.toFixed(2)}`,
           to: `$${newCost.total.toFixed(2)}`
         })
@@ -585,8 +587,9 @@ export const ChangePlanPanel: React.FC<{
   }
 
   const monthly = newCost?.total ?? 0
-  const { total, gst } = billingTotal(monthly)
-  const delta = total - billingTotal(oldCost?.total ?? 0).total
+  const taxCode = accountQuery.data?.tax_code
+  const { total, tax, note: taxNote } = billingTotal(monthly, taxCode)
+  const delta = total - billingTotal(oldCost?.total ?? 0, taxCode).total
   const reinstalling = !keepImage && !!newImageSlug
   /*
    * A storage change can fail after the server has shut down, and on a disk
@@ -1254,22 +1257,24 @@ export const ChangePlanPanel: React.FC<{
                 }
               >
                 {delta < 0 ? '-' : '+'}${Math.abs(delta).toFixed(2)}
+                {tax === null && ` ${taxNote}`}
               </span>
             </div>
             <div className="flex justify-between gap-6">
               <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Total</span>
               <span className="text-[#212529] dark:text-white font-medium">
-                ${total.toFixed(2)} (incl. ${gst.toFixed(2)} GST)
+                ${total.toFixed(2)}
+                {taxNote && ` ${taxNote}`}
               </span>
             </div>
             {licencesMonthly > 0 && (
               <div className="flex justify-between gap-6">
                 <span className="text-[#6c757d] dark:text-[#adb5bd]">of which licences</span>
-                <span className="text-[#6c757d] dark:text-[#adb5bd]">${licencesMonthly.toFixed(2)} ex-GST</span>
+                <span className="text-[#6c757d] dark:text-[#adb5bd]">${licencesMonthly.toFixed(2)} before tax</span>
               </div>
             )}
             <p className="text-[#6c757d] dark:text-[#adb5bd] leading-relaxed pt-1">
-              All prices are in AUD and exclusive of GST unless stated otherwise. Charges are pro-rated from the time
+              All prices are in AUD and before tax unless stated otherwise. Charges are pro-rated from the time
               the change is applied.
             </p>
           </div>
@@ -1295,7 +1300,7 @@ export const ChangePlanPanel: React.FC<{
           {selected ? (
             <>
               New monthly total <span className="font-semibold">${total.toFixed(2)}</span>{' '}
-              <span className="text-[#6c757d] dark:text-slate-400">(incl. ${gst.toFixed(2)} GST)</span>
+              {taxNote && <span className="text-[#6c757d] dark:text-slate-400">{taxNote}</span>}
             </>
           ) : (
             <span className="text-[#6c757d] dark:text-slate-400">Select a plan to see the new monthly total.</span>
