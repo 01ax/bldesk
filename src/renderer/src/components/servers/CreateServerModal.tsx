@@ -458,6 +458,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-5">
             {/* ---------- 1. location and operating system ---------- */}
             <Section step={1} title="Select your location and operating system">
+              {/* A failed read is not "no locations": say so, with a way to ask again. */}
+              {regionsQuery.isError && !regionsQuery.data && (
+                <div role="alert" className="flex items-center gap-2 text-xs text-rose-700 dark:text-rose-300">
+                  <span>Couldn't load the locations.</span>
+                  <button type="button" onClick={() => void regionsQuery.refetch()} disabled={regionsQuery.isFetching} className="underline disabled:opacity-60">
+                    Retry
+                  </button>
+                </div>
+              )}
               <TileRow>
                 {regions.map((r: any) => (
                   <Tile key={r.slug} selected={region === r.slug} onClick={() => setRegion(r.slug)} disabled={!r.available}>

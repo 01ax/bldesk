@@ -30,7 +30,7 @@ import {
 import { components } from '@shared/api/schema'
 import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useServerActionMutation, describeApiError, mapLimitNullable } from '../../api/queries'
+import { useDomains, useServerActionMutation, describeApiError, fetchServerBackups, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -221,9 +221,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         // The review was left while this one waited its turn: nothing is left to report to.
         if (run !== checkRun.current) return null
         try {
-          const { data, error } = await client.GET('/v2/servers/{server_id}/backups', { params: { path: { server_id: s.id } } })
-          if (error || !data) throw new Error('no backup list')
-          const hit = replacedByOldest('temporary', undefined, data.backups, s.attached_backup?.id)
+          const backups = await fetchServerBackups(client, s.id)
+          const hit = replacedByOldest('temporary', undefined, backups, s.attached_backup?.id)
           if (!hit) return null
           const what = `${hit.backup.name ?? 'Backup'} (#${hit.backup.id}), ${describeBackup(hit.backup)}`
           replaceMap.current.set(s.id, what)

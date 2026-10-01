@@ -24,4 +24,4 @@ Choose Shutdown when you want the guest to shut down cleanly. The confirmation s
 A successful signal is not proof of shutdown. Check the resulting power state. Reboot requests a clean OS restart; Power off cuts power; Power cycle cuts power and starts again. Unsaved guest data can be lost with either hard power action.
 
 ## Create and organise
-Create Server opens the review form for hostname, image, region, plan, networking, keys and backups. Check the price and terms before submitting. For repeatable builds use [Templates](help:templates). Palette targets can use [local tags and groups](help:palette#targets).
+Create Server opens the review form for hostname, image, region, plan, networking, keys and backups. Check the price and terms before submitting. If BinaryLane does not return the locations, the form says “Couldn't load the locations.” with a Retry link instead of showing none, so a missing list is not mistaken for no locations. For repeatable builds use [Templates](help:templates). Palette targets can use [local tags and groups](help:palette#targets).

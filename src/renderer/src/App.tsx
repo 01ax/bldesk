@@ -36,6 +36,7 @@ import { useFleetWatch } from './lib/fleetWatch'
 import { usePowerState, annotateServers } from './lib/powerState'
 import { useTrackedActions } from './context/ActionTrackerContext'
 import { createBinaryLaneClient } from './api/client'
+import { isFinalFailure } from './api/errors'
 import { AccountProfile } from '@shared/ipc-types'
 import { ThemeProvider } from './context/ThemeContext'
 import { useDeepLinkRouter } from './lib/deeplinks'
@@ -47,9 +48,10 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 20, // 20s freshness
       refetchOnWindowFocus: false,
-      retry: (failureCount, error: any) => {
-        // Never retry 401/403 auth errors or 404 missing resource errors
-        if (error?.status === 401 || error?.status === 403 || error?.status === 404) return false
+      retry: (failureCount, error) => {
+        // Retrying cannot change a refused token (401, 403) or a missing resource (404): report it at once. The read
+        // hooks throw an ApiError, which carries the status this checks.
+        if (isFinalFailure(error)) return false
         return failureCount < 2
       }
     },
