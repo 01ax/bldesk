@@ -306,10 +306,13 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     e.preventDefault()
     const partnerId = selectedPartnerId ? parseInt(selectedPartnerId, 10) : null
     const partnerServer = allServers.find((s) => s.id === partnerId)
+    // Name and id, like the new partner. A partner that is not in the servers list keeps just its id.
+    const currentPartner = allServers.find((s) => s.id === server.partner_id)
+    const from = server.partner_id ? (currentPartner ? `${currentPartner.name} (#${server.partner_id})` : `#${server.partner_id}`) : undefined
     await executeAction(
       'Change Partner Server',
       { type: 'change_partner', partner_server_id: partnerId },
-      { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from: server.partner_id ? `#${server.partner_id}` : undefined, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : undefined }] }
+      { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : undefined }] }
     )
   }
 

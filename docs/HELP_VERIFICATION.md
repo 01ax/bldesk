@@ -399,6 +399,33 @@ The harness is out of tree and is not an app dependency: a copy of
 `ssh_keys`, plus the check scripts. Playwright comes from
 `BLDESK_PLAYWRIGHT_MODULE`.
 
+## Change Partner confirmation names the current partner (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/change-partner-confirm-name`. No new runtime dependencies. No help page changed: `server-settings.md` has one sentence about HA partners (“Selecting an HA partner requests placement separation; it does not configure application failover.”) and does not quote or describe the confirmation's rows. A search for “partner” across `docs/`, `README.md`, `FEATURES.md` and `REQUIREMENTS.md` found no other description of them.
+
+Service facts, from `openapi.json` only: `Server.partner_id` is “The server ID of the partner of this server, if one has been assigned.” (a nullable integer, an id and nothing else). `ChangePartner.partner_server_id`: “Leave this null to remove the server partnership. The partner server must be in the same region as the target server.” The reference gives no way to read a partner's name from the partner id alone, so the name can only come from servers BLDesk has already loaded.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| The current partner in the “HA partner” row, as the name followed by the id in brackets (“name (#id)”) | `handleSavePartner` in `ServerSettings.tsx`, `from` of the `changes` row; the name is looked up by `partner_id` in the `servers` prop (the list `App.tsx` loads with `useServers`) | Changed. Before, the id only (“#id”). |
+| The id alone (“#id”) for a current partner that is not in that list | Same `from` | Unchanged for that case. No name is invented; the row reads as before. |
+| The new partner (“name (#id)”) and “(removed)” when the partner is cleared | Same row, `to` | Unchanged. |
+| “BinaryLane keeps HA partners on separate physical hypervisors.”, the dialog title, severity (`normal`) and buttons | Same call | Unchanged. |
+| Request body | `{ type: 'change_partner', partner_server_id }` | Unchanged; identical on BASE and FIXED for set, change and remove (see below). |
+| The row in a History entry | `confirm()` stores the same `changes` | Changed with the dialog, so History now shows the current partner by name too. |
+
+### Checks performed
+
+- `npm run typecheck` (help guard unchanged at 54 quotes), `npm run test:terminal` and `npm run build`.
+- Real Electron through `scripts/gui-test`, isolated user data, the fictitious token, every request answered by the harness mock. The build at `304975b` (BASE) and this branch (FIXED) were driven with Playwright over the debugging port through Servers, the server, Settings, Partner Server, Update Partner Pairing; each dialog was read and then confirmed, and the requests read from `mock.log`.
+- Set a first partner (`win-app-01`, none, to `edge-web-bne-01`): the row reads “edge-web-bne-01 (#8106)” on both builds; body `{"type":"change_partner","partner_server_id":8106}` on both.
+- Change a partner (`ha-partner-a`, partnered with `ha-partner-b`, to `edge-web-syd-01`): BASE “#9007 → edge-web-syd-01 (#8100)”, FIXED “ha-partner-b (#9007) → edge-web-syd-01 (#8100)”; body `partner_server_id` 8100 on both.
+- Remove a partner (choose “No Partner Server (Independent)”): BASE “#9007 (removed)”, FIXED “ha-partner-b (#9007) (removed)”; body `partner_server_id` null on both.
+- A current partner that is not in the list (the mock's partner server deleted first, so the list no longer has it while the server still reports its id): BASE and FIXED both read “#9007 → edge-web-syd-01 (#8100)” and “#9007 (removed)”; bodies identical.
+- History, after confirming the change and the removal: BASE “#9007 → edge-web-syd-01 (#8100)” and “#9007”; FIXED “ha-partner-b (#9007) → edge-web-syd-01 (#8100)” and “ha-partner-b (#9007)”.
+- Zoom: real Electron zoom at 80, 100, 125 and 150% by Ctrl+-, Ctrl+= and Ctrl+0 sent with `webContents.sendInputEvent`, in 1280×840 and 1024×680 windows (`setContentSize`), with the change dialog open, BASE and FIXED, and again with the current partner made the mock's 100-character server name (the list and the server read were answered from the mock with that one partner id changed). The dialog sat inside the window with Cancel and Confirm visible and its body not scrolling at every combination, down to a 683×453 CSS viewport, and there was no horizontal page scroll. The long name wraps inside the row (61 px tall against 29 px) and stays inside the dialog.
+- Not verified: a live BinaryLane account (nothing here reached it); Android; a partner that belongs to another profile (the mock has only one).
+
 ## Browse existing SSH key files (7 September 2026, 1.0.61-beta.8)
 
 Checked `help/keys.md`, `help/server-remote-access.md` and `help/terminal.md` against the Browse… button, Key file display and cancellation flow in `ServerDetails.tsx`; the main-process `vault:chooseSshKeyFile` / `vault:getLocalSshKeys` handlers; `existingKeyFiles` in `src/main/sshKeyFiles.ts`; and `availableSshKeys` in `lib/sshKeyAssociations.ts`. Selected files use stat metadata only, with no private-content read, copy or passphrase persistence. Existing automatic discovery still reads public `.pub` files only. Local filenames are not BinaryLane account public keys. All SSH consumers include persisted selected paths when checking availability, so an external file does not become missing merely because discovery cannot find it.
