@@ -344,19 +344,23 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   // Handle Clone to Target Server
   const handleCloneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!client || !targetServerId) return
+    if (!client || !targetServerId || isCloning) return
     setCloneError(null)
 
     const targetName = servers.find((s) => s.id === targetServerId)?.name || String(targetServerId)
     // Read the target's current list first so the diff is a true before → after.
     // A clone replaces the whole list, so a target that cannot be read is not
     // written to: the empty list a failed read would give looks like "0 rules".
+    // Busy while it loads: a second click would queue a second confirmation.
+    setIsCloning(true)
     let targetRules: any[] | null = null
     try {
       const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', { params: { path: { server_id: targetServerId } } })
       if (!error && response.ok) targetRules = data?.firewall_rules || []
     } catch {
       // a dropped connection is an unreadable target too
+    } finally {
+      setIsCloning(false)
     }
     if (!targetRules) {
       setCloneError(`Couldn't read the firewall rules on ${targetName}. Nothing was changed: a clone replaces the target's whole list, so it needs the current one first.`)

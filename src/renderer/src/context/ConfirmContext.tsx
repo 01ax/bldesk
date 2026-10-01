@@ -78,6 +78,7 @@ export function useConfirm(): ConfirmFn {
 }
 
 interface Pending {
+  id: number
   req: ConfirmRequest
   resolve: (r: ConfirmResult) => void
 }
@@ -85,10 +86,11 @@ interface Pending {
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null)
   const queue = useRef<Pending[]>([])
+  const nextId = useRef(0)
 
   const confirm = useCallback<ConfirmFn>((req) => {
     return new Promise<ConfirmResult>((resolve) => {
-      const item = { req, resolve }
+      const item = { id: nextId.current++, req, resolve }
       setPending((cur) => {
         if (cur) {
           queue.current.push(item)
@@ -130,7 +132,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConfirmContext.Provider value={value}>
       {children}
-      {pending && <ConfirmDialog req={pending.req} onSettle={settle} />}
+      {pending && <ConfirmDialog key={pending.id} req={pending.req} onSettle={settle} />}
     </ConfirmContext.Provider>
   )
 }
