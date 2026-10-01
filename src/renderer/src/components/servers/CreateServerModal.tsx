@@ -129,8 +129,33 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   // Unticking a key, adding one, or a template that names keys (even none at all) is a decision, and a reload of the
   // list never overrides it.
   const keysTouchedRef = useRef(false)
+  // Back to a blank form, as a new one is: the form stays mounted with the server list, so what was typed or chosen for
+  // the last server would otherwise be what the next one starts with (its hostname, its extra addresses and paid
+  // backups, its agreement to the terms), and one more press of Add Server would build it again.
+  const resetForm = () => {
+    setHostname('')
+    setVpcId(undefined)
+    setIpCount(1)
+    setDailyBackups(0)
+    setWeeklyBackups(0)
+    setMonthlyBackups(0)
+    setOffsiteBackups(false)
+    setSimpleBackups('none')
+    setCloudInitOn(false)
+    setCloudInit('')
+    setAgreed(false)
+    setErrorMsg(null)
+    diskChosenRef.current = false
+    setMemoryMb(null)
+    setDiskGb(null)
+  }
   useEffect(() => {
     if (!isOpen) return
+    // The terms are agreed to for each server, not once for the session.
+    setAgreed(false)
+    setErrorMsg(null)
+    // A template starts from a blank form too, so nothing of the last server's choices rides along with it.
+    if (initial) resetForm()
     keysTouchedRef.current = initial?.sshKeyNames !== undefined
     setTemplateKeyNames([])
     if (initial?.sshKeyNames !== undefined) setSelectedKeys([])
@@ -474,6 +499,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       const generatedPath = selectedKeys.map((id) => generatedKeys[id]).find(Boolean)
       if (created?.id && generatedPath) setKeyAssociation(profileId, created.id, generatedPath, 'manual')
       onCreated?.({ id: created?.id, name: hostname.trim() })
+      resetForm()
       onClose()
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err?.message })

@@ -1,5 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
+import { LoadError } from '../ui/LoadError'
 import React, { useState } from 'react'
 import {
   Network,
@@ -247,8 +248,12 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
         </div>
       )}
 
+      {vpcsQuery.isError && (
+        <LoadError what="VPC networks" hasData={vpcsQuery.data !== undefined} message={vpcsQuery.error?.message} isFetching={vpcsQuery.isFetching} onRetry={() => void vpcsQuery.refetch()} />
+      )}
+
       {/* Empty State */}
-      {!vpcsQuery.isLoading && vpcs.length === 0 && (
+      {!vpcsQuery.isLoading && !vpcsQuery.isError && vpcs.length === 0 && (
         <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
           <Network className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
           <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No VPC Networks</h3>

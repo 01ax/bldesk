@@ -19,6 +19,8 @@ node scripts/gui-test/signin.mjs                       # signs in through the re
 node scripts/gui-test/launch.mjs --stop                # when finished
 ```
 
+After driving the app, check what it sent: `node scripts/gui-test/check-requests.mjs <tmp>/bldesk-gui-test/NAME/mock.log` validates every distinct request body in the mock log against the request schema in `openapi.json` (action requests against the schema their `type` names) and lists the ones that are invalid: a field left out, a wrong type or enum value, an action the reference does not have. It needs `ajv`, which the build tools install. It does not flag a field the reference does not define, so read the bodies for those.
+
 Backup-model regressions can also run without Electron or Playwright:
 
 ```sh

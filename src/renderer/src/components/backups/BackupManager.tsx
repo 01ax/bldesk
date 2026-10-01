@@ -1,5 +1,5 @@
 import { HelpLink } from '../ui/HelpLink'
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   Archive,
@@ -86,6 +86,16 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const backups = backupsQuery.data || []
   const actions = actionsQuery.data || []
 
+  // The choice belongs to the server it was made for: a replacement picked on one server named a backup the next server
+  // does not have, and the form then showed "Temporary" while submit sent that backup's id to the new server.
+  useEffect(() => {
+    setSelectedSlot('temporary')
+    setBackupLabel('')
+  }, [activeServerId])
+  // And it only counts while the form can still show it (the backup may have been deleted, or the plan changed).
+  const slotOptions = [...availableBackupSlots(activeServer?.selected_size_options), ...backups.map((b) => `replace:${b.id}`)] as string[]
+  const chosenSlot = slotOptions.includes(selectedSlot) ? selectedSlot : (slotOptions[0] ?? 'temporary')
+
   const activeBackupAction = actions.find(
     (a) =>
       a.status === 'in-progress' &&
@@ -126,12 +136,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
     let backupIdToReplace: number | undefined
 
-    if (selectedSlot.startsWith('replace:')) {
+    if (chosenSlot.startsWith('replace:')) {
       replacementStrategy = 'specified'
       backupType = undefined
-      backupIdToReplace = Number(selectedSlot.split(':')[1])
+      backupIdToReplace = Number(chosenSlot.split(':')[1])
     } else {
-      backupType = (selectedSlot as any) || 'temporary'
+      backupType = (chosenSlot as any) || 'temporary'
       replacementStrategy = 'oldest'
     }
 
@@ -657,7 +667,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 Backup Slot / Retention
               </label>
               <select
-                value={selectedSlot}
+                value={chosenSlot}
                 onChange={(e) => setSelectedSlot(e.target.value)}
                 className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
               >

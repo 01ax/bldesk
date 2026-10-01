@@ -10,6 +10,8 @@ Use Map to inspect the active account's topology: Internet, load balancers, regi
 ## Read the relationships
 Links show resource relationships, not measured packet flows, throughput or proof of connectivity. Server exposure labels and colours come from the external-firewall audit: they describe rule exposure, not live connectivity or an IPv4 allocation audit. The map has no reachability-test control. Open a server for its reachability badge or Usage graphs.
 
+When a read fails, the header says so instead of counting zero: “VPCs not read”, “load balancers not read”, or a note that firewall rules were not read on that many servers, so their exposure is unknown. Servers whose rules could not be read show a question mark rather than a colour, and are left out of the SSH-exposure count.
+
 ## Navigate and export
 Use the map's zoom and fit controls to inspect a dense fleet. To zoom the map itself, hold Cmd/Ctrl and scroll, use the zoom buttons, or pinch on a touch screen. Cmd/Ctrl+plus and minus zoom the whole app, not the map. Export SVG or PNG when you need a static inventory. An export can expose server names and addresses; review it before sharing or attaching it to a ticket.
 

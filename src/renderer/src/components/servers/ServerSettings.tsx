@@ -41,6 +41,14 @@ type VmMachineType = components['schemas']['VmMachineType']
 import { visibleFeatures, mergeHiddenFeatures, formatMachineType } from '../../lib/advancedFeatures'
 type VideoDevice = components['schemas']['VideoDevice']
 
+/** The video devices the API reference defines, with its own descriptions of them. */
+const VIDEO_DEVICES: Array<{ value: VideoDevice; label: string }> = [
+  { value: 'cirrus-logic', label: 'Cirrus Logic GD5446' },
+  { value: 'standard', label: 'Standard VGA with VESA 2.0 extensions' },
+  { value: 'virtio', label: 'Virtio VGA (800x600)' },
+  { value: 'virtio-wide', label: 'Virtio VGA (1600x900)' }
+]
+
 interface ServerSettingsProps {
   /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
   servers: any[]
@@ -260,6 +268,9 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   const handleSaveAdvanced = async (e: React.FormEvent) => {
     e.preventDefault()
+    const current = server.advanced_features
+    const processorLabel = (id: number) => (id === -1 ? 'Host Default (Auto)' : advancedQuery.data?.processor_models?.find((p) => p.id === id)?.name ?? `#${id}`)
+    const videoLabel = (v: string) => VIDEO_DEVICES.find((d) => d.value === v)?.label ?? v
     await executeAction(
       'Update Advanced Features',
       {
@@ -269,11 +280,26 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
           (server.advanced_features?.enabled_advanced_features ?? []) as string[],
           shownFeatures
         ),
-        machine_type: machineType || undefined,
-        processor_model: processorModel === -1 ? undefined : processorModel,
+        // Choosing "Default (Automatic)" or "Host Default (Auto)" when the server has a setting is a change, and the
+        // reference has a field for it. Leaving the field out keeps what is there, so it would report success and do nothing.
+        ...(machineType === '' && current?.machine_type ? { automatic_machine_type: true } : machineType ? { machine_type: machineType } : {}),
+        ...(processorModel === -1 && current?.processor_model != null ? { automatic_processor_model: true } : processorModel !== -1 ? { processor_model: processorModel } : {}),
         video_device: videoDevice
       },
-      { summary: 'Updates the hypervisor-level features. Takes effect on the next reboot.', changes: [{ label: 'Features', from: (server.advanced_features?.enabled_advanced_features ?? []).join(', ') || undefined, to: selectedFeatures.join(', ') || undefined }] }
+      {
+        summary: 'Updates the hypervisor-level features. Takes effect on the next reboot.',
+        changes: [
+          // Only what changes: a row that reads the same either side is not a change.
+          ...((current?.enabled_advanced_features ?? []).join(', ') !== selectedFeatures.join(', ')
+            ? [{ label: 'Features', from: (current?.enabled_advanced_features ?? []).join(', ') || undefined, to: selectedFeatures.join(', ') || undefined }]
+            : []),
+          ...(machineType !== (current?.machine_type ?? '') ? [{ label: 'Machine type', from: current?.machine_type ? formatMachineType(current.machine_type as string) : 'Default (Automatic)', to: machineType ? formatMachineType(machineType as string) : 'Default (Automatic)' }] : []),
+          ...(processorModel !== (current?.processor_model ?? -1)
+            ? [{ label: 'Processor model', from: processorLabel(current?.processor_model ?? -1), to: processorLabel(processorModel) }]
+            : []),
+          ...(videoDevice !== (current?.video_device ?? 'cirrus-logic') ? [{ label: 'Video device', from: videoLabel(current?.video_device ?? 'cirrus-logic'), to: videoLabel(videoDevice) }] : [])
+        ]
+      }
     )
   }
 
@@ -730,9 +756,11 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
                 disabled={busy}
                 className={`${inputClass} w-full`}
               >
-                <option value="cirrus-logic">Cirrus Logic (Default Standard)</option>
-                <option value="vga">VGA (Standard)</option>
-                <option value="qxl">QXL (SPICE High Performance)</option>
+                {VIDEO_DEVICES.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
               </select>
             </div>
 

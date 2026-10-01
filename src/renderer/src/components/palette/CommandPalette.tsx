@@ -38,7 +38,7 @@ import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeBackup, replacedByOldest } from '../../lib/backupSlots'
-import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags } from '../../lib/serverGroups'
+import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags, normaliseTag } from '../../lib/serverGroups'
 import {
   POWER_VERBS,
   TARGET_HELP,
@@ -519,7 +519,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     // --- Tags (local): tag add web wp-* / tag remove web #101
     if (parsed.kind === 'tag') {
       const { matches, unmatched } = resolveTargets(parsed.targets)
-      const verbLabel = parsed.op === 'add' ? `Tag @${parsed.tag}` : `Untag @${parsed.tag}`
+      // Show the name that will be stored: spaces and other characters are dropped, so `"my tag"` is `@mytag`.
+      const tagName = normaliseTag(parsed.tag)
+      if (!tagName) {
+        header = { icon: AlertTriangle, text: `"${parsed.tag}" has no usable characters. A tag is letters, numbers, dots, dashes and underscores.`, tone: 'bad' }
+        return { rows, header, primary, plan }
+      }
+      const verbLabel = parsed.op === 'add' ? `Tag @${tagName}` : `Untag @${tagName}`
       if (matches.length === 0) {
         header = { icon: AlertTriangle, text: `No server matches "${parsed.targets}". ${TARGET_HELP}`, tone: 'bad' }
         return { rows, header, primary, plan }
@@ -541,9 +547,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Local only, no API call — apply immediately, no review step.
       primary = () => {
         if (!profileId) return
-        saveTags(profileId, withTag(loadTags(profileId), matches.map((m) => m.server.id), parsed.tag, parsed.op === 'add'))
+        saveTags(profileId, withTag(loadTags(profileId), matches.map((m) => m.server.id), tagName, parsed.op === 'add'))
         rememberCommand(query)
-        setNotice(`${verbLabel}: ${matches.length} server${matches.length === 1 ? '' : 's'}. Use @${parsed.tag} as a target anywhere.`)
+        setNotice(`${verbLabel}: ${matches.length} server${matches.length === 1 ? '' : 's'}. Use @${tagName} as a target anywhere.`)
         setTimeout(close, 900)
       }
       return { rows, header, primary, plan }

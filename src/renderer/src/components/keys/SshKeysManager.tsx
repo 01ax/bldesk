@@ -4,6 +4,7 @@ import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, Pencil, RefreshCw, K
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
+import { LoadError } from '../ui/LoadError'
 import { GenerateKeyPairDialog, canGenerateKeyPair } from './GenerateKeyPairDialog'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
@@ -256,7 +257,13 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
           <div className="p-8 text-center text-xs text-[#6c757d]">Loading keys...</div>
         )}
 
-        {!sshKeysQuery.isLoading && keys.length === 0 && (
+        {sshKeysQuery.isError && (
+          <div className="p-3.5">
+            <LoadError what="SSH keys" hasData={sshKeysQuery.data !== undefined} message={sshKeysQuery.error?.message} isFetching={sshKeysQuery.isFetching} onRetry={() => void sshKeysQuery.refetch()} />
+          </div>
+        )}
+
+        {!sshKeysQuery.isLoading && !sshKeysQuery.isError && keys.length === 0 && (
           <div className="p-8 text-center text-xs text-[#6c757d]">No SSH keys registered in BinaryLane.</div>
         )}
 
