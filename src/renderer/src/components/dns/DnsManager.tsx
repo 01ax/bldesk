@@ -113,6 +113,22 @@ const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; children: Re
   </button>
 )
 
+/** What a record carries besides its data, in the order its zone-file line reads them. */
+function recordExtras(r: { type?: string; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }): string {
+  const parts: string[] = []
+  if (r.type === 'MX' && r.priority != null) parts.push(`priority ${r.priority}`)
+  if (r.type === 'SRV') {
+    if (r.priority != null) parts.push(`priority ${r.priority}`)
+    if (r.weight != null) parts.push(`weight ${r.weight}`)
+    if (r.port != null) parts.push(`port ${r.port}`)
+  }
+  if (r.type === 'CAA') {
+    if (r.flags != null) parts.push(`flags ${r.flags}`)
+    if (r.tag) parts.push(`tag ${r.tag}`)
+  }
+  return parts.join(' · ')
+}
+
 export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -503,7 +519,9 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                             </span>
                           </td>
                           <td className="py-2 px-4 font-mono font-medium">{r.name}</td>
-                          <td className="py-2 px-4 font-mono text-[#6c757d] dark:text-slate-300 break-all">
+                          {/* A phone leaves this column about ten characters, and a long value then breaks letter by letter: give it room and let the table scroll. */}
+                          <td className="py-2 px-4 min-w-[14rem] font-mono text-[#6c757d] dark:text-slate-300 break-all">
+                            {recordExtras(r) && <div className="mb-0.5 text-[10px] text-[#017cb6]">{recordExtras(r)}</div>}
                             {r.data}
                           </td>
                           <td className="py-2 px-4 text-center font-mono text-[#6c757d]">{r.ttl}</td>
