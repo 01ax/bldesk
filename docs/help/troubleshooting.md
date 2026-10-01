@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 summary: Separate reachability, power, installation and help-service failures.
-keywords: [port 22 unreachable, running but down, apparmor, macos, update, offline]
+keywords: [port 22 unreachable, running but down, apparmor, macos, update, offline, failed change]
 ---
 
 # Troubleshooting
@@ -32,6 +32,9 @@ The optional chip appends only the displayed distribution and region when you cl
 
 ## A list says it couldn't load
 VPC networks, load balancers, SSH keys, DNS zones and DNS records show a red notice such as “Couldn't load the VPC networks.”, with the API's reason and a Retry button, when BinaryLane could not be reached or refused the read. Such a page does not show its empty-list message, because that would claim the account has none. If an earlier load succeeded, the notice says “Couldn't refresh the VPC networks.” instead and the older list stays below it. Check your connection and token, then press Retry.
+
+## A change says it failed
+When BinaryLane refuses a change, or the request fails, BLDesk says so inside its window, with BinaryLane's reason when it gives one, and History records the change as Failed. A dialog that sent the change, such as Add Record, Create VPC or Take Backup, stays open with what you entered and shows the reason in red, for example “Failed to add record: …”; correct it and save again, or Cancel. A server's Settings and Network tabs and the firewall's Add Rule form show the reason in a red notice on the page. Many other changes made from a button on a page, such as deleting a firewall rule or rebooting a server, are reported in a toast at the bottom right with a red warning sign, for example “Failed to delete rule”, with the reason under it. A terminal or rescue console that does not open, and a bldesk:// link that cannot be followed, are reported the same way. A failure toast stays until you close it, except that only the three latest are kept, a failure that repeats the one before it is counted on that toast instead of being shown again, and switching to another account clears them.
 
 ## The sidebar says the API is not answering
 The status at the foot of the sidebar follows the server-list read, which BLDesk repeats every 15 seconds. It says “API Online” while that read works, “API not answering” when it fails, and “API refused the token” when BinaryLane answers 401 or 403. While it is failing, the Servers page shows a red notice above the list and keeps the last list BLDesk saved, which may be out of date; Retry reads it again. A server's power state and the other pages come from separate reads and can still work.

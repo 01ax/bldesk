@@ -1,8 +1,9 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
 import { LoadError } from '../ui/LoadError'
+import { showFailure } from '../actions/ActionToasts'
 import React, { useEffect, useState } from 'react'
-import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
+import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, ExternalLink, AlertCircle } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
@@ -149,6 +150,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [recordFlags, setRecordFlags] = useState('0')
   const [recordTag, setRecordTag] = useState('issue')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [recordError, setRecordError] = useState<string | null>(null)
 
   const domainsQuery = useDomains(client)
   const nameserversQuery = useLocalNameservers(client)
@@ -184,7 +186,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
         body: 'BinaryLane authoritative nameserver cache refreshed successfully.'
       })
     } catch (err: any) {
-      alert(`Flush failed: ${err.message}`)
+      showFailure({ label: 'Flush failed', detail: err.message })
     }
   }
 
@@ -193,6 +195,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!client || !selectedDomain) return
 
     setIsSubmitting(true)
+    setRecordError(null)
     // The form is the review: a record add is small and shown in full, so it
     // is recorded rather than confirmed.
     const changeId = await recordChange({
@@ -232,7 +235,8 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add record: ${err.message}`)
+      // The dialog stays open with what was typed, so the reason is shown in it.
+      setRecordError(`Failed to add record: ${err.message}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -269,7 +273,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to delete record: ${err.message}`)
+      showFailure({ label: 'Failed to delete record', resourceName: selectedDomain, detail: err.message })
     }
   }
 
@@ -317,7 +321,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       setDomainPage((p) => Math.min(p, lastPage))
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to remove DNS hosting: ${err.message || 'Unknown error'}`)
+      showFailure({ label: 'Failed to remove DNS hosting', resourceName: domain.name, detail: err.message || 'Unknown error' })
     } finally {
       setRemoveBusy(false)
     }
@@ -467,7 +471,10 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                 </div>
 
                 <button
-                  onClick={() => setIsAddingRecord(true)}
+                  onClick={() => {
+                    setRecordError(null)
+                    setIsAddingRecord(true)
+                  }}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -657,6 +664,13 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                 className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
               />
             </div>
+
+            {recordError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{recordError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}

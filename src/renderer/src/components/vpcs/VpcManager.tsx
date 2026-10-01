@@ -1,6 +1,7 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
 import { LoadError } from '../ui/LoadError'
+import { showFailure } from '../actions/ActionToasts'
 import React, { useState } from 'react'
 import {
   Network,
@@ -11,7 +12,8 @@ import {
   Unlink,
   Trash2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  AlertCircle
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
@@ -40,11 +42,13 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
   const [vpcName, setVpcName] = useState('')
   const [ipRange, setIpRange] = useState('10.240.0.0/16')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   // Attach Server Modal States
   const [attachModalVpc, setAttachModalVpc] = useState<any | null>(null)
   const [selectedServerToAttach, setSelectedServerToAttach] = useState<number | null>(null)
   const [isAttaching, setIsAttaching] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
   const [actionServerId, setActionServerId] = useState<number | null>(null)
 
   const vpcsQuery = useVpcs(client)
@@ -64,6 +68,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
     if (!client) return
 
     setIsSubmitting(true)
+    setCreateError(null)
     const changeId = await recordChange({
       label: 'Create VPC',
       target: { kind: 'vpc', name: vpcName.trim() },
@@ -89,7 +94,8 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to create VPC: ${err.message}`)
+      // The dialog stays open with what was typed, so the reason is shown in it.
+      setCreateError(`Failed to create VPC: ${err.message}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -101,6 +107,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
     if (!client || !attachModalVpc || !selectedServerToAttach) return
 
     setIsAttaching(true)
+    setAttachError(null)
     const targetServerName = servers.find((s) => s.id === selectedServerToAttach)?.name || String(selectedServerToAttach)
     const changeId = await recordChange({
       label: 'Attach to VPC',
@@ -132,7 +139,8 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to attach server: ${err.message}`)
+      // The dialog stays open, so the reason is shown in it.
+      setAttachError(`Failed to attach server: ${err.message}`)
     } finally {
       setIsAttaching(false)
     }
@@ -173,7 +181,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to detach server: ${err.message}`)
+      showFailure({ label: 'Failed to detach server', resourceName: serverName, detail: err.message })
     } finally {
       setActionServerId(null)
     }
@@ -205,7 +213,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to delete VPC: ${err.message}`)
+      showFailure({ label: 'Failed to delete VPC', resourceName: vpcName, detail: err.message })
     }
   }
 
@@ -230,7 +238,10 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={() => {
+              setCreateError(null)
+              setIsCreating(true)
+            }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -261,7 +272,10 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
             Connect multiple virtual servers privately on an isolated 10Gbps backend network.
           </p>
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={() => {
+              setCreateError(null)
+              setIsCreating(true)
+            }}
             className="px-4 py-2 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition"
           >
             Create Your First VPC
@@ -311,6 +325,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
                   </h4>
                   <button
                     onClick={() => {
+                      setAttachError(null)
                       setAttachModalVpc(vpc)
                       if (attachableServers.length > 0) {
                         setSelectedServerToAttach(attachableServers[0].id)
@@ -463,6 +478,13 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
                 Standard private range: 10.240.0.0/16, 172.16.0.0/16, etc.
               </p>
             </div>
+
+            {createError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{createError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -520,6 +542,13 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
                 </select>
               )}
             </div>
+
+            {attachError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{attachError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}

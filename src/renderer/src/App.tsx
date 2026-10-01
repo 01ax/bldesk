@@ -541,7 +541,7 @@ function MainDashboard() {
         <ActionInteractionPrompt client={client} profileId={activeProfile?.id} servers={servers} />
 
         {/* Outcomes of actions still running in the background, for the same reason. */}
-        <ActionToasts />
+        <ActionToasts profileId={activeProfile?.id} />
       </div>
     </ActionTrackerProvider>
     </ConfirmProvider>

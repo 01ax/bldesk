@@ -1,6 +1,7 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
 import { LoadError } from '../ui/LoadError'
+import { showFailure } from '../actions/ActionToasts'
 import React, { useState } from 'react'
 import {
   Layers,
@@ -57,6 +58,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   const [attachModalLb, setAttachModalLb] = useState<any | null>(null)
   const [selectedServerToAttach, setSelectedServerToAttach] = useState<number | null>(null)
   const [actionServerId, setActionServerId] = useState<number | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
 
   const lbsQuery = useLoadBalancers(client)
   const regionsQuery = useRegions(client)
@@ -131,6 +133,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
   const handleAttachServer = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!attachModalLb || !selectedServerToAttach) return
+    setAttachError(null)
 
     const sName = servers.find((s) => s.id === selectedServerToAttach)?.name || String(selectedServerToAttach)
     const changeId = await recordChange({
@@ -156,7 +159,8 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       setSelectedServerToAttach(null)
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add server: ${err.message}`)
+      // The dialog stays open, so the reason is shown in it.
+      setAttachError(`Failed to add server: ${err.message}`)
     }
   }
 
@@ -186,7 +190,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to remove server: ${err.message}`)
+      showFailure({ label: 'Failed to remove server', resourceName: serverName, detail: err.message })
     } finally {
       setActionServerId(null)
     }
@@ -212,7 +216,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Delete failed: ${err.message}`)
+      showFailure({ label: 'Delete failed', resourceName: name, detail: err.message })
     }
   }
 
@@ -369,6 +373,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
                     </h4>
                     <button
                       onClick={() => {
+                        setAttachError(null)
                         setAttachModalLb(lb)
                         if (attachableServers.length > 0) {
                           setSelectedServerToAttach(attachableServers[0].id)
@@ -587,6 +592,12 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
               </select>
             </div>
 
+            {attachError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{attachError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}

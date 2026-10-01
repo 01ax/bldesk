@@ -4,6 +4,7 @@ import { AccountProfile } from '@shared/ipc-types'
 import { DeepLink, formatDeepLink, parseDeepLink } from '@shared/deeplink'
 import { BinaryLaneClient } from '../api/client'
 import { ActiveTab, ServerSubTab } from '../components/layout/Sidebar'
+import { showFailure } from '../components/actions/ActionToasts'
 import { openServerSsh } from './openServerSsh'
 import { openHelp, LOCAL_DEEP_LINK_EVENT } from './helpNavigation'
 
@@ -120,7 +121,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
           if (awaiting.current !== entry) return
           awaiting.current = null
           setPending(null)
-          alert(`Couldn't switch to the account "${link.account}", so the link was not opened.`)
+          showFailure({ label: "Couldn't open the link", detail: `Couldn't switch to the account "${link.account}", so the link was not opened.` })
         }
         awaiting.current = entry
         setPending(stripped) // re-run after the switch lands
@@ -165,7 +166,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
           server = (data?.server as ServerResponse | undefined) ?? null
         }
         if (!server) {
-          alert(`Server #${link.serverId} was not found on ${d.activeProfile?.name ?? 'this account'}.`)
+          showFailure({ label: "Couldn't open the link", detail: `Server #${link.serverId} was not found on ${d.activeProfile?.name ?? 'this account'}.` })
           return
         }
 
@@ -192,7 +193,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
             })
             const url = data?.console?.browser || data?.console?.iframe
             if (!url) {
-              alert(`Couldn't get a rescue console URL for ${server.name}.`)
+              showFailure({ label: "Couldn't open the link", detail: `Couldn't get a rescue console URL for ${server.name}.` })
               break
             }
             const opened = await window.bldeskApi?.openRescueConsole?.({
@@ -208,7 +209,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
         }
       } catch (err: any) {
         console.error('[DeepLink] Failed to route link:', err)
-        alert(`Couldn't open link: ${err?.message || err}`)
+        showFailure({ label: "Couldn't open the link", detail: err?.message || String(err) })
       } finally {
         busyRef.current = false
         // Only this link: one that arrived while it was being opened (a console page can take a while) stays.

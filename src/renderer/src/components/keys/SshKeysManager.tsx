@@ -1,10 +1,11 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, Pencil, RefreshCw, KeyRound } from 'lucide-react'
+import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, Pencil, RefreshCw, KeyRound, AlertCircle } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
 import { LoadError } from '../ui/LoadError'
+import { showFailure } from '../actions/ActionToasts'
 import { GenerateKeyPairDialog, canGenerateKeyPair } from './GenerateKeyPairDialog'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
@@ -18,6 +19,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
   const [keyName, setKeyName] = useState('')
   const [publicKey, setPublicKey] = useState('')
   const [makeDefault, setMakeDefault] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [editingKey, setEditingKey] = useState<{ id: number; name: string; isDefault: boolean } | null>(null)
   const [localKeys, setLocalKeys] = useState<{ name: string; publicKey: string }[]>([])
@@ -67,13 +69,14 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Import failed: ${err.message}`)
+      showFailure({ label: 'Import failed', resourceName: localKey.name, detail: err.message })
     }
   }
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!keyName.trim() || !publicKey.trim()) return
+    setAddError(null)
 
     const changeId = await recordChange({
       label: 'Add SSH key',
@@ -102,7 +105,8 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add key: ${err.message}`)
+      // The dialog stays open with what was typed, so the reason is shown in it.
+      setAddError(`Failed to add key: ${err.message}`)
     }
   }
 
@@ -139,7 +143,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       void updateChange(c.changeId, { outcome: 'completed' })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Update failed: ${err.message}`)
+      showFailure({ label: 'Update failed', resourceName: key.name, detail: err.message })
     }
   }
   const handleDeleteKey = async (keyId: number, name: string) => {
@@ -160,7 +164,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Delete failed: ${err.message}`)
+      showFailure({ label: 'Delete failed', resourceName: name, detail: err.message })
     }
   }
 
@@ -198,7 +202,10 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
             </button>
           )}
           <button
-            onClick={() => setIsAdding(true)}
+            onClick={() => {
+              setAddError(null)
+              setIsAdding(true)
+            }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -395,6 +402,12 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
               <span className="text-[#212529] dark:text-white">Select this SSH Key for all new Cloud Server Installations</span>
             </label>
 
+            {addError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{addError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}

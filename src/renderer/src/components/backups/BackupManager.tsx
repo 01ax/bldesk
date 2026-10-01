@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../ui/Modal'
+import { showFailure } from '../actions/ActionToasts'
 import { BinaryLaneClient } from '../../api/client'
 import {
   readServerBackups,
@@ -82,6 +83,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const [backupLabel, setBackupLabel] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('temporary')
   const [actionProcessingId, setActionProcessingId] = useState<number | null>(null)
+  const [takeError, setTakeError] = useState<string | null>(null)
 
   const backups = backupsQuery.data || []
   const actions = actionsQuery.data || []
@@ -115,8 +117,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     ((activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 || (activeServer?.selected_size_options?.monthly_backups ?? 0) > 0)
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
-  // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
-  // cannot be closed, like every form while its request runs: closing it would not stop the take.
+  // the same request again, which the client refuses, leaving a failed History entry and an error in the form. Meanwhile
+  // the form cannot be closed, like every form while its request runs: closing it would not stop the take.
   const [taking, setTaking] = useState(false)
   const takingRef = useRef(false)
   const handleTakeBackup = async (e: React.FormEvent) => {
@@ -124,6 +126,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId || takingRef.current) return
     takingRef.current = true
     setTaking(true)
+    setTakeError(null)
     try {
       await takeBackup()
     } finally {
@@ -245,7 +248,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       setSelectedSlot('temporary')
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Backup failed: ${err.message}`)
+      // The dialog stays open with the choices made, so the reason is shown in it.
+      setTakeError(`Backup failed: ${err.message}`)
     }
   }
 
@@ -277,7 +281,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Restore failed: ${err.message}`)
+      showFailure({ label: 'Restore failed', resourceName: activeServer?.name, detail: err.message })
     } finally {
       setActionProcessingId(null)
     }
@@ -307,7 +311,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Attach failed: ${err.message}`)
+      showFailure({ label: 'Attach failed', resourceName: activeServer?.name, detail: err.message })
     } finally {
       setActionProcessingId(null)
     }
@@ -326,7 +330,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       }
       window.open(downloadUrl, '_blank')
     } catch (err: any) {
-      alert(`Download failed for "${name}": ${err.message}`)
+      showFailure({ label: 'Download failed', resourceName: name, detail: err.message })
     } finally {
       setActionProcessingId(null)
     }
@@ -351,7 +355,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Detach failed: ${err.message}`)
+      showFailure({ label: 'Detach failed', resourceName: activeServer?.name, detail: err.message })
     }
   }
 
@@ -385,7 +389,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Schedule update failed: ${err.message}`)
+      showFailure({ label: 'Schedule update failed', resourceName: activeServer?.name, detail: err.message })
     }
   }
 
@@ -422,7 +426,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           )}
 
           <button
-            onClick={() => setIsTakingBackup(true)}
+            onClick={() => {
+              setTakeError(null)
+              setIsTakingBackup(true)
+            }}
             disabled={!activeServerId || takeBackupMutation.isPending || taking}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-50"
           >
@@ -557,7 +564,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               Take a backup before making configuration changes, so there is something to roll back to.
             </p>
             <button
-              onClick={() => setIsTakingBackup(true)}
+              onClick={() => {
+                setTakeError(null)
+                setIsTakingBackup(true)
+              }}
               className="mt-2 px-3.5 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"
             >
               Take First Backup
@@ -716,6 +726,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
               />
             </div>
+
+            {takeError && (
+              <div role="alert" className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0 break-words">{takeError}</span>
+              </div>
+            )}
           </div>
         </Modal>
       )}

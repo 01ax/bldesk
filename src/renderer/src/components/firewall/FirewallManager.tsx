@@ -25,6 +25,7 @@ import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import { Modal } from '../ui/Modal'
+import { showFailure } from '../actions/ActionToasts'
 import { FirewallMatrix } from './FirewallMatrix'
 
 interface FirewallManagerProps {
@@ -241,7 +242,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     try {
       await finishFirewall(changeId, updateFirewall.mutateAsync(reordered))
     } catch (err: any) {
-      alert(`Reorder failed: ${err.message}`)
+      showFailure({ label: 'Reorder failed', resourceName: activeServer?.name, detail: err.message })
     } finally {
       setMoving(false)
     }
@@ -275,7 +276,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         body: `Rule #${index + 1} removed.`
       })
     } catch (err: any) {
-      alert(`Failed to delete rule: ${err.message}`)
+      showFailure({ label: 'Failed to delete rule', resourceName: activeServer?.name, detail: err.message })
     }
   }
 
@@ -301,7 +302,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         body: `Flushed all firewall rules on #${activeServerId}.`
       })
     } catch (err: any) {
-      alert(`Flush failed: ${err.message}`)
+      showFailure({ label: 'Flush failed', resourceName: activeServer?.name, detail: err.message })
     }
   }
 
@@ -417,7 +418,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       closeClone()
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Clone failed: ${err.message}`)
+      // The dialog stays open, so the reason is shown in it.
+      setCloneError(`Clone failed: ${err.message}`)
     } finally {
       setIsCloning(false)
     }

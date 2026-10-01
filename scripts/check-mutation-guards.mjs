@@ -9,7 +9,7 @@
  * or agent) from reinventing a dialog, not to be clever.
  *
  * Rules:
- *  1. No window.confirm / confirm( / alert-as-confirm outside ConfirmContext.
+ *  1. No window.confirm / confirm( / alert( / prompt( outside ConfirmContext.
  *  2. One dialog shell: `createPortal(` only inside components/ui/Modal.tsx.
  *     Every dialog is a <Modal>; confirmations are useConfirm() on top. A
  *     hand-built `fixed inset-0` dimmed overlay is the same mistake and fails too.
@@ -69,6 +69,17 @@ function walk(dir, out = []) {
 const failures = []
 const warnings = []
 
+// A native alert() or prompt() call, on a line with comments removed. `window.alert(` and `window['alert'](` count.
+// Otherwise string contents are blanked first, a member call (`obj.prompt(`) never counts, and since JSX text has no
+// quotes a space before "(" counts only where a call can start (after an operator or bracket, or return/await/void),
+// so "usage alert (90%)" does not (JSX text such as `alert(s)`, with no space, does count). Not caught: an alias
+// (`const a = alert; a()`), `alert.call(...)`, a computed name (`window[name]()`), optional chaining (`window?.alert(`),
+// a cast (`(window as any).alert(`), a call inside a template literal's `${}`, or anything after a `//` inside a string.
+const NATIVE_BOX_MEMBER = /\b(?:window|globalThis|self)\s*(?:\.\s*(?:alert|prompt)|\[\s*(['"`])(?:alert|prompt)\1\s*\])\s*\(/
+const NATIVE_BOX_CALL = /(?<![\w$.])(?:alert|prompt)\(|(?:^|[^\w$.\s>])\s*(?:alert|prompt)\s+\(|\b(?:return|await|void)\s+(?:alert|prompt)\s*\(/
+const blankStrings = (l) => l.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g, (m) => m[0] + ' '.repeat(m.length - 2) + m[0])
+const nativeBox = (l) => NATIVE_BOX_MEMBER.test(l) || NATIVE_BOX_CALL.test(blankStrings(l))
+
 for (const file of walk(SRC)) {
   const rel = relative(SRC, file).replace(/\\/g, '/')
   const src = readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
@@ -78,12 +89,13 @@ for (const file of walk(SRC)) {
   const codeOnly = stripped.split('\n')
   const isSharedDialog = rel === SHARED_DIALOG
 
-  // 1. Native confirm boxes
+  // 1. Native confirm, alert and prompt boxes
   if (!isSharedDialog) {
     codeOnly.forEach((l, i) => {
       if (/\bwindow\.confirm\s*\(|(^|[^A-Za-z_.])confirm\s*\(/.test(l) && !/confirmAction|useConfirm|Confirm\(/.test(l)) {
         failures.push(`${rel}:${i + 1}: native confirm() — use useConfirm() from context/ConfirmContext (severity, summary, changes/diff, typeToConfirm) so it is reviewed and recorded in History.`)
       }
+      if (nativeBox(l)) failures.push(`${rel}:${i + 1}: native alert()/prompt() — show a failure in the app: in the form that sent it while it stays open, otherwise with showFailure() from components/actions/ActionToasts.`)
     })
   }
 

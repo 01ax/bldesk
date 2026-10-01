@@ -25,6 +25,7 @@ import { BackupManager } from '../backups/BackupManager'
 import { ServerNetwork } from './ServerNetwork'
 import { ServerSettings } from './ServerSettings'
 import { ServerUsage } from './ServerUsage'
+import { showFailure } from '../actions/ActionToasts'
 import {
   useServerMetrics,
   useServerConsole,
@@ -351,7 +352,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           ok: false
         })
       } else {
-        alert(`Action failed: ${err.message || 'Unknown error'}`)
+        showFailure({ label: `${describeActionType(actionType)} failed`, resourceName: server.name, detail: err.message || 'Unknown error' })
       }
     } finally {
       setActionInProgress(null)
@@ -413,7 +414,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       onCancelled ? onCancelled(server.id) : onBack()
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
-      alert(`Failed to cancel the server: ${err?.message || 'unknown error'}`)
+      showFailure({ label: 'Failed to cancel the server', resourceName: server.name, detail: err?.message || 'Unknown error' })
     }
   }
 
@@ -429,9 +430,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         height: consoleQuery.data.height || 768
       })
       .then((opened) => {
-        if (opened && !opened.success) alert(`Couldn't open the rescue console for ${server.name}: ${opened.error || 'the window did not open.'}`)
+        if (opened && !opened.success) showFailure({ label: "Couldn't open the rescue console", resourceName: server.name, detail: opened.error || 'The window did not open.' })
       })
-      .catch((err: any) => alert(`Couldn't open the rescue console for ${server.name}: ${err?.message || err}`))
+      .catch((err: any) => showFailure({ label: "Couldn't open the rescue console", resourceName: server.name, detail: err?.message || String(err) }))
   }
 
   const sample = metricsQuery.data?.average

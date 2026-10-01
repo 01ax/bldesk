@@ -24,6 +24,7 @@ import { BinaryLaneClient } from '../../api/client'
 import { useServerActionMutation, useRegions } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { CreateServerModal } from './CreateServerModal'
+import { showFailure } from '../actions/ActionToasts'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { copyDeepLink } from '../../lib/deeplinks'
 import { describeActionType } from '../../lib/actionLabels'
@@ -126,7 +127,7 @@ export const ServerList: React.FC<ServerListProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Action failed: ${err.message || 'Unknown error'}`)
+      showFailure({ label: `${describeActionType(actionType)} failed`, resourceName: target?.name, detail: err.message || 'Unknown error' })
     } finally {
       setActionInProgressServerId(null)
     }

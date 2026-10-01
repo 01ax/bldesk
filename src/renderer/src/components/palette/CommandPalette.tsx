@@ -32,6 +32,7 @@ import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useServerActionMutation, apiFailure, fetchServerBackups, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
+import { showFailure } from '../actions/ActionToasts'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
 import { searchHelp } from '../../lib/help'
@@ -273,7 +274,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       })
       if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
     } catch (err: any) {
-      alert(`Couldn't open a rescue console for ${s.name}: ${err?.message || err}`)
+      showFailure({ label: "Couldn't open the rescue console", resourceName: s.name, detail: err?.message || String(err) })
     }
   }
 
