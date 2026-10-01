@@ -716,3 +716,32 @@ The SDK is installed at `/Users/adam/Library/Android/sdk`, the AVD is named `bld
 ```
 
 Use the SDK's `platform-tools/adb -s emulator-5554` for this emulator rather than an unqualified command that might select a physical device. The APK is under `android/app/build/outputs/apk/debug/app-debug.apk`; this is a local debug build, not a published release.
+
+## Failed API reads and the messages for them (1 October 2026, after 1.0.62-beta.10)
+
+Branch: `fix/api-failure-handling`. No new runtime dependencies. Two help pages changed (`billing`, `servers`), each by one added passage. The strings are rendered by `BillingOverview.tsx` (`FailedLoad` and the unpaid-invoices line) and `CreateServerModal.tsx` (the location tiles). The read hooks are in `queries.ts`; the shared pieces are the new `api/errors.ts` and `shared/ipcErrors.ts`.
+
+Service facts, from `openapi.json` only: the invoices, account and unpaid-invoices reads document 200 and 401, the firewall rules read 200, 401 and 404, the regions read only 200, and the VPC delete 204, 401, 403 and 404. openapi-fetch leaves `error` unset when a failed response has an empty body, so a read that tested only `error` stored that failure as a success.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `billing.md`, passage after “When a figure cannot be loaded” | The Invoices and Payment Details tabs, and the line above the cards | New. Its three quotes are the strings below, checked by `check-help-guards.mjs`. |
+| “Couldn't load the invoices.” | `Invoices`, when the invoices read failed and no page has loaded | New, with a Retry button. Before, “No past invoices found.” |
+| “Couldn't load the payment details.” | `PaymentDetails`, when the account read failed and there is no account | New, with a Retry button. Before, “No payment method configured”. |
+| “Couldn't check whether any invoices are unpaid.” | `BillingOverview`, above the cards, when the unpaid-invoices read failed and nothing loaded | New, with a Retry link. Before, no line, which read as nothing unpaid. |
+| `servers.md`, “Create and organise” | The location tiles in the Create Server form | New sentence. |
+| “Couldn't load the locations.” | `CreateServerModal`, above the location tiles, when the regions read failed and nothing loaded | New, with a Retry link. Before, no tiles and no message. |
+| “BinaryLane did not answer within 20 seconds.” | The firewall error card, from `useFirewallRules` | New reason line. Not quoted in help; the card text itself is unchanged. |
+| “Failed to delete VPC: …” | `VpcManager.tsx` | Unchanged text. A 403 now shows the reason here instead of “API token authorization failed…”. |
+
+### Checks performed
+
+- `npm run typecheck` (including the help guard and the new `test:api-errors`), run before each commit.
+- Real Electron through `scripts/gui-test`, isolated user data, the fictitious token, every request answered by the harness mock, driven with Playwright over the debugging port against this branch only; the behaviour before the change comes from the issue reports and the code that was replaced, not from a second run. Failures came from `/__mock/fail` and `latencyMs`.
+- Firewall read answering 404: one request, the error card at once. Answering 500: retried with the app's normal spacing, then the error card.
+- A read that never answers (every response delayed 40 s): still “Fetching…” at 23 s with a second request already made; the error card after about 63 s (three attempts of 20 s and the retry delays), reading “BinaryLane did not answer within 20 seconds.” with Retry, and editing switched off. The bound is the three attempts, because a timeout is retried like any other failed read.
+- `DELETE /v2/vpcs/901` answering 403: one request, the alert “Failed to delete VPC: Injected 403”, no token banner. `GET /v2/regions` answering 403: the banner “API token authorization failed…” appears.
+- Billing with the invoices and account reads failing (500, persistent), and the unpaid-invoices read failing separately: each tab and the line above the cards show their message with a Retry control, and none shows “No past invoices found.” or “No payment method configured”. After the failures were cleared, Retry loaded each one and the message went.
+- Create Server with the regions read failing: “Couldn't load the locations.” with Retry; after the failure was cleared, Retry showed the tiles.
+- An IPC call rejected by the main process (`generateSshKeyPair` with a name that is not a string): the page receives “Invalid key generation request.” with no “Error invoking remote method” prefix.
+- Not checked in a running app: Android (the changes are renderer code shared with it; the null-body handling is covered by `test:api-errors`), and the writes in `VpcManager.tsx`, `DnsManager.tsx`, `FirewallManager.tsx`, `FirewallMatrix.tsx` and `CommandPalette.tsx` that test only `error`. Those are unchanged and are not part of these issues.

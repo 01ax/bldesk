@@ -2,6 +2,8 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tansta
 import { BinaryLaneClient } from './client'
 import { components } from '@shared/api/schema'
 import type { FleetMetricResult } from '../lib/heatmap'
+import { ApiError, apiFailure, describeApiError, fetchAllPages, isFinalFailure } from './errors'
+export { ApiError, apiFailure, describeApiError, isFinalFailure }
 
 type ServerResponse = components['schemas']['Server']
 
@@ -31,17 +33,16 @@ export function useServers(client: BinaryLaneClient | null, profileId?: string) 
       let hasMore = true
 
       while (hasMore && page <= 10) {
-        const { data, error } = await client.GET('/v2/servers', {
+        const { data, error, response } = await client.GET('/v2/servers', {
           params: { query: { per_page: 200, page } }
         })
-        if (error) {
+        if (error || !response.ok) {
           console.warn('[useServers] Query error:', error)
-          // A failed first page must not become "no servers": returning [] here
-          // replaced the cached list with nothing on any transient API failure
-          // (blank sidebar, empty matrix, tray at 0) until the next poll. Throw
-          // instead so React Query keeps the last good data and retries.
-          if (page === 1) throw new Error(describeApiError(error))
-          break
+          // A failed page must not become a shorter list: returning [] for page 1 replaced the cached list with
+          // nothing on any transient API failure (blank sidebar, empty matrix, tray at 0) until the next poll, and
+          // stopping at a later page passed off part of the fleet as all of it. Throw instead, so React Query keeps
+          // the last good data and retries.
+          throw apiFailure(error, response)
         }
         const pageServers = data?.servers || []
         allServers = [...allServers, ...pageServers]
@@ -87,10 +88,10 @@ export function useServer(client: BinaryLaneClient | null, serverId: number | nu
     queryKey: ['server', serverId],
     queryFn: async () => {
       if (!client || !serverId) return null
-      const { data, error } = await client.GET('/v2/servers/{server_id}', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}', {
         params: { path: { server_id: serverId } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.server || null
     },
     enabled: !!client && !!serverId,
@@ -103,10 +104,10 @@ export function useServerUserData(client: BinaryLaneClient | null, serverId: num
     queryKey: ['server-user-data', serverId],
     queryFn: async () => {
       if (!client || !serverId) return null
-      const { data, error } = await client.GET('/v2/servers/{server_id}/user_data', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/user_data', {
         params: { path: { server_id: serverId } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.user_data ?? null
     },
     enabled: !!client && !!serverId,
@@ -122,11 +123,11 @@ export function useFleetUserData(client: BinaryLaneClient | null, serverIds: num
       const map = new Map<number, string | null | undefined>()
       if (!client) return map
       const results = await mapLimitNullable(serverIds, 4, async (id) => {
-        const { data, error } = await client.GET('/v2/servers/{server_id}/user_data', {
+        const { data, error, response } = await client.GET('/v2/servers/{server_id}/user_data', {
           params: { path: { server_id: id } },
           signal: AbortSignal.timeout(20_000)
         })
-        if (error) throw new Error(describeApiError(error))
+        if (error || !response.ok) throw apiFailure(error, response)
         return { userData: data?.user_data ?? null }
       })
       serverIds.forEach((id, i) => map.set(id, results[i] === null ? undefined : results[i]?.userData))
@@ -142,10 +143,12 @@ export function useServerMetrics(client: BinaryLaneClient | null, serverId: numb
     queryKey: ['serverMetrics', serverId],
     queryFn: async () => {
       if (!client || !serverId) return null
-      const { data, error } = await client.GET('/v2/samplesets/{server_id}/latest', {
+      const { data, error, response } = await client.GET('/v2/samplesets/{server_id}/latest', {
         params: { path: { server_id: serverId } }
       })
-      if (error) return null
+      // No samples yet (a server that has not reported) is an empty answer; any other failure is a failure.
+      if (response.status === 404) return null
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.sample_set || null
     },
     enabled: !!client && !!serverId,
@@ -158,10 +161,10 @@ export function useServerConsole(client: BinaryLaneClient | null, serverId: numb
     queryKey: ['serverConsole', serverId],
     queryFn: async () => {
       if (!client || !serverId) return null
-      const { data, error } = await client.GET('/v2/servers/{server_id}/console', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/console', {
         params: { path: { server_id: serverId } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.console || null
     },
     enabled: !!client && !!serverId,
@@ -176,13 +179,13 @@ export function useServerActionMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async ({ serverId, actionPayload }: { serverId: number; actionPayload: any }) => {
       if (!client) throw new Error('No client available')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: actionPayload
       })
       // describeApiError rather than JSON.stringify: the raw body was being shown
       // to users verbatim in an alert().
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: (_, variables) => {
@@ -201,8 +204,8 @@ export function useAccount(client: BinaryLaneClient | null) {
     queryKey: ['account'],
     queryFn: async () => {
       if (!client) return null
-      const { data, error } = await client.GET('/v2/account')
-      if (error) throw new Error(JSON.stringify(error))
+      const { data, error, response } = await client.GET('/v2/account')
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.account || null
     },
     enabled: !!client
@@ -234,8 +237,8 @@ export function useUnpaidInvoices(client: BinaryLaneClient | null) {
     queryKey: ['unpaid-invoices'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/customers/my/unpaid-payment-failed-invoices')
-      if (error) throw new Error(JSON.stringify(error))
+      const { data, error, response } = await client.GET('/v2/customers/my/unpaid-payment-failed-invoices')
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.invoices || []
     },
     enabled: !!client
@@ -253,10 +256,10 @@ export function useInvoices(client: BinaryLaneClient | null, page = 1, perPage =
     queryKey: ['invoices', page, perPage],
     queryFn: async () => {
       if (!client) return { invoices: [], total: 0 }
-      const { data, error } = await client.GET('/v2/customers/my/invoices', {
+      const { data, error, response } = await client.GET('/v2/customers/my/invoices', {
         params: { query: { page, per_page: perPage } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return { invoices: data?.invoices || [], total: data?.meta?.total ?? 0 }
     },
     enabled: !!client,
@@ -308,20 +311,32 @@ export function useVpcs(client: BinaryLaneClient | null) {
 
 // --- FIREWALL RULES ---
 
+/** How long a firewall rules read may take before it is reported as failed (the fleet reads use the same limit). */
+const FIREWALL_READ_TIMEOUT_MS = 20_000
+
 export function useFirewallRules(client: BinaryLaneClient | null, serverId: number | null) {
   return useQuery({
     queryKey: ['firewallRules', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
-        params: { path: { server_id: serverId } }
-      })
+      let res
+      try {
+        res = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+          params: { path: { server_id: serverId } },
+          signal: AbortSignal.timeout(FIREWALL_READ_TIMEOUT_MS)
+        })
+      } catch (err) {
+        // A read that never answers must end in a failure with a way to retry, not stay on "Fetching…".
+        if (isTimeoutError(err)) throw new ApiError(`BinaryLane did not answer within ${FIREWALL_READ_TIMEOUT_MS / 1000} seconds.`)
+        throw err
+      }
+      const { data, error, response } = res
       // A failed read must not become "no rules": every save writes the whole
       // list back, so an empty list built from a failure let one added rule
       // replace all of the server's real ones. Throw instead, so the query
       // reports the failure and keeps any list that did load. A failure with an
       // empty body leaves `error` unset (openapi-fetch), so the status counts too.
-      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.firewall_rules || []
     },
     enabled: !!client && !!serverId
@@ -460,11 +475,11 @@ export function useVpcMembers(client: BinaryLaneClient | null, vpcIds: number[])
       const map = new Map<number, Array<{ resource_type: string; resource_id: string; name: string }> | null>()
       if (!client) return map
       const results = await mapLimitNullable(vpcIds, 4, async (id) => {
-        const { data, error } = await client.GET('/v2/vpcs/{vpc_id}/members', {
+        const { data, error, response } = await client.GET('/v2/vpcs/{vpc_id}/members', {
           params: { path: { vpc_id: id }, query: { per_page: 200 } as any },
           signal: AbortSignal.timeout(20_000)
         })
-        if (error) throw new Error(describeApiError(error))
+        if (error || !response.ok) throw apiFailure(error, response)
         return (data?.members || []) as Array<{ resource_type: string; resource_id: string; name: string }>
       })
       vpcIds.forEach((id, i) => map.set(id, results[i]))
@@ -480,14 +495,14 @@ export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, 
   return useMutation({
     mutationFn: async (rules: any[]) => {
       if (!client || !serverId) throw new Error('No client or serverId')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'change_advanced_firewall_rules',
           firewall_rules: rules
         }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: () => {
@@ -534,11 +549,11 @@ export function useAddServerToLoadBalancerMutation(client: BinaryLaneClient | nu
   return useMutation({
     mutationFn: async ({ loadBalancerId, serverId }: { loadBalancerId: number; serverId: number }) => {
       if (!client) throw new Error('No client')
-      const { error } = await client.POST('/v2/load_balancers/{load_balancer_id}/servers', {
+      const { error, response } = await client.POST('/v2/load_balancers/{load_balancer_id}/servers', {
         params: { path: { load_balancer_id: loadBalancerId } },
         body: { server_ids: [serverId] }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
@@ -552,11 +567,11 @@ export function useRemoveServerFromLoadBalancerMutation(client: BinaryLaneClient
   return useMutation({
     mutationFn: async ({ loadBalancerId, serverId }: { loadBalancerId: number; serverId: number }) => {
       if (!client) throw new Error('No client')
-      const { error } = await client.DELETE('/v2/load_balancers/{load_balancer_id}/servers', {
+      const { error, response } = await client.DELETE('/v2/load_balancers/{load_balancer_id}/servers', {
         params: { path: { load_balancer_id: loadBalancerId } },
         body: { server_ids: [serverId] }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
@@ -570,8 +585,8 @@ export function useCreateLoadBalancerMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async (body: any) => {
       if (!client) throw new Error('No client')
-      const { data, error } = await client.POST('/v2/load_balancers', { body })
-      if (error) throw new Error(JSON.stringify(error))
+      const { data, error, response } = await client.POST('/v2/load_balancers', { body })
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.load_balancer
     },
     onSuccess: () => {
@@ -585,10 +600,10 @@ export function useDeleteLoadBalancerMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async (loadBalancerId: number) => {
       if (!client) throw new Error('No client')
-      const { error } = await client.DELETE('/v2/load_balancers/{load_balancer_id}', {
+      const { error, response } = await client.DELETE('/v2/load_balancers/{load_balancer_id}', {
         params: { path: { load_balancer_id: loadBalancerId } }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loadBalancers'] })
@@ -610,39 +625,6 @@ const MAX_DOMAIN_PAGES = 10
  * dropped `meta.total` — an account with a few hundred zones simply lost most of
  * them, with nothing in the UI to say so.
  */
-/**
- * Fetch every page of a paginated list endpoint.
- *
- * `per_page` defaults to 20 across this API and `meta.total` is returned but easy
- * to ignore, which silently truncates. It matters for the create form: there are
- * 27 distribution images and 21 sizes, so a single default-page request drops 7
- * operating systems and a plan without any indication.
- */
-async function fetchAllPages<T>(
-  fetchPage: (page: number, perPage: number) => Promise<{ data?: { meta?: { total?: number } } & Record<string, any>; error?: unknown }>,
-  key: string,
-  label: string
-): Promise<T[]> {
-  const PER_PAGE = 200
-  const MAX_PAGES = 10
-  const first = await fetchPage(1, PER_PAGE)
-  if (first.error) throw new Error(describeApiError(first.error))
-  const items: T[] = [...((first.data?.[key] as T[]) || [])]
-  const total = first.data?.meta?.total ?? items.length
-  const pages = Math.min(Math.ceil(total / PER_PAGE), MAX_PAGES)
-  if (pages > 1) {
-    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(i + 2, PER_PAGE)))
-    for (const r of rest) {
-      if (r.error) {
-        console.warn(`[${label}] Error loading a page:`, r.error)
-        continue
-      }
-      items.push(...((r.data?.[key] as T[]) || []))
-    }
-  }
-  return items
-}
-
 export function useDomains(client: BinaryLaneClient | null) {
   return useQuery({
     queryKey: ['domains'],
@@ -685,8 +667,8 @@ export function useLocalNameservers(client: BinaryLaneClient | null) {
     queryKey: ['local-nameservers'],
     queryFn: async () => {
       if (!client) return [] as string[]
-      const { data, error } = await client.GET('/v2/domains/nameservers')
-      if (error) throw new Error(describeApiError(error))
+      const { data, error, response } = await client.GET('/v2/domains/nameservers')
+      if (error || !response.ok) throw apiFailure(error, response)
       return (data?.local_nameservers || []) as string[]
     },
     enabled: !!client,
@@ -751,8 +733,8 @@ export function useRegions(client: BinaryLaneClient | null) {
     queryKey: ['regions'],
     queryFn: async () => {
       if (!client) return []
-      const { data, error } = await client.GET('/v2/regions')
-      if (error) return []
+      const { data, error, response } = await client.GET('/v2/regions')
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.regions || []
     },
     enabled: !!client,
@@ -803,10 +785,10 @@ export function useHistoricalMetrics(client: BinaryLaneClient | null, serverId: 
     queryKey: ['historicalMetrics', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/samplesets/{server_id}', {
+      const { data, error, response } = await client.GET('/v2/samplesets/{server_id}', {
         params: { path: { server_id: serverId } }
       })
-      if (error) return []
+      if (error || !response.ok) throw apiFailure(error, response)
       return (data as any)?.sample_sets || []
     },
     enabled: !!client && !!serverId,
@@ -887,10 +869,10 @@ export function useCreateServerMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async (body: any) => {
       if (!client) throw new Error('No client')
-      const { data, error } = await client.POST('/v2/servers', {
+      const { data, error, response } = await client.POST('/v2/servers', {
         body
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.server
     },
     onSuccess: () => {
@@ -925,10 +907,10 @@ export function useAddSshKeyMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async ({ name, publicKey, makeDefault }: { name: string; publicKey: string; makeDefault?: boolean }) => {
       if (!client) throw new Error('No client')
-      const { data, error } = await client.POST('/v2/account/keys', {
+      const { data, error, response } = await client.POST('/v2/account/keys', {
         body: { name, public_key: publicKey, default: makeDefault === true }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.ssh_key
     },
     onSuccess: () => {
@@ -947,11 +929,11 @@ export function useUpdateSshKeyMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async ({ keyId, name, makeDefault }: { keyId: number; name: string; makeDefault?: boolean }) => {
       if (!client) throw new Error('No client')
-      const { data, error } = await client.PUT('/v2/account/keys/{key_id}', {
+      const { data, error, response } = await client.PUT('/v2/account/keys/{key_id}', {
         params: { path: { key_id: keyId } },
         body: { name, default: makeDefault }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.ssh_key
     },
     onSuccess: () => {
@@ -965,10 +947,10 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
   return useMutation({
     mutationFn: async (keyId: number) => {
       if (!client) throw new Error('No client')
-      const { error } = await client.DELETE('/v2/account/keys/{key_id}', {
+      const { error, response } = await client.DELETE('/v2/account/keys/{key_id}', {
         params: { path: { key_id: keyId } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sshKeys'] })
@@ -978,19 +960,30 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
 
 // --- BACKUPS ---
 
+type ServerBackup = NonNullable<components['schemas']['BackupsResponse']['backups']>[number]
+
+/**
+ * Every backup of a server. The endpoint pages (20 by default), so a server holding more had the rest missing from
+ * the Backups tab and from the check of what a Take Backup would replace.
+ *
+ * A failed read must not become "no backups": Take Backup decides whether it replaces one from this list, and an empty
+ * list said nothing would be. A failed page throws, so the query reports the failure and keeps any list that loaded.
+ */
+export function fetchServerBackups(client: BinaryLaneClient, serverId: number): Promise<ServerBackup[]> {
+  return fetchAllPages<ServerBackup>(
+    (page, per_page) =>
+      client.GET('/v2/servers/{server_id}/backups', { params: { path: { server_id: serverId }, query: { page, per_page } } }),
+    'backups',
+    'useServerBackups'
+  )
+}
+
 export function useServerBackups(client: BinaryLaneClient | null, serverId: number | null) {
   return useQuery({
     queryKey: ['serverBackups', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error, response } = await client.GET('/v2/servers/{server_id}/backups', {
-        params: { path: { server_id: serverId } }
-      })
-      // A failed read must not become "no backups": Take Backup decides whether it replaces one from this list, and an
-      // empty list said nothing would be. Throw instead, so the query reports the failure and keeps any list that
-      // loaded. A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
-      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
-      return data?.backups || []
+      return fetchServerBackups(client, serverId)
     },
     enabled: !!client && !!serverId
   })
@@ -1017,10 +1010,10 @@ export function useServerActions(client: BinaryLaneClient | null, serverId: numb
     queryKey: ['serverActions', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } }
       })
-      if (error) return []
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.actions || []
     },
     enabled: !!client && !!serverId,
@@ -1099,14 +1092,14 @@ export function useRestoreBackupMutation(client: BinaryLaneClient | null, server
   return useMutation({
     mutationFn: async (imageId: number) => {
       if (!client || !serverId) throw new Error('No client or serverId')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'restore',
           image: imageId
         }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: () => {
@@ -1120,13 +1113,13 @@ export function useToggleAutomatedBackupsMutation(client: BinaryLaneClient | nul
   return useMutation({
     mutationFn: async (enable: boolean) => {
       if (!client || !serverId) throw new Error('No client or serverId')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: enable ? 'enable_backups' : 'disable_backups'
         }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: () => {
@@ -1141,14 +1134,14 @@ export function useAttachBackupMutation(client: BinaryLaneClient | null, serverI
   return useMutation({
     mutationFn: async (imageId: number) => {
       if (!client || !serverId) throw new Error('No client or serverId')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'attach_backup',
           image: imageId
         }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: () => {
@@ -1163,13 +1156,13 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
   return useMutation({
     mutationFn: async () => {
       if (!client || !serverId) throw new Error('No client or serverId')
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'detach_backup'
         }
       })
-      if (error) throw new Error(JSON.stringify(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: () => {
@@ -1207,21 +1200,6 @@ export function useDetachBackupMutation(client: BinaryLaneClient | null, serverI
  */
 
 type ServerAction = components['schemas']['Action']
-
-/** Turn an openapi-fetch error body into something a human can read. */
-export function describeApiError(error: unknown): string {
-  if (!error) return 'Unknown error'
-  if (typeof error === 'string') return error
-  const e = error as { message?: string; detail?: string; title?: string; errors?: Record<string, string[]> }
-  if (e.message) return e.message
-  if (e.detail) return e.detail
-  if (e.errors) {
-    return Object.entries(e.errors)
-      .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
-      .join('; ')
-  }
-  return e.title || JSON.stringify(error)
-}
 
 /**
  * The detail of a failed action, or null when BinaryLane gave none.
@@ -1708,10 +1686,10 @@ export function useServerThresholdAlerts(client: BinaryLaneClient | null, server
     queryKey: ['server-threshold-alerts', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/threshold_alerts', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/threshold_alerts', {
         params: { path: { server_id: serverId } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.threshold_alerts || []
     },
     enabled: !!client && !!serverId
@@ -1723,10 +1701,10 @@ export function useAvailableAdvancedFeatures(client: BinaryLaneClient | null, se
     queryKey: ['server-advanced-features', serverId],
     queryFn: async () => {
       if (!client || !serverId) return null
-      const { data, error } = await client.GET('/v2/servers/{server_id}/available_advanced_features', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/available_advanced_features', {
         params: { path: { server_id: serverId } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.available_advanced_server_features || null
     },
     enabled: !!client && !!serverId
@@ -1765,10 +1743,10 @@ async function fetchActionsPage(
   client: BinaryLaneClient,
   page: number
 ): Promise<{ actions: ServerAction[]; total: number }> {
-  const { data, error } = await client.GET('/v2/actions', {
+  const { data, error, response } = await client.GET('/v2/actions', {
     params: { query: { page, per_page: INTERACTION_PAGE_SIZE } }
   })
-  if (error) throw new Error(describeApiError(error))
+  if (error || !response.ok) throw apiFailure(error, response)
   return { actions: data?.actions ?? [], total: data?.meta?.total ?? 0 }
 }
 
@@ -1837,7 +1815,7 @@ export function useActionProceedMutation(client: BinaryLaneClient | null) {
         params: { path: { action_id: actionId } },
         body: { proceed }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       // A successful answer is 204 No Content. There is deliberately no `data`
       // check here: treating an empty body as failure would report every
       // success as an error.
@@ -1893,10 +1871,10 @@ export function useServerSoftware(client: BinaryLaneClient | null, serverId: num
     queryKey: ['server-software', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/software', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/software', {
         params: { path: { server_id: serverId }, query: { per_page: 200 } as any }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.licensed_software || []
     },
     enabled: !!client && !!serverId,

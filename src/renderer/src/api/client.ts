@@ -1,5 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from '@shared/api/schema'
+import { NULL_BODY_STATUSES, refusesToken } from './errors'
 
 // In-flight mutation tracker to prevent duplicate concurrent requests and rapid-fire spam
 const inFlightMutations = new Map<string, Promise<Response>>()
@@ -7,28 +8,25 @@ const recentMutationTimestamps = new Map<string, number>()
 const MUTATION_COOLDOWN_MS = 1500 // 1.5 second debounce for identical mutations
 
 async function safeNormalizeResponse(response: Response): Promise<Response> {
+  // A response with a null-body status has no body to rewrite, and `new Response(body, { status })` throws for such a
+  // status: pass it through as it is, on purpose, rather than through an exception swallowed below.
+  if (NULL_BODY_STATUSES.has(response.status)) return response
   const contentType = response.headers.get('content-type') || ''
-  if (!contentType.includes('application/json')) {
-    try {
-      const text = await response.text()
-      let parsed: any = { message: text }
-      try {
-        parsed = JSON.parse(text)
-      } catch {
-        parsed = { message: text || `HTTP ${response.status} ${response.statusText}` }
-      }
-      return new Response(JSON.stringify(parsed), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-    } catch {
-      return response
-    }
+  if (contentType.includes('application/json')) return response
+  const text = await response.text()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    parsed = { message: text || `HTTP ${response.status} ${response.statusText}` }
   }
-  return response
+  return new Response(JSON.stringify(parsed), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
 }
 
 /**
@@ -204,7 +202,7 @@ export function createBinaryLaneClient(token: string) {
           const rawResponse = await executeFetch(req, input, init, cleanToken)
           const response = await safeNormalizeResponse(rawResponse)
 
-          if (response.status === 401 || response.status === 403) {
+          if (refusesToken(method, url, response.status)) {
             window.dispatchEvent(new CustomEvent('bldesk:auth_error', { detail: { status: response.status } }))
           }
 
@@ -221,7 +219,7 @@ export function createBinaryLaneClient(token: string) {
     // Standard GET / read query path
     const rawResponse = await executeFetch(req, input, init, cleanToken)
     const response = await safeNormalizeResponse(rawResponse)
-    if (response.status === 401 || response.status === 403) {
+    if (refusesToken(req.method, req.url, response.status)) {
       window.dispatchEvent(new CustomEvent('bldesk:auth_error', { detail: { status: response.status } }))
     }
     return response

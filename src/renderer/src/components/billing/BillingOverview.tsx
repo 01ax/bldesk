@@ -98,6 +98,16 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
         </p>
       </div>
 
+      {/* A failed check must not read as "nothing unpaid": say that it could not be made. */}
+      {unpaidQuery.isError && !unpaidQuery.data && (
+        <div role="alert" className="flex items-center gap-2 text-[11px] text-rose-700 dark:text-rose-300">
+          <span>Couldn't check whether any invoices are unpaid.</span>
+          <button onClick={() => void unpaidQuery.refetch()} disabled={unpaidQuery.isFetching} className="underline disabled:opacity-60">
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Payment-failed warning: worth surfacing above everything else */}
       {unpaid.length > 0 && (
         <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-xs">
@@ -221,6 +231,8 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
             perPage={perPage}
             isLoading={invoicesQuery.isLoading}
             isFetching={invoicesQuery.isFetching}
+            failed={invoicesQuery.isError}
+            onRetry={() => void invoicesQuery.refetch()}
             onOpen={handleDownloadInvoice}
             onPageChange={setPage}
             onPerPageChange={(n) => {
@@ -230,7 +242,14 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
           />
         )}
 
-        {tab === 'payment' && <PaymentDetails account={account} isLoading={accountQuery.isLoading} />}
+        {tab === 'payment' && (
+          <PaymentDetails
+            account={account}
+            isLoading={accountQuery.isPending && accountQuery.fetchStatus !== 'idle'}
+            failed={accountQuery.isError && !account}
+            onRetry={() => void accountQuery.refetch()}
+          />
+        )}
       </div>
     </div>
   )
@@ -306,6 +325,19 @@ const PendingCharges: React.FC<{ charges: any[]; isLoading: boolean; failed: boo
   )
 }
 
+const FailedLoad: React.FC<{ message: string; onRetry: () => void; busy?: boolean }> = ({ message, onRetry, busy }) => (
+  <div role="alert" className="p-8 text-center text-xs space-y-2">
+    <div className="text-rose-700 dark:text-rose-300">{message}</div>
+    <button
+      onClick={onRetry}
+      disabled={busy}
+      className="px-3 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white rounded font-medium transition disabled:opacity-60"
+    >
+      Retry
+    </button>
+  </div>
+)
+
 // --- Invoices ---
 
 const PER_PAGE_OPTIONS = [20, 50, 100, 200]
@@ -317,11 +349,15 @@ const Invoices: React.FC<{
   perPage: number
   isLoading: boolean
   isFetching: boolean
+  failed: boolean
+  onRetry: () => void
   onOpen: (inv: any) => void
   onPageChange: (p: number) => void
   onPerPageChange: (n: number) => void
-}> = ({ invoices, total, page, perPage, isLoading, isFetching, onOpen, onPageChange, onPerPageChange }) => {
+}> = ({ invoices, total, page, perPage, isLoading, isFetching, failed, onRetry, onOpen, onPageChange, onPerPageChange }) => {
   if (isLoading) return <Empty>Loading invoices...</Empty>
+  // A failed read is not "no invoices": a customer with invoices must not be told there are none.
+  if (failed && invoices.length === 0) return <FailedLoad message="Couldn't load the invoices." onRetry={onRetry} busy={isFetching} />
   if (invoices.length === 0 && page === 1) return <Empty>No past invoices found.</Empty>
 
   const lastPage = Math.max(1, Math.ceil(total / perPage))
@@ -445,8 +481,10 @@ const PagerButton: React.FC<{
 
 // --- Payment Details ---
 
-const PaymentDetails: React.FC<{ account: any; isLoading: boolean }> = ({ account, isLoading }) => {
+const PaymentDetails: React.FC<{ account: any; isLoading: boolean; failed: boolean; onRetry: () => void }> = ({ account, isLoading, failed, onRetry }) => {
   if (isLoading) return <Empty>Loading payment details...</Empty>
+  // A failed account read is not "no payment method": a customer with one saved must not be told there is none.
+  if (failed) return <FailedLoad message="Couldn't load the payment details." onRetry={onRetry} />
 
   const methods: string[] = account?.configured_payment_methods || []
   const label = (m: string) => (m === 'paypal' ? 'PayPal' : m === 'credit-card' ? 'Credit card' : m)

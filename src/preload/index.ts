@@ -1,24 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcApi, UpdaterState } from '../shared/ipc-types'
+import { cleanIpcError } from '../shared/ipcErrors'
+
+// Every call to the main process goes through here, so a failure reaches the screens as its reason alone: Electron
+// prefixes it with "Error invoking remote method '<channel>': Error: ".
+const invoke = async (channel: string, ...args: unknown[]): Promise<any> => {
+  try {
+    return await ipcRenderer.invoke(channel, ...args)
+  } catch (err) {
+    throw new Error(cleanIpcError(err instanceof Error ? err.message : String(err)))
+  }
+}
 
 const api: IpcApi = {
-  helpAsk: (question) => ipcRenderer.invoke('help:ask', question),
-  helpSuggest: (prefix) => ipcRenderer.invoke('help:suggest', prefix),
-  helpFeedback: (id, helpful) => ipcRenderer.invoke('help:feedback', id, helpful),
+  helpAsk: (question) => invoke('help:ask', question),
+  helpSuggest: (prefix) => invoke('help:suggest', prefix),
+  helpFeedback: (id, helpful) => invoke('help:feedback', id, helpful),
   // Vault & Auth
-  getProfiles: () => ipcRenderer.invoke('vault:getProfiles'),
-  getActiveProfile: () => ipcRenderer.invoke('vault:getActiveProfile'),
-  saveProfile: (profile) => ipcRenderer.invoke('vault:saveProfile', profile),
-  deleteProfile: (profileId) => ipcRenderer.invoke('vault:deleteProfile', profileId),
-  setActiveProfile: (profileId) => ipcRenderer.invoke('vault:setActiveProfile', profileId),
+  getProfiles: () => invoke('vault:getProfiles'),
+  getActiveProfile: () => invoke('vault:getActiveProfile'),
+  saveProfile: (profile) => invoke('vault:saveProfile', profile),
+  deleteProfile: (profileId) => invoke('vault:deleteProfile', profileId),
+  setActiveProfile: (profileId) => invoke('vault:setActiveProfile', profileId),
 
   // Terminal & Console
   pty: {
-    open: (options) => ipcRenderer.invoke('pty:open', options),
-    write: (id, data) => ipcRenderer.invoke('pty:write', id, data),
-    resize: (id, cols, rows) => ipcRenderer.invoke('pty:resize', id, cols, rows),
-    close: (id) => ipcRenderer.invoke('pty:close', id),
-    list: () => ipcRenderer.invoke('pty:list'),
+    open: (options) => invoke('pty:open', options),
+    write: (id, data) => invoke('pty:write', id, data),
+    resize: (id, cols, rows) => invoke('pty:resize', id, cols, rows),
+    close: (id) => invoke('pty:close', id),
+    list: () => invoke('pty:list'),
     onData: (cb) => {
       const handler = (_: Electron.IpcRendererEvent, id: string, chunk: string) => cb(id, chunk)
       ipcRenderer.on('pty:data', handler)
@@ -30,34 +41,34 @@ const api: IpcApi = {
       return () => ipcRenderer.removeListener('pty:exit', handler)
     }
   },
-  launchNativeTerminal: (options) => ipcRenderer.invoke('terminal:launchNative', options),
-  openRescueConsole: (options) => ipcRenderer.invoke('console:openRescue', options),
+  launchNativeTerminal: (options) => invoke('terminal:launchNative', options),
+  openRescueConsole: (options) => invoke('console:openRescue', options),
 
   // SSH Keys
-  getLocalSshKeys: (paths) => ipcRenderer.invoke('vault:getLocalSshKeys', paths),
-  chooseSshKeyFile: () => ipcRenderer.invoke('vault:chooseSshKeyFile'),
-  generateSshKeyPair: (request) => ipcRenderer.invoke('vault:generateSshKeyPair', request),
-  showSshKeyInFolder: (privateKeyPath) => ipcRenderer.invoke('vault:showSshKeyInFolder', privateKeyPath),
+  getLocalSshKeys: (paths) => invoke('vault:getLocalSshKeys', paths),
+  chooseSshKeyFile: () => invoke('vault:chooseSshKeyFile'),
+  generateSshKeyPair: (request) => invoke('vault:generateSshKeyPair', request),
+  showSshKeyInFolder: (privateKeyPath) => invoke('vault:showSshKeyInFolder', privateKeyPath),
 
   // System Notifications
-  sendNotification: (options) => ipcRenderer.invoke('system:sendNotification', options),
+  sendNotification: (options) => invoke('system:sendNotification', options),
 
   // Local change log
-  changelogAppend: (entry) => ipcRenderer.invoke('changelog:append', entry),
-  changelogUpdate: (profileId, id, patch) => ipcRenderer.invoke('changelog:update', profileId, id, patch),
-  changelogList: (profileId, limit) => ipcRenderer.invoke('changelog:list', profileId, limit),
-  changelogClear: (profileId) => ipcRenderer.invoke('changelog:clear', profileId),
+  changelogAppend: (entry) => invoke('changelog:append', entry),
+  changelogUpdate: (profileId, id, patch) => invoke('changelog:update', profileId, id, patch),
+  changelogList: (profileId, limit) => invoke('changelog:list', profileId, limit),
+  changelogClear: (profileId) => invoke('changelog:clear', profileId),
 
   // Device-wide cloud-init templates
-  templatesList: () => ipcRenderer.invoke('templates:list'),
-  templatesGet: (slug) => ipcRenderer.invoke('templates:get', slug),
-  templatesSave: (document, oldSlug) => ipcRenderer.invoke('templates:save', document, oldSlug),
-  templatesRemove: (slug) => ipcRenderer.invoke('templates:remove', slug),
-  templatesReveal: (slug) => ipcRenderer.invoke('templates:reveal', slug),
+  templatesList: () => invoke('templates:list'),
+  templatesGet: (slug) => invoke('templates:get', slug),
+  templatesSave: (document, oldSlug) => invoke('templates:save', document, oldSlug),
+  templatesRemove: (slug) => invoke('templates:remove', slug),
+  templatesReveal: (slug) => invoke('templates:reveal', slug),
 
   // Tray / menu bar
-  updateTray: (summary) => ipcRenderer.invoke('tray:update', summary),
-  getTraySettings: () => ipcRenderer.invoke('tray:getSettings'),
+  updateTray: (summary) => invoke('tray:update', summary),
+  getTraySettings: () => invoke('tray:getSettings'),
 
   // Window Controls
   platform: process.platform,
@@ -66,24 +77,24 @@ const api: IpcApi = {
     ipcRenderer.on('window:maximized', handler)
     return () => ipcRenderer.removeListener('window:maximized', handler)
   },
-  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
-  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
-  closeWindow: () => ipcRenderer.invoke('window:close'),
-  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  minimizeWindow: () => invoke('window:minimize'),
+  maximizeWindow: () => invoke('window:maximize'),
+  closeWindow: () => invoke('window:close'),
+  isMaximized: () => invoke('window:isMaximized'),
 
   // External Links
-  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  openExternal: (url) => invoke('shell:openExternal', url),
   probeTcp: (host: string, port: number, timeoutMs?: number) =>
-    ipcRenderer.invoke('net:probeTcp', host, port, timeoutMs),
-  probePing: (host: string, timeoutMs?: number) => ipcRenderer.invoke('net:probePing', host, timeoutMs),
-  traceroute: (host: string, maxHops?: number) => ipcRenderer.invoke('net:traceroute', host, maxHops),
-  setProbeTargets: (ips: string[]) => ipcRenderer.invoke('net:setTargets', ips),
+    invoke('net:probeTcp', host, port, timeoutMs),
+  probePing: (host: string, timeoutMs?: number) => invoke('net:probePing', host, timeoutMs),
+  traceroute: (host: string, maxHops?: number) => invoke('net:traceroute', host, maxHops),
+  setProbeTargets: (ips: string[]) => invoke('net:setTargets', ips),
 
   // Auto-update
-  getUpdaterState: () => ipcRenderer.invoke('updater:getState'),
-  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
-  installUpdate: () => ipcRenderer.invoke('updater:install'),
-  setUpdateChannel: (channel) => ipcRenderer.invoke('updater:setChannel', channel),
+  getUpdaterState: () => invoke('updater:getState'),
+  checkForUpdates: () => invoke('updater:check'),
+  installUpdate: () => invoke('updater:install'),
+  setUpdateChannel: (channel) => invoke('updater:setChannel', channel),
   onUpdaterState: (listener) => {
     const handler = (_: Electron.IpcRendererEvent, state: UpdaterState) => listener(state)
     ipcRenderer.on('updater:state', handler)
@@ -91,8 +102,8 @@ const api: IpcApi = {
   },
 
   // Deep links (bldesk://)
-  getPendingDeepLink: () => ipcRenderer.invoke('deeplink:getPending'),
-  deepLinkReady: () => ipcRenderer.invoke('deeplink:ready'),
+  getPendingDeepLink: () => invoke('deeplink:getPending'),
+  deepLinkReady: () => invoke('deeplink:ready'),
   onDeepLink: (listener) => {
     const handler = (_: Electron.IpcRendererEvent, url: string) => listener(url)
     ipcRenderer.on('deeplink:open', handler)
