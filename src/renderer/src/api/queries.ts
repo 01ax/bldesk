@@ -801,13 +801,17 @@ export function useSampleSets(
   client: BinaryLaneClient | null,
   serverId: number | undefined,
   interval: 'five-minute' | 'half-hour' | 'four-hour' | 'day' | 'week' | 'month' = 'five-minute',
-  start?: string,
-  end?: string
+  windowMs = 24 * 60 * 60 * 1000
 ) {
   return useQuery({
-    queryKey: ['sample-sets', serverId, interval, start, end],
+    queryKey: ['sample-sets', serverId, interval, windowMs],
     queryFn: async () => {
       if (!client || !serverId) return []
+
+      // The window ends now on every fetch, so a refetch asks for the samples taken since the last one.
+      const endMs = Date.now()
+      const start = new Date(endMs - windowMs).toISOString()
+      const end = new Date(endMs).toISOString()
 
       // `per_page` caps at 200, but a day at five-minute resolution is ~288
       // samples, so a single request silently returned the oldest 200 and left
