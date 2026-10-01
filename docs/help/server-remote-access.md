@@ -5,7 +5,7 @@ keywords: [ssh, console, keys, root, connection, remote access, tailscale, magic
 ---
 
 # Remote access
-Use Remote Access to connect to the selected server. SSH opens an embedded desktop tab using the chosen local key unless Prefer native terminal is enabled. Android hands off to an SSH app; if no app takes the ssh:// link within a moment, BLDesk says so and copies the command. See [Terminal](help:terminal); no file upload is involved.
+Use Remote Access to connect to the selected server. SSH opens an embedded desktop tab using the chosen local key unless Prefer native terminal is enabled. Android hands off to an SSH app; if BLDesk cannot tell within a few seconds that an app opened the ssh:// link, it says so and copies the command, so the connection can still be made by hand. See [Terminal](help:terminal); no file upload is involved.
 
 ## SSH and console
 Check the target address and key before connecting. Public keys saved in BinaryLane are separate from the private key files on your device. Adding an account key does not install it into every existing guest.

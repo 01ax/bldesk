@@ -275,3 +275,15 @@ test('a created server answers with links.pages too', async () => {
   const created = await request('/v2/servers', { name: 'links-check-01', size: 'std-1vcpu', region: 'syd', image: 'ubuntu-24.04' })
   assert.ok(created.links && typeof created.links.pages === 'object')
 })
+
+test('a second account (extraToken) sees only its own server (#138)', async () => {
+  await request('/__mock/config', { extraToken: 'second-token-for-the-mock-test' })
+  const get = (path) => fetch(base + path, { headers: { authorization: 'Bearer second-token-for-the-mock-test' } })
+  const list = await (await get('/v2/servers')).json()
+  assert.deepEqual(list.servers.map((s) => s.id), [9101])
+  assert.equal((await get('/v2/servers/9101')).status, 200)
+  assert.equal((await get('/v2/servers/8100')).status, 404)
+  assert.equal((await get('/v2/servers/8100/backups')).status, 404)
+  // The first account is unchanged.
+  assert.ok((await request('/v2/servers')).servers.length > 1)
+})

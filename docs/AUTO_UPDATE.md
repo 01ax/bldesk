@@ -30,7 +30,7 @@ Per platform:
 
 | Platform | How it updates |
 |---|---|
-| Windows (NSIS) | `electron-updater` installs the downloaded installer on restart. `verifyUpdateCodeSignature` is false, because the builds are unsigned. The portable `.exe` does not update. |
+| Windows (NSIS) | `electron-updater` installs the downloaded installer on restart. `verifyUpdateCodeSignature` is false, because the builds are unsigned. The portable `.exe` is not covered: electron-builder supports auto-update for the NSIS installer, and BLDesk adds nothing for the portable build. |
 | Linux `.deb` | `electron-updater`'s Debian updater installs the downloaded package through `pkexec`, so it asks for authorisation. BLDesk then starts itself again with `relaunchAfterExit` (not `app.relaunch()`, which would leave the new process with `no_new_privs` set, so the next update's `pkexec` would fail), without the `bldesk://` link that started it. |
 | Linux AppImage | `electron-updater`'s AppImage updater replaces the file and restarts itself. |
 | macOS | Not Squirrel.Mac, which refuses to apply an update to an app without a Developer ID signature. BLDesk downloads the universal `.zip` itself (`autoDownload` is false) into `<userData>/updates`. On restart or quit a detached shell script waits for the app to exit, unzips the archive, replaces the app bundle and clears the quarantine attribute, and after a restart (not when it runs on quit) opens the app. Robustness gaps in this path are tracked in #133, #134 and #135. |
@@ -46,7 +46,7 @@ Per platform:
 |---|---|---|
 | `updater:getState` | invoke | → `UpdaterState` |
 | `updater:check` | invoke | → `UpdaterState` |
-| `updater:install` | invoke | quits and installs if the status is `ready`; the status becomes `installing` first, so a repeated request is ignored |
+| `updater:install` | invoke | quits and installs if the status is `ready`; on Windows and Linux the status becomes `installing` first, so a repeated request is ignored (on macOS the install script is started directly) |
 | `updater:setChannel` | invoke | `'stable' \| 'beta'` → `UpdaterState` |
 | `updater:state` | main → renderer | `UpdaterState` on every change |
 

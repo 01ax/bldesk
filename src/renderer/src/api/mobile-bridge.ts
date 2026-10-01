@@ -39,10 +39,11 @@ async function saveChannel(channel: UpdateChannel): Promise<void> {
 
 /**
  * Hand a link to Android and say whether an app took it. Capacitor's WebView gives no answer when nothing handles the
- * link, so this watches for the page being sent to the background (another app coming to the front) for a moment:
- * true if it was, false if the page stayed in front the whole time.
+ * link, so this watches for the page being sent to the background (another app coming to the front) for a few
+ * seconds: true if it was, false if the page stayed in front the whole time. A slow app can miss the wait, and a
+ * system dialog can end it early, so false is "could not tell", and is worded that way.
  */
-function openedAnotherApp(open: () => void, waitMs = 1500): Promise<boolean> {
+function openedAnotherApp(open: () => void, waitMs = 3000): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -415,7 +416,7 @@ export async function initMobileBridge(): Promise<void> {
       if (!(await openedAnotherApp(() => window.open(uri, '_system')))) {
         return {
           success: false,
-          error: 'No app took the ssh:// link. Install an SSH app that opens ssh:// links, or run the command below in one.',
+          error: "BLDesk couldn't tell that an app opened the ssh:// link. If nothing opened, install an SSH app that handles ssh:// links, or run the command below in one.",
           command
         }
       }

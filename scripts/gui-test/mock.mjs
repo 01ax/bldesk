@@ -458,9 +458,10 @@ const server = create(async (req, res) => {
   // on another profile is only found once that profile is the one in use.
   if (cfg.extraToken && auth === `Bearer ${cfg.extraToken}` && u.pathname.startsWith('/v2/servers') && req.method === 'GET') {
     const second = mkServer({ id: 9101, name: 'second-account-01', size_slug: 'std-1vcpu', region: 'syd', image: 'ubuntu-24.04', vpc_id: null, ip: '198.18.0.101', backups: false })
-    const one = u.pathname.match(/^\/v2\/servers\/(\d+)$/)
+    const one = u.pathname.match(/^\/v2\/servers\/(\d+)(\/.*)?$/)
     if (u.pathname === '/v2/servers') return json(res, 200, page([second], u.searchParams, 'servers'))
-    if (one) return +one[1] === 9101 ? json(res, 200, { server: second }) : json(res, 404, { id: 'not_found', message: 'Server not found' })
+    // Its own server's details, and nothing of the first account's, sub-resources included.
+    if (one) return +one[1] === 9101 && !one[2] ? json(res, 200, { server: second }) : json(res, 404, { id: 'not_found', message: 'Server not found' })
   }
   const f = fails.find((x) => x.count > 0 && x.match.test(u.pathname) && (!x.method || x.method === req.method))
   if (f) { f.count--; if (f.empty) { res.writeHead(f.status); return res.end() } return json(res, f.status, { id: f.status === 429 ? 'too_many_requests' : 'server_error', message: `Injected ${f.status}` }) }
