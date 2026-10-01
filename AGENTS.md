@@ -29,6 +29,8 @@ Never hardcode pricing into BLDesk's application code. Monetary amounts, unit ra
 
 BLDesk may calculate estimates from that data, including quantities, included allowances, surcharges and the account's tax treatment. Use the same calculation for totals and option price differences. A source price or allowance change must flow through after the data refreshes without an app update; missing pricing data must not silently become a zero-cost estimate.
 
+Plan prices (`price_monthly`, `price_hourly`) and add-on costs from the sizes endpoint are before GST. The public reference does not say so; BinaryLane confirmed it on 2026-10-01. Label them "before tax" and add the account's tax from its tax code (`billingTotal`), never an assumed rate.
+
 Fictional prices in isolated test fixtures and clearly dated examples in documentation are allowed, but must never supply production pricing. Reject pricing changes that can drift from the authoritative source.
 
 ---

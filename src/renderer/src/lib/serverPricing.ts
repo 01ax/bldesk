@@ -214,6 +214,9 @@ export function diskChoices(size: SizeLike, image?: ImageLike, keep?: number): n
 /**
  * Every monthly component of a configured server, before tax.
  *
+ * The sizes endpoint's prices (`price_monthly`, `price_hourly`) and add-on costs are before GST. The public
+ * reference does not say so; BinaryLane confirmed it on 2026-10-01. `billingTotal` adds the account's tax.
+ *
  * Extracted from the create form so Change Plan bills the same way - Change Plan
  * previously showed `planMonthlyPrice` alone, ignoring addresses, retention and
  * licences - and then corrected, because the create form's own version was
