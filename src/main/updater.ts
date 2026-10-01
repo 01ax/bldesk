@@ -123,6 +123,9 @@ function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
 
   const stagedApp = join(stagingDir, 'BLDesk.app')
   const scriptPath = join(stagingDir, 'install-update.sh')
+  // The installed app is replaced only once the new one has unzipped (exit 0, or 1 for warnings only) and been copied
+  // next to it, by two renames in the same folder. A failure logs to the system log, exits non-zero and leaves a
+  // complete app on disk: the installed one, or if putting it back fails too, both bundles, named in the log line.
   const scriptContent = `#!/bin/bash
 PID=${process.pid}
 COUNT=0
@@ -135,15 +138,29 @@ while kill -0 $PID 2>/dev/null; do
   fi
 done
 
+NEW="${targetApp}.new"
+OLD="${targetApp}.old"
+rm -rf "$NEW" "$OLD"
+STATUS=1
+LEFT=""
 unzip -q -o "${zipPath}" -d "${stagingDir}"
-if [ -d "${stagedApp}" ]; then
-  rm -rf "${targetApp}"
-  cp -R "${stagedApp}" "${targetApp}"
-  xattr -cr "${targetApp}" 2>/dev/null || true
+UNZIP=$?
+# unzip exits 1 for warnings and carries on; 2 and above are errors. Only that the app folder exists is checked after.
+if [ $UNZIP -le 1 ] && [ -d "${stagedApp}" ] && [ ! -e "$NEW" ] && cp -R "${stagedApp}" "$NEW" && mv "${targetApp}" "$OLD"; then
+  if mv "$NEW" "${targetApp}"; then
+    rm -rf "$OLD"
+    xattr -cr "${targetApp}" 2>/dev/null || true
+    STATUS=0
+  elif ! mv "$OLD" "${targetApp}"; then
+    LEFT=" (the new version is in $NEW and the previous one in $OLD)"
+  fi
 fi
+[ -n "$LEFT" ] || rm -rf "$NEW"
 rm -rf "${stagingDir}"
 rm -f "${zipPath}"
+[ $STATUS -eq 0 ] || logger -t BLDesk "Update not installed: the new version could not be unzipped and put in place$LEFT"
 ${forceRunAfter ? `open "${targetApp}"` : ''}
+exit $STATUS
 `
   writeFileSync(scriptPath, scriptContent, { mode: 0o755 })
   const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' })
