@@ -11,6 +11,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { esc, pathRegexes, spec, validatorFor } from './spec.mjs'
 
+// Actions the app sends that the public reference does not list: accepted exceptions to "public API only", recorded in
+// AGENTS.md and src/renderer/src/lib/actionLabels.ts (UNPUBLISHED_ACTIONS). They are counted, not reported as invalid.
+const ACCEPTED_UNPUBLISHED_ACTIONS = new Set(['enable_rescue_mode'])
+let accepted = 0
+
 const logFile = process.argv[2] ?? join(tmpdir(), 'bldesk-gui-test', 'default', 'mock.log')
 const checked = new Map()
 const problems = []
@@ -36,6 +41,10 @@ for (const line of readFileSync(logFile, 'utf8').split('\n')) {
   const mapping = spec.components.schemas.ServerAction?.discriminator?.mapping
   if (hit.p.endsWith('/actions') && method === 'POST' && body?.type) {
     const target = typeof body.type === 'string' && Object.hasOwn(mapping ?? {}, body.type) ? mapping[body.type] : undefined
+    if (!target && ACCEPTED_UNPUBLISHED_ACTIONS.has(body.type)) {
+      accepted++
+      continue
+    }
     if (!target) {
       const unknownKey = `${label} type=${body.type} ${raw}`
       if (!checked.has(unknownKey)) {
@@ -55,6 +64,7 @@ for (const line of readFileSync(logFile, 'utf8').split('\n')) {
   if (!ok) problems.push({ label, errors: validate.errors.map((e) => `${e.instancePath || '(body)'} ${e.message}${e.params?.additionalProperty ? ` "${e.params.additionalProperty}"` : ''}${e.params?.missingProperty ? ` "${e.params.missingProperty}"` : ''}`), body })
 }
 console.log(`${checked.size} distinct request bodies checked against openapi.json; ${problems.length} invalid.`)
+if (accepted) console.log(`${accepted} request${accepted === 1 ? '' : 's'} for an action the reference does not list, accepted (AGENTS.md, "Accepted exceptions"): ${[...ACCEPTED_UNPUBLISHED_ACTIONS].join(', ')}.`)
 if (unreadable) console.log(`${unreadable} logged request line${unreadable === 1 ? '' : 's'} could not be read as JSON (cut short) and were not checked.`)
 for (const p of problems) {
   console.log(`\n✗ ${p.label}`)

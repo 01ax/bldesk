@@ -15,6 +15,10 @@ Choose “Boot into Rescue Mode” only if you intend to change the server's boo
 
 “Submits "Enable Rescue Mode" to BinaryLane.”
 
-Check the target before confirming, follow the action to completion and use the rescue console to inspect the resulting environment. Opening the console alone does not enable rescue mode.
+The confirmation also says:
+
+“This action is not in BinaryLane's public API reference, so its behaviour is not documented there and it could change or stop working.”
+
+BLDesk keeps Boot into Rescue Mode because it is useful when a server will not start, but it is the one action in the app that the public reference does not list, so what it does to the server is not described there. Check the target before confirming, follow the action to completion and use the rescue console to inspect the resulting environment. Opening the console alone does not enable rescue mode.
 
 For password reset or destructive OS rebuild, use [Settings](help:server-settings#rebuild-and-password-reset). To replace the live disk with an older image use [backup restore](help:backups#worked-example). Follow actions through [History](help:history); submission is not completion.

@@ -52,7 +52,7 @@ import { describeActionType } from '../../lib/actionLabels'
 import { ServerSubTab } from '../layout/Sidebar'
 import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
-import { powerActionSummary } from '../../lib/actionLabels'
+import { powerActionSummary, unpublishedActionNotes } from '../../lib/actionLabels'
 import { imageSupportsUserData, templateFromServer, type ServerTemplate } from '../../lib/serverTemplates'
 import { describeApiError } from '../../api/queries'
 import { loadKeyAssociations, keyAssociationSource, setKeyAssociation, availableSshKeys, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
@@ -316,6 +316,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         target: { kind: 'server', id: server.id, name: server.name },
         summary: powerActionSummary(actionType),
         severity: actionType === 'power_off' || actionType === 'power_cycle' ? 'destructive' : 'normal',
+        notes: unpublishedActionNotes(actionType),
         ...confirm
       })
       if (!c.ok) return
@@ -1026,6 +1027,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               />
               <button
                 onClick={() => handleAction('enable_rescue_mode')}
+                title="This action is not in BinaryLane's public API reference"
                 disabled={!!actionInProgress}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-400 text-xs font-medium rounded hover:bg-amber-500/20 transition disabled:opacity-50"
               >
