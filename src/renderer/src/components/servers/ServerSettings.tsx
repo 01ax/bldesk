@@ -25,7 +25,8 @@ import {
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
   networkActionMutationKey,
-  actionFailureMessage
+  actionFailureMessage,
+  ACCEPTED_WITHOUT_ACTION
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
@@ -170,6 +171,11 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
           // outcome rather than calling a healthy operation failed.
           track(outcome.action, label, server.name, c.changeId)
           setNotice(`"${label}" is still running on BinaryLane. You will be notified when it finishes.`)
+          return true
+        case 'accepted':
+          // No action to track and nothing known about completion: the entry stays "submitted".
+          void updateChange(c.changeId, { outcome: 'submitted', detail: ACCEPTED_WITHOUT_ACTION })
+          setNotice(`"${label}" was accepted by BinaryLane. It returned no action to follow, so check the server details for the result.`)
           return true
         case 'awaiting-interaction':
           track(outcome.action, label, server.name, c.changeId)

@@ -1428,6 +1428,37 @@ function describeMissingAction(type: string, submitted: unknown): string {
 }
 
 /**
+ * What History records when BinaryLane accepted a request and gave nothing to
+ * follow. Accepted is all that is known: not that it ran, not that it finished.
+ */
+export const ACCEPTED_WITHOUT_ACTION =
+  'Accepted by BinaryLane (HTTP 202) with no action to follow, so there is no later outcome to record. Check the server for the result.'
+
+/**
+ * The action a POST to `/v2/servers/{id}/actions` queued, or null when the
+ * request was accepted with nothing to follow.
+ *
+ * The reference documents two successes: 200 with an `action`, and 202 Accepted
+ * with no content. The live API answers the second for rename, change_partner,
+ * change_backup_schedule and change_threshold_alerts, so it is a request that
+ * was accepted, not a failure. The POST is made with `parseAs: 'text'` so that
+ * an empty body is never run through `response.json()`, which throws "Unexpected
+ * end of JSON input" for a JSON content type with no length. Any other answer
+ * without an action is still reported as it came back.
+ */
+function readQueuedAction(type: string, submitted: { data?: string; response?: Response }): ServerAction | null {
+  let action: ServerAction | undefined
+  try {
+    action = submitted.data ? (JSON.parse(submitted.data) as { action?: ServerAction }).action : undefined
+  } catch {
+    // Not JSON: fall through to the status check.
+  }
+  if (action?.id) return action
+  if (submitted.response?.status === 202) return null
+  throw new Error(describeMissingAction(type, submitted))
+}
+
+/**
  * Cancel (terminate) a server.
  *
  * DELETE /v2/servers/{id} answers 204 with no body - it is not an Action, so
@@ -1460,17 +1491,18 @@ export function useCancelServerMutation(client: BinaryLaneClient | null) {
 
 export function useNetworkActionMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
-  return useMutation<ServerAction, Error, NetworkActionPayload>({
+  return useMutation<ServerAction | null, Error, NetworkActionPayload>({
     // Keyed so `useIsMutating(networkActionMutationKey(id))` can report an in-flight action
     // even after the component that started it unmounted (tab switch mid-action).
     mutationKey: networkActionMutationKey(serverId),
     mutationFn: async (actionPayload) => {
       if (!client || !serverId) throw new Error('No client available')
-      let submitted: { data?: { action?: ServerAction }; error?: unknown }
+      let submitted: { data?: string; error?: unknown; response?: Response }
       try {
         submitted = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: serverId } },
           body: actionPayload,
+          parseAs: 'text',
           signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
         })
       } catch (err) {
@@ -1483,8 +1515,9 @@ export function useNetworkActionMutation(client: BinaryLaneClient | null, server
       }
       if (submitted.error) throw new Error(describeApiError(submitted.error))
 
-      const queued = submitted.data?.action
-      if (!queued?.id) throw new Error(describeMissingAction(actionPayload.type, submitted))
+      const queued = readQueuedAction(actionPayload.type, submitted)
+      // Accepted with nothing to follow: there is no action to wait for.
+      if (!queued) return null
 
       // Blocking on purpose: a second network change over an unsettled first one
       // is the hazard here, so the UI stays locked until this one resolves.
@@ -1549,6 +1582,8 @@ export type ServerActionOutcome =
   | { state: 'blocked-by-invoice'; action: ServerAction }
   /** Still running, and no longer holding the UI. The caller should track it. */
   | { state: 'handed-off'; action: ServerAction }
+  /** Accepted (HTTP 202) with no action to follow. Nothing to track, and nothing known about completion. */
+  | { state: 'accepted' }
 
 /**
  * Submit a server action, wait briefly for it to settle, and otherwise hand it
@@ -1565,11 +1600,12 @@ export function useServerActionWithHandoff(client: BinaryLaneClient | null, serv
     mutationFn: async (actionPayload) => {
       if (!client || !serverId) throw new Error('No client available')
 
-      let submitted: { data?: { action?: ServerAction }; error?: unknown }
+      let submitted: { data?: string; error?: unknown; response?: Response }
       try {
         submitted = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: serverId } },
           body: actionPayload as never,
+          parseAs: 'text',
           signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
         })
       } catch (err) {
@@ -1582,8 +1618,8 @@ export function useServerActionWithHandoff(client: BinaryLaneClient | null, serv
       }
       if (submitted.error) throw new Error(describeApiError(submitted.error))
 
-      const queued = submitted.data?.action
-      if (!queued?.id) throw new Error(describeMissingAction(actionPayload.type, submitted))
+      const queued = readQueuedAction(actionPayload.type, submitted)
+      if (!queued) return { state: 'accepted' }
 
       const settled = await pollActionToSettled(client, queued.id, {
         initial: queued,
