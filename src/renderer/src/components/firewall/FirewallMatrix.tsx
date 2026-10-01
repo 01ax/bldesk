@@ -118,6 +118,10 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   const [copyError, setCopyError] = useState<string | null>(null)
 
   const sourceRules = sourceId != null ? (rulesByServer.get(sourceId) ?? null) : null
+  // A copy replaces a server's whole list, so a server whose rules could not be
+  // read (null) has no "before" to diff against and is never written to.
+  const readable = (id: number) => !!rulesByServer.get(id)
+  const targets = scoped.filter((s) => targetIds.has(s.id) && s.id !== sourceId && readable(s.id))
 
   const toggleTarget = (id: number) =>
     setTargetIds((prev) => {
@@ -128,16 +132,15 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
     })
 
   const handleCopy = async () => {
-    if (!client || sourceId == null || !sourceRules || targetIds.size === 0) return
+    if (!client || sourceId == null || !sourceRules || targets.length === 0) return
     const source = servers.find((s) => s.id === sourceId)
-    const targets = scoped.filter((s) => targetIds.has(s.id) && s.id !== sourceId)
     const after = sourceRules.map(describeFirewallRule)
 
     // One combined preview: a heading line per target, then that target's diff.
     const combined: DiffLine[] = []
     const perTarget = new Map<number, DiffLine[]>()
     for (const t of targets) {
-      const before = (rulesByServer.get(t.id) ?? []).map(describeFirewallRule)
+      const before = rulesByServer.get(t.id)!.map(describeFirewallRule)
       const d = diffLines(before, after)
       perTarget.set(t.id, d)
       combined.push({ kind: 'same', text: `── ${t.name} (#${t.id}) ──` }, ...d)
@@ -362,14 +365,18 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
               className="px-2 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded focus:outline-none"
             >
               <option value="">choose a source…</option>
-              {scoped.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({(rulesByServer.get(s.id) ?? []).length} rules)
-                </option>
-              ))}
+              {scoped.map((s) => {
+                // undefined = the fleet read has not answered yet; null = it answered and this server could not be read.
+                const r = rulesByServer.get(s.id)
+                return (
+                  <option key={s.id} value={s.id} disabled={r == null}>
+                    {s.name} ({r === null ? 'unreadable' : r === undefined ? 'loading' : `${r.length} rules`})
+                  </option>
+                )
+              })}
             </select>
             <span className="text-[#6c757d]">to:</span>
-            <button onClick={() => setTargetIds(new Set(scoped.filter((s) => s.id !== sourceId).map((s) => s.id)))} className="underline text-[#017cb6]">
+            <button onClick={() => setTargetIds(new Set(scoped.filter((s) => s.id !== sourceId && readable(s.id)).map((s) => s.id)))} className="underline text-[#017cb6]">
               everyone {activeGroup ? `in @${activeGroup.name}` : ''}
             </button>
             <button onClick={() => setTargetIds(new Set())} className="underline text-[#6c757d]">
@@ -382,12 +389,14 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
               .map((s) => (
                 <label
                   key={s.id}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer ${
-                    targetIds.has(s.id) ? 'border-[#017cb6] bg-[#017cb6]/10' : 'border-[#ced4da] dark:border-[#373b3e]'
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded border ${readable(s.id) ? 'cursor-pointer' : 'cursor-not-allowed'} ${
+                    targets.includes(s) ? 'border-[#017cb6] bg-[#017cb6]/10' : 'border-[#ced4da] dark:border-[#373b3e]'
                   }`}
                 >
-                  <input type="checkbox" checked={targetIds.has(s.id)} onChange={() => toggleTarget(s.id)} />
-                  <span className="font-mono">{s.name}</span>
+                  <input type="checkbox" className={readable(s.id) ? '' : 'opacity-60'} checked={targets.includes(s)} disabled={!readable(s.id)} onChange={() => toggleTarget(s.id)} />
+                  <span className={`font-mono ${readable(s.id) ? '' : 'opacity-60'}`}>{s.name}</span>
+                  {/* Not dimmed with the rest: it is the only explanation for the disabled box. */}
+                  {rulesByServer.get(s.id) === null && <span className="text-[#6c757d]">unreadable</span>}
                 </label>
               ))}
           </div>
@@ -395,11 +404,11 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
           <div className="flex items-center gap-2">
             <button
               onClick={() => void handleCopy()}
-              disabled={copying || sourceId == null || !sourceRules || targetIds.size === 0}
+              disabled={copying || sourceId == null || !sourceRules || targets.length === 0}
               className="px-3 py-1.5 rounded bg-[#017cb6] hover:bg-[#016594] text-white font-semibold disabled:opacity-40 flex items-center gap-1.5"
             >
               {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
-              Review diff for {targetIds.size} server{targetIds.size === 1 ? '' : 's'}…
+              Review diff for {targets.length} server{targets.length === 1 ? '' : 's'}…
             </button>
             <button onClick={() => setCopyOpen(false)} className="px-3 py-1.5 rounded border border-[#ced4da] dark:border-[#373b3e]">
               Close
@@ -461,7 +470,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                       <span className="font-semibold">{s.name}</span>
                     </button>
                     <div className="text-[10px] text-[#6c757d] font-mono pl-3.5">
-                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : `${rules?.length ?? 0} rule${(rules?.length ?? 0) === 1 ? '' : 's'}`}
+                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : rules === undefined ? 'loading' : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
                     </div>
                     <div className="flex flex-wrap items-center gap-1 pl-3.5 mt-1">
                       {tagsOf(tags, s.id).map((t) => (

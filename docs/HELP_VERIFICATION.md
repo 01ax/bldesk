@@ -102,6 +102,19 @@ Branch: `feat/ssh-keygen` (#100). No new runtime dependencies: generation uses t
 - Linux: `sshKeygen.ts` bundled and run with Node 18 on Ubuntu 24.04 as a new user with no `~/.ssh` (OpenSSH 9.6, `/usr/bin/ssh-keygen` from PATH). `~/.ssh` was created 700, the private key 600 and the `.pub` 644; the clash, no-overwrite and `ssh-keygen -y` checks passed as on Windows; with the `.pub` in that user's `authorized_keys`, sshd (StrictModes on, the default) accepted a key-only login. This exercises the main-process generator, not the Linux app window.
 - Not exercised: macOS. The build is not sandboxed (DMG and zip, no Mac App Store target), `ssh-keygen` is `/usr/bin/ssh-keygen`, which is on the PATH a Finder-launched app gets, and a new `~/.ssh` is chmodded 700 as on Linux. It needs a check on a Mac before this ships.
 
+## Android request that gets no answer (29 September 2026, after 1.0.62-beta.9)
+
+Branch: `fix/android-no-replay-after-transport-error`. No help page changed, no new runtime dependencies. One new error string; the desktop app never reaches it.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.” | Thrown as a `TypeError` by `executeFetch` in `client.ts` when the native `CapacitorHttp` call fails for any reason other than the plugin being unimplemented (a lost response, a timeout, a response that cannot be read). Callers show `err.message`: the create-server dialog's red line (`setErrorMsg(err.message)`) and History's failed detail, or an `alert()` where the caller still uses one | New. Before, the request was sent a second time through `fetch` and the second answer was shown as if it were the first. A GET or HEAD, which cannot have changed anything, throws the shorter “No response from BinaryLane.” without the second sentence (a failed read, such as the firewall tab's error card, shows this). |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts), `npm run test:terminal` and `npm run build`.
+- Android 15 emulator, debug build with the API address pointed at a local fixture through a test proxy that lets the fixture run a request and then closes the connection without returning its answer (nothing left the machine). BASE against FIXED: a lost answer to `POST /v2/servers`, `POST` actions, `DELETE`, `PUT`, `PATCH` and `GET` ran twice on BASE and once on FIXED, which showed the message above (on a fresh connection: on a reused keep-alive connection Android's own HTTP stack sends the request once more before the app sees any error, on BASE and FIXED alike, and this change does not touch that). The create-server dialog on FIXED showed it as the red line with the fixture's `mock.log` holding one `POST /v2/servers`. The plugin being unimplemented still falls back to `fetch`, and 200, 204, 400 and 404 answers are unchanged.
+
 ## Firewall rules that could not be read (29 September 2026, after 1.0.62-beta.7)
 
 Branch: `fix/firewall-failed-read-not-empty`. No new runtime dependencies. The Firewall tab and a server's Firewall sub-tab are the same component, `FirewallManager.tsx`; `useFirewallRules` in `queries.ts` is also read by the reachability chip in `ReachabilityBadge.tsx`.
@@ -157,6 +170,36 @@ Branch: `feat/ssh-key-edit`. No new runtime dependencies.
   - Freshness, with keys created and deleted through the API while the app was open: the create form dropped a deleted key the next time it opened (before, it kept offering it until Servers was reopened); the SSH Keys page showed an added key and dropped a deleted one on Refresh, and on leaving and returning within 20s (before, the cached list was reused for 20s). `keys.md` - "The list reloads from BinaryLane each time you open the page, and Refresh reloads it on demand" is `refetchOnMount: always` on `useSshKeys` plus the Refresh button.
 - Table width, emulated CSS widths: at 1280 and 1600 the Actions column fits. At 1024 and below the table scrolls sideways, as it already did (59px before, 159px now, from the Default column). The column heading is "Default", with the full mPanel wording as its tooltip, so it fits at 1280.
 
+## Firewall servers that could not be read: Clone and Copy ruleset (30 September 2026, after 1.0.62-beta.9)
+
+Branch: `fix/firewall-unreadable-target-not-empty`. No new runtime dependencies. The same failure as the entry for the Firewall tab above (a read that failed shown as “no rules”), in the two places that read another server's rules before replacing them: the Clone dialog in `FirewallManager.tsx`, and Copy ruleset in `FirewallMatrix.tsx`, fed by `useFleetFirewalls` in `queries.ts`.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `firewall.md`: one paragraph after “Add Rule, Import, Clone and Export stay off.” and the section "Servers that cannot be read" | The Clone dialog and the Copy ruleset panel, below | New. |
+| “Couldn't read the firewall rules on web-base. Nothing was changed: a clone replaces the target's whole list, so it needs the current one first.” | `FirewallManager.tsx`, `handleCloneSubmit`: `cloneError`, in the `role="alert"` box of the Clone dialog when the destination's rules could not be read (an error status, an error with an empty body, or a dropped connection). `web-base` stands for the destination's name. | New. Before, the dialog read the destination with its own request and turned any failure into an empty list, so it asked “Replaces the 0 rules on … with the 4 from …” and the write replaced the destination's real rules. |
+| `firewall.md`, prose around that message: Clone reads the destination's rules when you press Apply Rules; no confirmation opens and nothing is sent; pressing Apply Rules again tries again | `handleCloneSubmit` reads the destination first, returns before `confirmAction` and before the POST, and the Apply Rules button stays enabled | New. |
+| “unreadable” beside a target's name | `FirewallMatrix.tsx`, the target's label in the Copy ruleset panel, when `rulesByServer.get(s.id) === null`; its checkbox is disabled and unticked, and the everyone link skips it | New. Before, the box could be ticked and the copy diffed the server against no rules. |
+| “(unreadable)” after a name in the source list | Same panel; the option is disabled | Changed. Before, “(0 rules)”, selectable. |
+| “Review diff for N servers…” | Counts only the targets that can be written to | Changed. Before, it counted every ticked box. |
+
+### Checks performed
+
+- `npm run typecheck` (including the help guard: 56 quotes, two more than before, all found in the source), `npm run test:terminal` and `npm run build`.
+- Real Electron through the GUI test harness, a fictitious token, every request answered by the fixture API. The base build (`ae12d03`, BASE) and this branch's build (FIXED) were driven with real clicks through the same scenarios. The target was `postgres-syd-01` (#8102, four rules, one of them a PostgreSQL rule the source lacks); the source was `edge-web-syd-01` (#8100, four rules). Full request bodies were recorded in the page, and for the successful copy the writes were also read back from the fixture API.
+- Target read fails, Copy ruleset, with 500, 403, 404 (JSON error bodies), a dropped connection, an empty 500 with a JSON content type and an empty 502 with none. BASE: the row says “unreadable” (or “0 rules” for the empty JSON-typed body, see below), the box can be ticked, the diff is four additions and no removals (a healthy read of the same server shows the PostgreSQL rule being removed), and Write to 1 server POSTs four rules that replace the server's real list. FIXED: the label reads “postgres-syd-01 unreadable” with a disabled, unticked box, “Review diff for 0 servers…” is disabled, nothing can be sent.
+- Empty-bodied failures in `useFleetFirewalls`: an empty 500 with a JSON content type left `error` unset, so the hook returned `[]`, the matrix said “0 rules” and counted the server under “2 with no rules at all”, and the copy offered it as a target. That is fixed by testing `response.ok`, as `useFirewallRules` does. With the same failure on the source, BASE read “edge-web-syd-01 (0 rules)”, offered “Replaces the rule list on each selected server with the 0 rules from edge-web-syd-01.” and POSTed an empty list to the target. FIXED: the source reads “(unreadable)” and cannot be chosen.
+- Source read fails (500): BASE listed “(0 rules)” and left Review disabled with no reason; FIXED lists “(unreadable)”, disabled.
+- Mixed targets (one unreadable, two readable): BASE wrote to all three. FIXED wrote to the two readable ones, with the third shown unticked and “unreadable”. The everyone link selected 27 servers on BASE (unreadable one included) and 26 on FIXED. A target ticked while readable and made unreadable by Refresh: BASE still wrote to it (diff of four additions); FIXED unticked it, showed “unreadable” and wrote to the other one only.
+- Clone, destination read fails with 500, 403, 404, a dropped connection and an empty 500 with a JSON content type: BASE: “Replaces the 0 rules on postgres-syd-01 with the 4 from edge-web-syd-01.”, a diff of four additions, and Clone rules POSTed four rules. FIXED: the dialog stays open with the message above, one read of the destination, no confirmation, no POST. The message clears when the destination is changed and when the dialog is reopened.
+- Clone, source read fails: Clone stays disabled and the card says “Couldn't read this server's firewall rules.”, on BASE and FIXED alike. A destination that is genuinely empty (200 with `[]`): BASE and FIXED both say “Replaces the 0 rules on stopped-batch-01 with the 4 from edge-web-syd-01.” and POST the four rules. Both readable: identical dialog, diff and POST.
+- Recovery: a read that fails once and then succeeds. Copy ruleset: after Refresh the label loses “unreadable”, the box can be ticked, and the diff shows the real rules (one removal, one addition) and writes four. Clone: the first Apply Rules shows the message and sends nothing; the second shows “Replaces the 4 rules on postgres-syd-01 with the 4 from edge-web-syd-01.” with the same diff.
+- Cancel sends nothing (Copy ruleset and Clone). A successful Copy ruleset to three servers (one of them genuinely empty), a successful Clone and a healthy single copy show the same dialog text and buttons and POST the same bodies on BASE and FIXED.
+- Zoom, driven with ctrl+0, ctrl+minus and ctrl+plus through `sendInputEvent`: 80%, 100%, 125% and 150% at 1280 x 840 and 1024 x 680, for the Copy ruleset panel with an unreadable server and the Clone dialog showing the message. The label, Review diff, Close, Apply Rules and Cancel are inside the viewport every time and the page never scrolls sideways. 1024 x 680 at 150% is 683 CSS px, so the mobile navigation drawer applies there, as AGENTS.md notes. Zoom was returned to 100%.
+- The Firewall help page, opened from the tab's help button: both new passages render as written.
+- Test-only: the fixture API's failure switch has no dropped-connection or empty-body mode, so those three cases used a temporary local edit to the fixture server that was not committed.
+- Not exercised: the real BinaryLane API, a packaged build, the View menu zoom limits, the light theme, Android, macOS and Linux.
+
 ## List paging: VPCs, SSH keys, DNS records, load balancers (24 September 2026, for 1.0.62-beta.5)
 
 Branch: `fix/vpc-list-paging`. No new runtime dependencies.
@@ -182,6 +225,39 @@ Branch: `security/honest-storage`.
 | `getting-started.md` "The local vault" paragraph | `src/main/safeStorage.ts` (`canEncrypt`, `encryptToken`, `decryptRecord`, `saveProfile`), `AuthModal.tsx`, `App.tsx` `refreshProfiles`, `api/mobile-bridge.ts` `saveStoredProfiles` | Rewritten. `canEncrypt` treats Linux `basic_text`/`unknown` as unavailable; `saveProfile` then returns `errorCode: 'encryption-unavailable'` unless `allowUnencrypted` is sent, which AuthModal only sends after the user ticks "Save this token without encryption on this device". AuthModal labels such profiles "Token not encrypted" and undecryptable ones "Token needs re-entering"; `refreshProfiles` opens the vault when the active token is ''. Android's `saveStoredProfiles` throws instead of falling back. |
 | Vault title "API Token Vault" (was "Hardware Encrypted Vault") | `AuthModal.tsx` header | The old title was untrue for the keyring-less and pre-fix fallback cases. |
 | Template capture note: "User data is copied exactly as it is on the server, including any passwords, keys or tokens in it: remove those before saving or sharing the template." | `ServerDetails.tsx` Cloud-init tab, above "Save server as template" | `templateFromServer` copies `userData` verbatim into `spec.cloudInit`; nothing strips secrets from it. |
+
+## Prices use the account's tax code (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/price-tax-from-account-tax-code`. No new runtime dependencies. No help page or `FEATURES.md` sentence changes: none of them states a rate, a tax name, or that a total includes tax.
+
+Service facts, from `openapi.json` only. `Account.tax_code` is "The tax code that currently applies to transactions for this account." A `TaxCode` has a required `name` ("The name of this tax code.") and a required `type`: `none` ("No tax is applied to any transaction.") or `scalar` ("A fixed fraction of the value of all transactions is added as tax."). `fixed_percent` is a percentage where 100 = 100%: "if the type is 'scalar' and the value of this is '10' then 10% of the value of all transactions will be added as tax." The reference does not say whether `Size.price_monthly`, the size option costs, `DistributionSurcharges` or `Software.cost_per_licence_per_month` include tax (each is described only as an amount "in AU$"). The forms have always treated them as amounts before tax; that is unchanged, and it is the app's assumption, not something the reference states.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “$<total> (incl. $<tax> <tax code name>)” after “Monthly Total” and after “New monthly total” | `billingTotal` in `lib/serverPricing.ts` (its `note`), shown in the Billing box of `CreateServerModal.tsx` and in the Billing block and the line beside the Accept button in `ChangePlanPanel.tsx` | Changed. A fixed 10% and a fixed tax name were used for every account. Now a `scalar` tax code adds `fixed_percent` % of the amount before tax and is named by the tax code's own `name`. |
+| “$<total>” with nothing after it | Same places, when the tax code's `type` is `none` | New. The total is the amount before tax and no tax is mentioned. |
+| “$<total> before tax” and “+$<change> before tax” after “Monthly Change” | Same places, when the tax is unknown: a `type` other than `none` or `scalar`, a `scalar` without a usable `fixed_percent`, an account that has not loaded, or a failed account read | New. No rate is assumed; the amount is shown before tax and says so. |
+| “Monthly Change” | `delta` in `ChangePlanPanel.tsx`: the new total minus the old total, both from `billingTotal` with the same tax code | Changed. Both sides had a fixed 10% added before. |
+| “Monthly (before tax)” | The Monthly row in `changes` in `ChangePlanPanel.tsx`, shown in the Summary of changes table and in the confirmation | Changed from a label that named GST. The row is `oldCost.total` to `newCost.total`, which never had tax added, so the new label holds for every tax code. |
+| “$<licences> before tax” after “of which licences” | Billing block in `ChangePlanPanel.tsx` | Changed from a suffix that named GST. The value is unchanged: `licenceCost`, from `Software.cost_per_licence_per_month`. |
+| “All prices are in AUD and before tax unless stated otherwise. Charges are pro-rated from the time the change is applied.” | Billing block in `ChangePlanPanel.tsx` | Changed from a sentence that named GST. “unless stated otherwise” covers the “(incl. …)” totals. “AUD” is untouched: the reference words its prices as “in AU$” and has no currency field. |
+| Tax code row on Account Details | `AccountOverview.tsx` prints `name` and `fixed_percent` from `useAccount` | Unchanged, rechecked. The forms read the same `useAccount` query, so both screens show the same tax code. |
+| `server-change-plan.md` "The final review includes the resulting monthly cost."; `billing.md` "The Create Server and Change Plan forms show proposed recurring costs."; `servers.md` "Check the price and terms before submitting." | Same forms | Unchanged, rechecked, still true. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts), `npm run test:terminal` and `npm run build`.
+- Repo-wide search for `GST`, `GST_RATE`, `billingTotal`, `incl.` and the old labels across `src`, `docs`, `FEATURES.md` and `README.md`. Every rendered occurrence is in the table above. What remains is comments in `lib/serverPricing.ts` and `lib/licences.ts` that describe amounts as excluding GST (untouched) and history lines in `CHANGELOG.md`.
+- Real Electron builds with isolated user data, name resolution blocked and every API request answered by the harness's local fake API with a fictitious token (nothing sent to BinaryLane), driven over the debugging port. Base is the build of `origin/main` at `ae12d03`; fixed is this branch. The fake API's account `tax_code` was varied with a temporary local edit of the harness mock, which is not part of this change. Text was read from the Create Server Billing box (4 vCPU plan chosen) and from Change Plan on a Linux server (to a larger and to a smaller plan) and on a Windows server with a licence.
+  - Base, with tax codes of 15%, 20% named VAT, `none`, an unknown type, a `scalar` without `fixed_percent`, and a 500 on the account read: every one showed a tax of exactly 10% of the amount before tax, named GST, and the same for the Change Plan delta.
+  - Fixed, 10% named GST (the shape a live Australian account returns): the same figures as base; only the three relabelled strings above differ.
+  - Fixed, 15% GST and 20% VAT: the tax was 15% and 20% of the amount before tax, named by the tax code (“GST”, “VAT”). The Change Plan delta between two plans equalled the difference of the before-tax totals times 1.1, 1.15 and 1.2 for 10%, 15% and 20%.
+  - Fixed, `none`: no tax text after any total, the total and the delta were the before-tax figures.
+  - Fixed, an unknown type (also carrying a `fixed_percent`), a `scalar` without `fixed_percent`, and the fake API's own account shape, which has no `type`: “before tax” after Monthly Total, New monthly total and Monthly Change, no rate.
+  - Fixed, account read answering 500: the same “before tax” forms after the retries, no page error. Account read delayed by 5 seconds: “before tax” first, then the tax code's text once the account arrived, without reopening the form.
+  - Account Details, base and fixed, for four tax codes: the Tax code row read the same on both.
+- Real Electron zoom: the fixed build launched with Playwright's Electron support, isolated user data, Ctrl+minus, Ctrl+equals and Ctrl+0 sent with `webContents.sendInputEvent`, in windows of about 1280×840 and 1024×680 at 80, 100, 125 and 150% (CSS widths 1600, 1280, 1024, 853 and 1280, 1024, 819, 683). The Create Server Billing box and the Change Plan summary, with a 20% VAT total on the Windows server and the “before tax” forms on the Linux server, had no clipped or overflowing text, nothing past the right edge and no horizontal page scroll (40 measurements). The View menu was not exercised for this change.
+- Not verified: a live account (the fake API's tax codes stand in for it; the Australian shape `GST`, `scalar`, 10 is as reported from a read of one live account, not checked in this change), the Android build, and the wording on a real non-Australian account.
 
 ## Server order, Archived, map zoom keys (23 September 2026, after 1.0.61-beta.10)
 
@@ -220,6 +296,41 @@ Branch: `feat/show-all-public-ipv4`. No new runtime dependencies.
 - On a physical Samsung SM-S948B at 411 CSS px, against a real account server holding a primary, a secondary and a private address. **The build was this branch on top of `main` and nothing else**, confirmed in the run by `typeof window.bldeskApi.probeTcp === 'undefined'`. 9 checks, all passing: one row per kind of address with no duplicated label; the label agreeing with its count; every listed address carrying its own copy control; no row overflowing its container; and the page not scrolling sideways. Before this change that server displayed one address of the three, while Change Plan on the same server listed both public addresses by name in order to offer one for release.
 - An earlier draft of the bullet above was measured on a build combining six branches. It is re-measured here on this branch alone, which is the same correction applied to the mobile-overflow entry.
 - Plural and singular both exercised in real Electron against fixture servers, since no account server has more than one secondary: a server with three public and two private addresses renders exactly one `Secondary IPv4s` row holding both secondaries and one `Private IPv4s` row holding both private addresses, each stacked address keeping its own copy control; a server with one of each keeps the singular labels. The primary row is unchanged, and IPv6 keeps its own truncation because a v6 address is long enough to widen the row on a phone.
+
+## Billing figures that could not be loaded (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/billing-load-failure-not-zero`. No new runtime dependencies. One help page changed (`billing`). The three cards and the Pending Charges tab are `BillingOverview.tsx`; `useBalance` and `useDataUsage` are in `queries.ts`. `useBalance` is also read by `App.tsx` and `AccountOverview.tsx`, which are not changed here (Account Details already shows a dash when there is no balance).
+
+Service facts, from `openapi.json` only: `Balance` requires `available_credit` and `unbilled_total` as numbers (neither is nullable) and `charges` as an array; only `generated_at` is nullable. `DataUsage` requires `transfer_gigabytes` (an integer, “The included data transfer for this server in this period in GB.”) and `current_transfer_usage_gigabytes`. Both operations document only 200 and 401. The reference defines no “unlimited” value for `transfer_gigabytes`; “Unlimited” is BLDesk's own label for a loaded total of 0 and is not changed here.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `billing.md`, section “When a figure cannot be loaded” | The three cards and the Pending Charges tab below | New. Its four quotes are the strings below, checked by `check-help-guards.mjs`. |
+| “Couldn't load the account balance.” | `BillingOverview.tsx`, caption under the Available Credit figure when the balance read has finished and `available_credit` is not a number | New. |
+| “Couldn't load the pending charges.” | Caption under the Pending Charges figure (`unbilled_total` not a number after the read finished), and the body of the Pending Charges tab when the read finished with no balance | New. |
+| “Couldn't load the data transfer usage.” | Caption under the Pooled Bandwidth bar when the usage read has finished and returned no list | New. |
+| — (a dash) in place of each figure | The figure slot of each card while its read is loading, paused or failed | Changed. Before, `$0.00 AUD` twice and `0.0 / Unlimited` with the bar at 5%. The dash and its grey colour are the pattern Account Details already uses for a missing balance. The bar is empty while the usage figure is not known. |
+| `$0.00 AUD`, `0.0 / Unlimited`, the 5% bar | Same slots, once the read has succeeded | Unchanged. A real zero balance, a loaded empty usage list, and a loaded total allowance of 0 render exactly as before. |
+| “No pending charges for the current billing cycle.” | `PendingCharges`, when the read succeeded and `charges` is empty | Unchanged. No longer shown for a failed read. |
+| `useDataUsage` | `queries.ts` | Changed. It caught every error and returned `[]`, so a failed read was stored as a successful empty list. It now lets the error reach the query, and treats a non-2xx reply with an empty body (which openapi-fetch leaves without an `error`) as a failure, as `useFirewallRules` does. |
+
+The last figure that loaded stays on screen if a later refresh fails; the page says so. That is not new for the balance (the query keeps its data) and is now also true of the usage figure.
+
+### Checks performed
+
+- `npm run typecheck` (including the help guard: 58 quotes, four more than before, all found in the source), `npm run test:terminal` and `npm run build`.
+- Real Electron through `scripts/gui-test`, isolated user data, the fictitious token, every request answered by the harness mock. The build at `304975b` (BASE) and this branch (FIXED) were driven through the same scenarios with Playwright over the debugging port. Failures came from `/__mock/fail`; real zeros, empty bodies, an HTML error page and a dropped connection came from Playwright's request interception answering the two billing paths.
+- Both reads fail (500, then 429, each persistent). BASE, while the app retries and after it gives up (about 3 s): Available Credit `$0.00 AUD`, Pending Charges `$0.00 AUD`, Pooled Bandwidth `0.0 / Unlimited` with the bar at 5%, and the Pending Charges tab “No pending charges for the current billing cycle.” FIXED: a dash on all three while retrying, then the three captions above and the tab text “Couldn't load the pending charges.”
+- Only the balance read fails, and only the usage read fails: each fails alone on BASE as above for its own cards; on FIXED the other cards keep their figures.
+- Loading (every response delayed 7 s, Billing opened while the reads were in flight): BASE `$0.00 AUD`, `$0.00 AUD`, `0.0 / Unlimited`; FIXED a dash on each with no failure text, then the real figures.
+- Loaded normally, and with real zeros (a zero balance and an empty usage list; a zero balance with usage rows whose allowance is 0 and used 12.3 GB; a balance with one charge and an allowance of 1000 GB): BASE and FIXED show identical text and bar widths in every case.
+- A failed body: an empty 500 with a JSON content type, an empty 200 body, a 200 with `{}`, an HTML 502 page, a dropped connection and a balance object without the two numbers. BASE reads `$0.00 AUD`, `$0.00 AUD` and `0.0 / Unlimited` for all of them. FIXED shows the failure captions for the balance in every case (with the balance object that lacks the numbers, the tab still says “No pending charges for the current billing cycle.” because its `charges` array is present and empty). For usage it shows them for the empty 500, the empty 200 body, the HTML 502 and the dropped connection. The cases that return a 200 with a parseable body but no usable list (`{}`, the mock's 200 error envelope, and one usage row with no numbers) still read `0.0 / Unlimited` as on BASE, because BLDesk cannot tell them from an account with no servers. The reference documents `data_usages` and its fields as required, so these are off-specification replies; they were not changed.
+- A refresh that fails after a good load (Billing left for 22 s, both reads set to fail, Billing reopened): BASE keeps the balance figures but the usage card changes to `0.0 / Unlimited`; FIXED keeps all three figures.
+- One transient 500 on each read, then success: BASE's usage card reads `0.0 / Unlimited` and still did 3 s later; FIXED shows a dash and then `1310.5 / 4096 GB` after the retry, with no error text.
+- Both reads fail three times and then succeed, Billing left and reopened: FIXED shows the real figures at once; BASE's balance recovers but the usage card still read `0.0 / Unlimited` 3 s later.
+- Zoom: real Electron zoom at 80, 100, 125 and 150% by Ctrl+-, Ctrl+= and Ctrl+0 sent with `webContents.sendInputEvent`, in 1280×840 and 1024×680 windows (`setContentSize`), loaded and failed, BASE and FIXED. The page's CSS width was the window divided by the zoom each time (1600, 1280, 1024, 853; 1280, 1024, 819, 683). The cards stayed three across except at 1024×680 and 150%, where the existing compact layout stacks them. No horizontal page scroll, no card overflow, and every caption sat inside its card with its text in full (measured from the DOM); the captions wrap to two lines at the narrowest three-column widths. Card heights with captions ranged from 114 to 145 px against 103 to 163 px loaded. The View menu's Zoom In stopped at 150%, Zoom Out at 80%, and Actual Size returned to 100%. The failed state was also looked at with the `dark` class set on the page, where the dash, the captions and the tab text are readable.
+- The Billing help page, opened from the “?” beside the heading: the new section renders between “Check the active account” and “Follow a blocked action”, with its four quotes.
+- Not verified: a live BinaryLane account (nothing here reached it; the zero, empty-body and error cases are fixtures); Android; the page's own dark-mode toggle (the class was set directly); `fetchAllPages` skips a failed second or later page and returns a partial list, which is unchanged; the Invoices tab, the Payment Details tab and the unpaid-invoice banner read their own queries and still show their empty states for a failed read.
 
 ## Mobile overflow and the server header (9 September 2026, 1.0.61-beta.8)
 
@@ -287,6 +398,33 @@ The harness is out of tree and is not an app dependency: a copy of
 `scripts/showcase/launcher.cjs` with an env-driven probe stub and synthetic
 `ssh_keys`, plus the check scripts. Playwright comes from
 `BLDESK_PLAYWRIGHT_MODULE`.
+
+## Change Partner confirmation names the current partner (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/change-partner-confirm-name`. No new runtime dependencies. No help page changed: `server-settings.md` has one sentence about HA partners (“Selecting an HA partner requests placement separation; it does not configure application failover.”) and does not quote or describe the confirmation's rows. A search for “partner” across `docs/`, `README.md`, `FEATURES.md` and `REQUIREMENTS.md` found no other description of them.
+
+Service facts, from `openapi.json` only: `Server.partner_id` is “The server ID of the partner of this server, if one has been assigned.” (a nullable integer, an id and nothing else). `ChangePartner.partner_server_id`: “Leave this null to remove the server partnership. The partner server must be in the same region as the target server.” The reference gives no way to read a partner's name from the partner id alone, so the name can only come from servers BLDesk has already loaded.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| The current partner in the “HA partner” row, as the name followed by the id in brackets (“name (#id)”) | `handleSavePartner` in `ServerSettings.tsx`, `from` of the `changes` row; the name is looked up by `partner_id` in the `servers` prop (the list `App.tsx` loads with `useServers`) | Changed. Before, the id only (“#id”). |
+| The id alone (“#id”) for a current partner that is not in that list | Same `from` | Unchanged for that case. No name is invented; the row reads as before. |
+| The new partner (“name (#id)”) and “(removed)” when the partner is cleared | Same row, `to` | Unchanged. |
+| “BinaryLane keeps HA partners on separate physical hypervisors.”, the dialog title, severity (`normal`) and buttons | Same call | Unchanged. |
+| Request body | `{ type: 'change_partner', partner_server_id }` | Unchanged; identical on BASE and FIXED for set, change and remove (see below). |
+| The row in a History entry | `confirm()` stores the same `changes` | Changed with the dialog, so History now shows the current partner by name too. |
+
+### Checks performed
+
+- `npm run typecheck` (help guard unchanged at 54 quotes), `npm run test:terminal` and `npm run build`.
+- Real Electron through `scripts/gui-test`, isolated user data, the fictitious token, every request answered by the harness mock. The build at `304975b` (BASE) and this branch (FIXED) were driven with Playwright over the debugging port through Servers, the server, Settings, Partner Server, Update Partner Pairing; each dialog was read and then confirmed, and the requests read from `mock.log`.
+- Set a first partner (`win-app-01`, none, to `edge-web-bne-01`): the row reads “edge-web-bne-01 (#8106)” on both builds; body `{"type":"change_partner","partner_server_id":8106}` on both.
+- Change a partner (`ha-partner-a`, partnered with `ha-partner-b`, to `edge-web-syd-01`): BASE “#9007 → edge-web-syd-01 (#8100)”, FIXED “ha-partner-b (#9007) → edge-web-syd-01 (#8100)”; body `partner_server_id` 8100 on both.
+- Remove a partner (choose “No Partner Server (Independent)”): BASE “#9007 (removed)”, FIXED “ha-partner-b (#9007) (removed)”; body `partner_server_id` null on both.
+- A current partner that is not in the list (the mock's partner server deleted first, so the list no longer has it while the server still reports its id): BASE and FIXED both read “#9007 → edge-web-syd-01 (#8100)” and “#9007 (removed)”; bodies identical.
+- History, after confirming the change and the removal: BASE “#9007 → edge-web-syd-01 (#8100)” and “#9007”; FIXED “ha-partner-b (#9007) → edge-web-syd-01 (#8100)” and “ha-partner-b (#9007)”.
+- Zoom: real Electron zoom at 80, 100, 125 and 150% by Ctrl+-, Ctrl+= and Ctrl+0 sent with `webContents.sendInputEvent`, in 1280×840 and 1024×680 windows (`setContentSize`), with the change dialog open, BASE and FIXED, and again with the current partner made the mock's 100-character server name (the list and the server read were answered from the mock with that one partner id changed). The dialog sat inside the window with Cancel and Confirm visible and its body not scrolling at every combination, down to a 683×453 CSS viewport, and there was no horizontal page scroll. The long name wraps inside the row (61 px tall against 29 px) and stays inside the dialog.
+- Not verified: a live BinaryLane account (nothing here reached it); Android; a partner that belongs to another profile (the mock has only one).
 
 ## Browse existing SSH key files (7 September 2026, 1.0.61-beta.8)
 

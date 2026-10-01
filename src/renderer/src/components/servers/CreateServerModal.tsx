@@ -11,6 +11,7 @@ import {
   useDistributionImages,
   useSshKeys,
   useVpcs,
+  useAccount,
   useCreateServerMutation,
   useAddSshKeyMutation
 } from '../../api/queries'
@@ -73,6 +74,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const imagesQuery = useDistributionImages(client)
   const sshKeysQuery = useSshKeys(client)
   const vpcsQuery = useVpcs(client)
+  const accountQuery = useAccount(client)
   const createServer = useCreateServerMutation(client)
   const addSshKey = useAddSshKeyMutation(client)
 
@@ -328,7 +330,16 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (disk < floor) setDiskGb(floor)
   }, [selectedSize?.slug, image?.slug, disk])
 
-  const monthly = useMemo(() => {
+  // The backups the request sends, and the total prices. The simple view
+  // collapses the three retention dropdowns into one choice.
+  const backups = showAll
+    ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups }
+    : { daily: simpleBackups === 'none' ? 0 : 2, weekly: 0, monthly: 0, offsite: simpleBackups === 'both' }
+
+  // The total and each simple-view backup option are priced by the same two steps,
+  // the cost and then the account's tax treatment, so an option shows exactly what
+  // choosing it adds to the total (with tax when the total has it, before tax when not).
+  const priceWith = (b: typeof backups) => {
     if (!selectedSize) return 0
     return configuredCost({
       size: selectedSize,
@@ -336,14 +347,21 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       memoryMb: memory,
       diskGb: disk,
       ipCount,
-      dailyBackups,
-      weeklyBackups,
-      monthlyBackups,
-      offsiteBackups
+      dailyBackups: b.daily,
+      weeklyBackups: b.weekly,
+      monthlyBackups: b.monthly,
+      offsiteBackups: b.offsite
     }).total
-  }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
+  }
+  const taxCode = accountQuery.data?.tax_code
+  const monthly = priceWith(backups)
+  const withTax = (b: typeof backups) => billingTotal(priceWith(b), taxCode).total
+  const optionCost = (daily: number, offsite: boolean) =>
+    withTax({ daily, weekly: 0, monthly: 0, offsite }) - withTax({ daily: 0, weekly: 0, monthly: 0, offsite: false })
+  // With no plan chosen there is nothing to price, so no price is shown rather than $0.00.
+  const optionPrice = (daily: number, offsite: boolean) => (selectedSize ? ` (+$${optionCost(daily, offsite).toFixed(2)})` : '')
 
-  const { total: monthlyIncGst, gst } = billingTotal(monthly)
+  const { total: monthlyTotal, note: taxNote } = billingTotal(monthly, taxCode)
 
   if (!isOpen) return null
 
@@ -356,10 +374,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const blocked = planUnavailableReason(selectedSize, region, image)
     if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
-
-    // The simple view collapses the three retention dropdowns into one choice.
-    const daily = showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2
-    const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
     // The form is the review, so this records rather than confirms — and the
     // id must be resolved either side of the request or History says
@@ -392,10 +406,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           ...(memory !== selectedSize.memory ? { memory } : {}),
           ...(disk !== defaultDisk(selectedSize) ? { disk } : {}),
           ipv4_addresses: ipCount,
-          daily_backups: daily,
-          weekly_backups: showAll ? weeklyBackups : 0,
-          monthly_backups: showAll ? monthlyBackups : 0,
-          offsite_backups: offsite
+          daily_backups: backups.daily,
+          weekly_backups: backups.weekly,
+          monthly_backups: backups.monthly,
+          offsite_backups: backups.offsite
         },
         user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
       } as any)
@@ -588,8 +602,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 <Field label="Backups">
                   {(
                     [
-                      ['onsite', `Onsite daily backups, stored for 2 days (+$${(2 * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)})`],
-                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${(2 * disk * ((selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0) + (selectedSize?.options?.offsite_backups_cost_per_gigabyte || 0))).toFixed(2)})`],
+                      ['onsite', `Onsite daily backups, stored for 2 days${optionPrice(2, false)}`],
+                      ['both', `Onsite and offsite daily backups, stored for 2 days${optionPrice(2, true)}`],
                       ['none', 'Backups are not required']
                     ] as const
                   ).map(([val, label]) => (
@@ -727,7 +741,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 <div className="flex gap-8">
                   <span className="text-[#6c757d] dark:text-[#adb5bd]">Monthly Total</span>
                   <span className="text-[#212529] dark:text-white">
-                    ${monthlyIncGst.toFixed(2)} (incl. ${gst.toFixed(2)} GST)
+                    {selectedSize ? `$${monthlyTotal.toFixed(2)}${taxNote ? ` ${taxNote}` : ''}` : '—'}
                   </span>
                 </div>
                 <p className="text-[#6c757d] dark:text-[#adb5bd] leading-relaxed">
@@ -746,7 +760,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                       region,
                       size: selectedSize?.slug,
                       image: image?.slug ?? undefined,
-                      options: { memory, disk, ipv4_addresses: ipCount, daily_backups: showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2, weekly_backups: showAll ? weeklyBackups : 0, monthly_backups: showAll ? monthlyBackups : 0, offsite_backups: showAll ? offsiteBackups : simpleBackups === 'both' },
+                      options: { memory, disk, ipv4_addresses: ipCount, daily_backups: backups.daily, weekly_backups: backups.weekly, monthly_backups: backups.monthly, offsite_backups: backups.offsite },
                       vpc: vpcId ? (vpcs.find((v: any) => v.id === vpcId)?.name as string | undefined) : undefined,
                       sshKeys: selectedKeys.length ? sshKeys.filter((k: any) => selectedKeys.includes(k.id)).map((k: any) => k.name as string) : undefined,
                       cloudInit: cloudInitOn && cloudInit.trim() ? cloudInit : undefined

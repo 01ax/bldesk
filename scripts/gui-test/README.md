@@ -67,8 +67,20 @@ The Android app is the same UI over Capacitor's HTTP layer, and its API address 
 
 1. `node scripts/gui-test/launch.mjs --name android --mock-port 8445 --mock-only --http`. The mock listens on the host's loopback, which the emulator reaches as `10.0.2.2`.
 2. In a throwaway copy (`git worktree add --detach ../bldesk-android-gui main`, then link or install `node_modules`), make three test-only edits: in `src/renderer/src/api/client.ts` set `baseUrl` to `http://10.0.2.2:8445`; in `electron.vite.config.ts` add `http://10.0.2.2:8445` to the CSP `connect-src`; in `android/app/src/main/res/xml/network_security_config.xml` add `<domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">10.0.2.2</domain></domain-config>`. Do not commit these; they exist only so the unmodified app code talks to the mock.
-3. Build: `npm run build && npx cap sync android && touch android/capacitor-cordova-android-plugins/cordova.variables.gradle && (cd android && ./gradlew assembleDebug)`, then `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` on an emulator.
+3. Build: `npm run build && npx cap sync android && touch android/capacitor-cordova-android-plugins/cordova.variables.gradle && (cd android && ./gradlew assembleDebug)`, then `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` on an emulator, or on a phone as described below.
 4. Sign in by tapping the fields and typing the token from `<tmp>/bldesk-gui-test/android/token.txt` with `adb shell input text`. The debug WebView can be inspected (`adb forward tcp:9335 localabstract:webview_devtools_remote_<pid>`); Playwright can't attach to an Android WebView, so use `adb exec-out screencap -p` and a small raw CDP client (Node 22 has a global `WebSocket`).
 5. Remove the worktree afterwards (`git worktree remove --force ../bldesk-android-gui`).
 
 `mock.log` shows every request, which is the quickest way to check what a tap actually sent (for example, how many DELETEs one tap produced).
+
+### On a physical phone
+
+Steps 1 to 5 still apply, with these differences:
+
+- `10.0.2.2` only exists inside the emulator. Use `127.0.0.1` in all three edits (`baseUrl`, the CSP `connect-src`, and the `<domain>` in the network security config; it is plain http, hence `cleartextTrafficPermitted`), and run `adb reverse tcp:8445 tcp:8445` so the phone's `127.0.0.1` reaches the mock on the PC.
+- `./gradlew assembleDebug` fails with "SDK location not found" unless `ANDROID_HOME` is set or `android/local.properties` exists (`sdk.dir=<path to the Android SDK>`; the file is git-ignored).
+- The phone locks after its screen timeout and the test stops. Turn on Developer options > Stay awake (or use a longer timeout), and keep the phone unlocked for adb.
+- A debug build with the normal application id (`applicationId` in `android/app/build.gradle`) cannot be installed over a release-signed BLDesk, and uninstalling that one wipes its data. Give the throwaway build a different `applicationId` and the two install side by side.
+- If `adb devices` does not list the phone at all, change the phone's USB "controlled by" setting, and accept the "Allow USB debugging" prompt on the phone.
+- With an emulator and a phone both attached, add `-s <serial>` (from `adb devices`) to every `adb` command, `adb install` included.
+- When you finish, clean up the phone as well as the worktree: `adb uninstall <the throwaway applicationId>` and `adb reverse --remove tcp:8445`.

@@ -9,7 +9,7 @@
  *   ungrouped CloudLinux, KernelCare. Independent add-ons. A checkbox each.
  *
  * Costs come from the same response, so no price is derived here. They are
- * ex-GST monthly, matching `size.price_monthly`.
+ * before tax, monthly, matching `size.price_monthly`.
  *
  * Neither `/v2/software` nor the per-OS list returns everything, though: both
  * are filtered to `enabled` software, and BinaryLane keeps billing products it
@@ -131,7 +131,7 @@ export function unsatisfiedGroups(groups: LicenceGroup[], selection: LicenceSele
   return groups.filter((g) => g.required && !selectedInGroup(g, selection))
 }
 
-/** Monthly cost, ex-GST, of a selection. */
+/** Monthly cost, before tax, of a selection. */
 export function licenceCost(offered: SoftwareLike[], selection: LicenceSelection): number {
   let total = 0
   for (const [id, count] of Object.entries(selection)) {
@@ -158,7 +158,7 @@ export function currentSelection(
   return out
 }
 
-/** Monthly cost, ex-GST, of what the server holds today. */
+/** Monthly cost, before tax, of what the server holds today. */
 export function currentLicenceCost(
   licensed: Array<{ software: SoftwareLike; licence_count: number; incompatible: boolean }>
 ): number {

@@ -196,8 +196,10 @@ export function useBalance(client: BinaryLaneClient | null) {
     queryKey: ['balance'],
     queryFn: async () => {
       if (!client) return null
-      const { data, error } = await client.GET('/v2/customers/my/balance')
-      if (error) throw new Error(JSON.stringify(error))
+      const { data, error, response } = await client.GET('/v2/customers/my/balance')
+      // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too: a failed refresh must
+      // keep the last balance on screen, not replace it with nothing.
+      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
       return data?.balance || null
     },
     enabled: !!client,
@@ -250,15 +252,16 @@ export function useDataUsage(client: BinaryLaneClient | null) {
     queryFn: async () => {
       if (!client) return []
       // One entry per server, so past 20 servers the rest had no usage shown.
-      try {
-        return await fetchAllPages<any>(
-          (page, per_page) => client.GET('/v2/data_usages/current', { params: { query: { page, per_page } as any } }),
-          'data_usages',
-          'useDataUsage'
-        )
-      } catch {
-        return []
-      }
+      // A failed read throws, so the query reports it rather than an empty list.
+      return fetchAllPages<any>(
+        async (page, per_page) => {
+          const res = await client.GET('/v2/data_usages/current', { params: { query: { page, per_page } as any } })
+          // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+          return res.response.ok ? res : { ...res, error: res.error || `HTTP ${res.response.status}` }
+        },
+        'data_usages',
+        'useDataUsage'
+      )
     },
     enabled: !!client
   })
@@ -339,11 +342,12 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
       const map = new Map<number, any[] | null>()
       if (!client) return map
       const results = await mapLimitNullable(serverIds, 4, async (id) => {
-        const { data, error } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
+        const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
           params: { path: { server_id: id } },
           signal: AbortSignal.timeout(20_000)
         })
-        if (error) throw new Error(describeApiError(error))
+        // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+        if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
         return data?.firewall_rules || []
       })
       serverIds.forEach((id, i) => map.set(id, results[i]))
@@ -1242,9 +1246,8 @@ const isTimeoutError = (err: unknown): boolean =>
  * The request never got an answer, as distinct from an answer we did not like.
  *
  * `fetch` rejects with a `TypeError` for every network-level failure, and on
- * Android that is the only shape this can take: `executeFetch` tries
- * CapacitorHttp first and, on any failure, falls through to `window.fetch`,
- * which is cross-origin from the WebView and rejects the same way. Only the
+ * Android that is the only shape this can take: `executeFetch` throws a
+ * `TypeError` when a CapacitorHttp request fails, and does not resend it. Only the
  * `client.GET` call sits inside the `try` below, so a `TypeError` reaching it
  * is a transport failure rather than a bug in this function.
  */
