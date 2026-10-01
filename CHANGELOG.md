@@ -5,6 +5,25 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.15] - 2026-10-02
+
+**Backups, updates and Cancel Server say what is true**
+
+### Fixed
+- **The backup schedule banner follows the schedule** (#120, #191). One on-demand backup made a server with no schedule read "Enabled", with a button that removes daily backups. The banner now reads Enabled only when the server has daily backups, and its button is "Remove Daily Backups", which is what it does (it is not a pause). A server with weekly or monthly backups and no daily ones reads "No nightly" and has no enable button. The banner wraps on a phone instead of squeezing its button.
+- **A downloaded update stays ready** (#136). Restart to update used to disappear when a later check found nothing newer or failed, for example when the machine was offline. It now stays until you install it, change the update channel, or a newer one starts to download. On Windows and Linux the waiting update is dropped when a different version is announced, because the updater deletes the installer then.
+- **Cancel Server quotes what the server bills** (#146). The note was the plan's list price, without extra memory and storage, the image surcharge, extra addresses, backups or licences, and without tax. It is now the figure Change Plan compares against, with the account's tax added and named, and "at least" until the server's licences have been read.
+- **Cancel Server no longer closes another server's view** (#221). If you opened a second server while the confirmation for the first was open, confirming took you back to the server list. The view changes only if the cancelled server is the one you are viewing.
+- **Switching account no longer leaves History stale** (#142). An action still being followed when you switch is closed as "Lost track" in the account that made it, instead of staying "Submitted" for ever, and a template's firewall rules change is recorded in the account the server was built in, not the one that was active when the build finished.
+- **A failed backup attach or detach is recorded in History** (#165).
+- **"Flush DNS Cache" reported success when BinaryLane refused it.** It now shows the failure.
+- **The firewall matrix does not call loading servers unreadable** (#253). While rules were still being read it said "28 could not be read".
+- **Network Map cards no longer draw ports over addresses** (#239). A card's ports and addresses are measured so they cannot overlap; the private address is shown where it fits, and a long port list is cut with an ellipsis (the whole label is in the card's tooltip).
+- **Local SSH keys are named from the file name without its ".pub" ending** (#220). `my.pubkey.pub` was listed as `mykey.pub` and reported as having no private key.
+
+### Changed
+- The GUI test harness can accept a second token (`extraToken`) and make the update feed fail (`feedStatus`), and has unit tests for the map footer and key names. Nothing else in the app changes.
+
 ## [1.0.62-beta.14] - 2026-10-01
 
 **A failed load no longer looks like an empty account**
