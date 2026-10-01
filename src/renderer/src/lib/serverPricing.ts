@@ -386,6 +386,12 @@ const RETENTION_UNIT: Record<'daily' | 'weekly' | 'monthly', string> = {
   monthly: 'month'
 }
 
+/** The wording of a retention choice without its price: "Take daily backups, stored for 2 days". */
+export function retentionWording(frequency: 'daily' | 'weekly' | 'monthly', count: number): string {
+  const unit = RETENTION_UNIT[frequency] + (count === 1 ? '' : 's')
+  return `Take ${frequency} backups, stored for ${count} ${unit}`
+}
+
 export function retentionOptionLabel(
   frequency: 'daily' | 'weekly' | 'monthly',
   count: number,
@@ -396,8 +402,7 @@ export function retentionOptionLabel(
   const o = size?.options || {}
   const included = (o[`${frequency}_backups`] as number) || 0
   const cost = Math.max(0, count - included) * diskGb * (o.backups_cost_per_backup_per_gigabyte || 0)
-  const unit = RETENTION_UNIT[frequency] + (count === 1 ? '' : 's')
-  return `Take ${frequency} backups, stored for ${count} ${unit} (+$${cost.toFixed(2)} per month)`
+  return `${retentionWording(frequency, count)} (+$${cost.toFixed(2)} per month)`
 }
 
 /** The account's tax code (`Account.tax_code`); every field is optional so a partial answer reads as unknown. */
@@ -437,6 +442,17 @@ export function billingTotal(
     }
   }
   return { total: monthlyBeforeTax, tax: null, note: 'before tax' }
+}
+
+/**
+ * What a figure worked out through `billingTotal` is quoted on, for amounts that have no tax line of their own to say
+ * so, such as the change between two totals or what an option adds to one: "incl. GST" when the account's tax is added,
+ * nothing when the account has none, and "before tax" when the tax cannot be worked out.
+ */
+export function taxBasis(taxCode: TaxCodeLike | null | undefined): string {
+  const { tax } = billingTotal(1, taxCode)
+  if (tax === null) return 'before tax'
+  return tax === 0 ? '' : `incl. ${taxCode?.name?.trim() || 'tax'}`
 }
 
 /**

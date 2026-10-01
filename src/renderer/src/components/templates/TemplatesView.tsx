@@ -100,6 +100,9 @@ function emptyTemplate(): ServerTemplate {
 export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, profileId, draft, onDraftConsumed, applyRequest, onApplyConsumed }) => {
   const confirmAction = useConfirm()
   const [stored, setStored] = useState<ListedServerTemplate[]>([])
+  // The starters are in the list from the first render, but the templates saved on this device arrive a moment later.
+  // A palette request must wait for them: resolved against the starters alone, it answered "No template called".
+  const [storedLoaded, setStoredLoaded] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -116,6 +119,8 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
       setStored(await listServerTemplates())
     } catch (err: any) {
       setError(err?.message || 'Could not read the template store.')
+    } finally {
+      setStoredLoaded(true)
     }
   }
   useEffect(() => {
@@ -156,15 +161,18 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
 
   // Palette: create <hostname> from <template>
   useEffect(() => {
-    if (!applyRequest || !items.length) return
+    if (!applyRequest || !storedLoaded || !items.length) return
     const q = applyRequest.template.toLowerCase().replace(/^@/, '')
     const hit = items.find((i) => i.template.name.toLowerCase() === q || i.slug === q) ?? items.find((i) => i.template.name.toLowerCase().startsWith(q))
-    if (hit) {
+    if (hit?.error) {
+      setSelectedSlug(hit.slug)
+      setError(`“${hit.template.name}” cannot be used: ${hit.error}`)
+    } else if (hit) {
       setSelectedSlug(hit.slug)
       setApplying({ template: hit.template, hostname: applyRequest.hostname })
     } else setError(`No template called “${applyRequest.template}”.`)
     onApplyConsumed?.()
-  }, [applyRequest, items])
+  }, [applyRequest, items, storedLoaded])
 
   // --- actions
 
@@ -478,7 +486,7 @@ const TemplateDetail: React.FC<{
           <Stat label="IPv4 addresses" value={s.options?.ipv4_addresses} />
           <Stat label="Backups" value={backups.length ? `${backups.join(', ')}${s.options?.offsite_backups ? ' + offsite' : ''}` : s.options ? 'none' : undefined} />
           <Stat label="VPC" value={s.vpc} />
-          <Stat label="SSH keys" value={s.sshKeys?.length ? s.sshKeys.join(', ') : undefined} />
+          <Stat label="SSH keys" value={s.sshKeys ? (s.sshKeys.length ? s.sshKeys.join(', ') : 'none') : undefined} />
         </div>
         {s.tags?.length ? <p className="mt-3 text-xs text-[#6c757d] dark:text-slate-400">Tags applied locally: {s.tags.map((x) => <span key={x} className="font-mono text-[#212529] dark:text-white">@{x} </span>)}</p> : null}
       </div>
@@ -568,7 +576,7 @@ const TemplateEditor: React.FC<{
     }
     setBusy(true)
     setErr(null)
-    Promise.resolve(onSave({ ...t, name: t.name.trim(), variables: vars.length ? vars : undefined, spec: { ...t.spec, firewallRules: rules.length ? rules : undefined, tags: t.spec.tags?.length ? t.spec.tags : undefined, sshKeys: t.spec.sshKeys?.length ? t.spec.sshKeys : undefined, vpc: t.spec.vpc || undefined, cloudInit: t.spec.cloudInit?.trim() ? t.spec.cloudInit : undefined } }))
+    Promise.resolve(onSave({ ...t, name: t.name.trim(), variables: vars.length ? vars : undefined, spec: { ...t.spec, firewallRules: rules.length ? rules : undefined, tags: t.spec.tags?.length ? t.spec.tags : undefined, sshKeys: t.spec.sshKeys, vpc: t.spec.vpc || undefined, cloudInit: t.spec.cloudInit?.trim() ? t.spec.cloudInit : undefined } }))
       // The store can reject a save (invalid document, name clash, unwritable directory);
       // show that here, in the dialog the user is looking at, not behind it.
       .catch((x: any) => setErr(x?.message || 'Could not save the template.'))
@@ -684,6 +692,19 @@ const TemplateEditor: React.FC<{
                 {(t.spec.sshKeys ?? []).filter((n) => !keys.some((k) => k.name === n)).map((n) => <span key={n} className="text-xs text-amber-600">{n} (not on this account)</span>)}
                 {!keys.length && <span className="text-xs text-[#6c757d]">None on the account; the form picks the default key.</span>}
               </div>
+              <p className="mt-1.5 text-[11px] text-[#6c757d] dark:text-slate-400">
+                {t.spec.sshKeys === undefined
+                  ? "No keys chosen: the account's default keys are deployed."
+                  : t.spec.sshKeys.length === 0
+                    ? 'No SSH keys are deployed.'
+                    : 'Only these keys are deployed.'}
+                {t.spec.sshKeys !== undefined && (
+                  <>
+                    {' '}
+                    <button type="button" className="underline" onClick={() => spec({ sshKeys: undefined })}>Use the account's default keys instead</button>
+                  </>
+                )}
+              </p>
             </div>
           </div>
         </section>
