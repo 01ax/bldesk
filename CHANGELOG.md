@@ -5,6 +5,24 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.14] - 2026-10-01
+
+**A failed load no longer looks like an empty account**
+
+### Fixed
+- **VPCs, load balancers, SSH keys, DNS zones and DNS records say when they could not be loaded** (#261). They showed "No VPC Networks", "Create Your First VPC" and the like when BinaryLane's answer was an error. They now show a red notice with the reason and a Retry button, and keep an older list under it when they have one. The SSH Keys page offers no Import until the account's keys have been read, and the DNS zone's record count (and the "and all N records in it" in Remove DNS hosting) is the number actually read.
+- **The sidebar's API status is real** (#261). "API Online" was a fixed label. It now follows the server-list read: "API not answering", or "API refused the token" for a 401 or 403. The Servers page says when it is showing a saved list it could not refresh.
+- **The Network Map says what it could not read** (#261). Instead of "0 VPCs" and a missing SSH-exposure note, the header reads "VPCs not read" or "firewall rules not read on N, so exposure is unknown there".
+- **Take Backup uses the slot you chose for this server** (#261). A "Replace" choice made on one server was still selected on the next, and the backup was sent to replace the first server's image.
+- **Advanced features** (#128). The video device list is the four devices the API reference lists. Choosing Default for the machine type or processor model sends the automatic setting, the confirmation shows only what changed, and Save is off when nothing did.
+- **DNS records** (#127). MX records ask for a priority, SRV for priority, weight and port, and CAA for flags and a tag. The record list shows them, and its data column no longer breaks values letter by letter on a phone. In the palette, `dns add` takes a priority only for MX, and refuses SRV and CAA (add those from the DNS tab).
+- **Create Server starts clean** (#261). After a create, the hostname, the ticked terms, backups and extra IP addresses are no longer carried into the next form, and a template starts from the form's default region, image and plan.
+- **Palette tags show the name that is stored** (#261). `tag add "my tag"` read `@my tag` in the preview and stored `@mytag`.
+- **Template export has no YAML anchors** (#261), and DNS zones are read like the other lists, so a failed page fails the read instead of leaving a shorter list.
+
+### Changed
+- The GUI test harness has `check-requests.mjs`, which checks the request bodies the app sent against `openapi.json`. Nothing else in the app changes.
+
 ## [1.0.62-beta.13] - 2026-10-01
 
 **Create Server sends what it shows, and template firewall rules are IPv4 only**
