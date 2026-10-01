@@ -5,6 +5,25 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.10] - 2026-10-01
+
+**Safer backups and prices, and a batch of fixes from testing**
+
+### Fixed
+- **Take Backup says what it will replace** (#202, #236). A backup taken into a full slot replaces an existing one, and BinaryLane then no longer has it. BLDesk now asks first and names that backup, or says it can't tell when it can't read the server's backups. The command palette's `backup` review lists the backup each server would lose before you run it. Choosing "Replace Existing Image" now works: BinaryLane refused it because BLDesk left out the backup's type.
+- **Create Server prices** (#203, #211). The Monthly Total now follows the backups you pick in both the simple and View All views, and each backup option shows exactly what choosing it adds to the total. Tax comes from your account's tax code instead of a fixed rate; when it can't be read, prices are labelled "before tax".
+- **Failed loads no longer look like empty data** (#210, #229). Firewall Clone and Copy never write onto a server whose rules couldn't be read, and Save as Template no longer stores an empty firewall after a failed read. A failed balance, pending charges or data usage load shows as a failure instead of $0.00 or Unlimited, and a failed refresh keeps the last figure. A failed backups list shows an error with Retry instead of "No Backups Found".
+- **Android: a request that got no answer is no longer sent again** (#201). It could create a second server or repeat an action. You now see "No response from BinaryLane", and for a change you are told to check before trying again.
+- **Add Disk and Resize Disk** (#217) now send the size field BinaryLane expects.
+- **Change Partner** (#230) names the current partner in its confirmation.
+- **Reset Cache & Reload** (#231) asks before it clears your saved tags, groups and settings.
+- **Open mPanel Web** (#228) opens mPanel's home page.
+- **Server details** (#225) start from a clean state for each server instead of carrying over the previous one's edits. The usage chart (#232) ends at the current time on every refresh. DNS zones with no TTL no longer show "TTL s" (#216).
+- **Smaller fixes:** one unreadable `.pub` file no longer hides your other local SSH keys (#214); saving a template should no longer fail on Windows (#212); Windows PowerShell handles curly apostrophes in key paths (#213); uninstalling the Linux package removes the leftover `/usr/bin/bldesk` link (#226).
+
+### Changed
+- The updater's install-script check now parses the script that ships (#227), and the GUI test harness models backups, pricing and tax (#204, #233, #234). Nothing in the app itself changes.
+
 ## [1.0.62-beta.9] - 2026-09-29
 
 **Updates show that they are installing**
