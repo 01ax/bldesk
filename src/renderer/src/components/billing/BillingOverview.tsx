@@ -57,6 +57,15 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
 
   const charges = (balance?.charges || []) as any[]
 
+  // A figure that has not loaded shows a dash; one whose read finished without it says so. Neither may read as zero
+  // dollars or an unlimited allowance. If a refresh fails, the last figure that did load stays on screen.
+  const credit = balance?.available_credit
+  const unbilled = balance?.unbilled_total
+  const creditFailed = !balanceQuery.isPending && typeof credit !== 'number'
+  const unbilledFailed = !balanceQuery.isPending && typeof unbilled !== 'number'
+  const usageKnown = dataUsageQuery.data != null
+  const usageFailed = !usageKnown && !dataUsageQuery.isPending
+
   // Total pooled transfer calculation
   const totalAllocatedGb = dataUsages.reduce((acc: number, u: any) => acc + (u.transfer_gigabytes || 0), 0)
   const totalUsedGb = dataUsages.reduce((acc: number, u: any) => acc + (u.current_transfer_usage_gigabytes || 0), 0)
@@ -120,9 +129,13 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
             <DollarSign className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold text-[#212529] dark:text-white font-mono">
-            ${(balance?.available_credit || 0).toFixed(2)} AUD
+            {typeof credit === 'number' ? `$${credit.toFixed(2)} AUD` : <span className="text-[#adb5bd]">—</span>}
           </div>
-          <div className="text-[11px] text-[#6c757d]">Current balance available on account</div>
+          {creditFailed ? (
+            <div className="text-[11px] text-rose-700 dark:text-rose-300">Couldn't load the account balance.</div>
+          ) : (
+            <div className="text-[11px] text-[#6c757d]">Current balance available on account</div>
+          )}
         </div>
 
         {/* Unbilled Charges Forecast */}
@@ -132,9 +145,13 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
             <ArrowUpRight className="w-4 h-4 text-[#017cb6]" />
           </div>
           <div className="text-2xl font-bold text-[#212529] dark:text-white font-mono">
-            ${(balance?.unbilled_total || 0).toFixed(2)} AUD
+            {typeof unbilled === 'number' ? `$${unbilled.toFixed(2)} AUD` : <span className="text-[#adb5bd]">—</span>}
           </div>
-          <div className="text-[11px] text-[#6c757d]">Current billing cycle accrued usage</div>
+          {unbilledFailed ? (
+            <div className="text-[11px] text-rose-700 dark:text-rose-300">Couldn't load the pending charges.</div>
+          ) : (
+            <div className="text-[11px] text-[#6c757d]">Current billing cycle accrued usage</div>
+          )}
         </div>
 
         {/* Pooled Bandwidth Transfer */}
@@ -144,16 +161,23 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
             <Database className="w-4 h-4 text-[#017cb6]" />
           </div>
           <div className="text-2xl font-bold text-[#212529] dark:text-white font-mono">
-            {totalUsedGb.toFixed(1)} / {totalAllocatedGb > 0 ? `${totalAllocatedGb} GB` : 'Unlimited'}
+            {usageKnown ? (
+              `${totalUsedGb.toFixed(1)} / ${totalAllocatedGb > 0 ? `${totalAllocatedGb} GB` : 'Unlimited'}`
+            ) : (
+              <span className="text-[#adb5bd]">—</span>
+            )}
           </div>
           <div className="w-full bg-[#ced4da] dark:bg-[#343a40] h-1.5 rounded-full overflow-hidden mt-1">
             <div
               className="bg-[#017cb6] h-full"
               style={{
-                width: `${totalAllocatedGb > 0 ? Math.min(100, (totalUsedGb / totalAllocatedGb) * 100) : 5}%`
+                width: `${!usageKnown ? 0 : totalAllocatedGb > 0 ? Math.min(100, (totalUsedGb / totalAllocatedGb) * 100) : 5}%`
               }}
             />
           </div>
+          {usageFailed && (
+            <div className="text-[11px] text-rose-700 dark:text-rose-300">Couldn't load the data transfer usage.</div>
+          )}
         </div>
       </div>
 
@@ -181,7 +205,12 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
         </div>
 
         {tab === 'pending' && (
-          <PendingCharges charges={charges} isLoading={balanceQuery.isLoading} generatedAt={balance?.generated_at} />
+          <PendingCharges
+            charges={charges}
+            isLoading={balanceQuery.isLoading}
+            failed={!balanceQuery.isPending && !balance}
+            generatedAt={balance?.generated_at}
+          />
         )}
 
         {tab === 'invoices' && (
@@ -209,12 +238,14 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
 
 // --- Pending Charges ---
 
-const PendingCharges: React.FC<{ charges: any[]; isLoading: boolean; generatedAt?: string }> = ({
+const PendingCharges: React.FC<{ charges: any[]; isLoading: boolean; failed: boolean; generatedAt?: string }> = ({
   charges,
   isLoading,
+  failed,
   generatedAt
 }) => {
   if (isLoading) return <Empty>Loading pending charges...</Empty>
+  if (failed) return <Empty>Couldn't load the pending charges.</Empty>
   if (charges.length === 0) return <Empty>No pending charges for the current billing cycle.</Empty>
 
   const total = charges.reduce((a, c) => a + (c.total || 0), 0)
