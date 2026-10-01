@@ -98,3 +98,17 @@ test('a template whose firewall rules are malformed is refused with the rule nam
   assert.match(readTemplateRules([{ action: 'accept', protocol: 'gre', source_addresses: [] }]).error, /protocol/)
   assert.match(readTemplateRules([{ action: 'accept', protocol: 'tcp', source_addresses: [], destination_ports: [22] }]).error, /destination_ports/)
 })
+
+test('the firewall is IPv4 only: IPv6 addresses are left out of a template rule, and a rule about nothing else is dropped', async () => {
+  const { isIpv6, withoutIpv6 } = await import('../src/renderer/src/lib/firewallRules.ts')
+  assert.equal(isIpv6('::/0'), true)
+  assert.equal(isIpv6('2001:db8::1'), true)
+  assert.equal(isIpv6('0.0.0.0/0'), false)
+  assert.equal(isIpv6('{{admin_cidr}}'), false, 'a variable is not an address yet')
+  const both = { action: 'accept', protocol: 'tcp', source_addresses: ['0.0.0.0/0', '::/0'], destination_addresses: ['0.0.0.0/0', '::/0'] }
+  assert.deepEqual(withoutIpv6(both), { ...both, source_addresses: ['0.0.0.0/0'], destination_addresses: ['0.0.0.0/0'] })
+  assert.equal(withoutIpv6({ ...both, source_addresses: ['::/0'] }), null)
+  assert.deepEqual(withoutIpv6({ ...both, destination_addresses: ['::/0'] }).destination_addresses, [], 'an empty destination is written as any later')
+  const v4 = { action: 'drop', protocol: 'all', source_addresses: ['203.0.113.5/32'], destination_addresses: [] }
+  assert.deepEqual(withoutIpv6(v4), v4)
+})

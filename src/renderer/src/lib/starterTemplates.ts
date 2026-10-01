@@ -12,7 +12,8 @@ import type { FwRule } from './firewallMatrix'
  * the CIS baseline is the one to start from when the box faces the internet.
  */
 
-const ANY = ['0.0.0.0/0', '::/0']
+// The external firewall covers IPv4 only, so a rule's "anywhere" is the IPv4 one.
+const ANY = ['0.0.0.0/0']
 
 const rule = (action: 'accept' | 'drop', protocol: 'tcp' | 'udp' | 'icmp' | 'all', ports: string[] | null, description: string, sources = ANY): FwRule => ({
   action,

@@ -12,6 +12,8 @@ Start with a built-in starter, capture an existing server, or create a new templ
 
 Definitions use kind bldesk/server-template@1. Desktop files live under the app's userData/templates directory; the folder button reveals saved files. Mobile stores templates locally. VPC and SSH key references use names for portability. A template that names no VPC leaves the form's default, and a VPC name this account does not have is ignored without a warning. SSH keys work differently, because a template can decide them: a template with no sshKeys says nothing about keys, so the account's default keys are ticked; sshKeys: [] means deploy no keys; and a template that names keys selects the ones this account has and says in the form which names it does not have, so if none match, none is deployed. A template that decides the keys opens the form in View All, where they are shown. Check the actual selected values before creating in another account.
 
+BinaryLane's external firewall covers IPv4 only. The starter templates and a new rule in the editor use 0.0.0.0/0 for anywhere. When a template is applied, any IPv6 address in its rules (older templates carry ::/0) is left out, and a rule that had only IPv6 sources is not written; the editor says so when a rule has an IPv6 address.
+
 A template file that cannot be read, including one whose firewall rules or SSH key list are malformed, is listed as invalid with the reason and cannot be applied, from the Templates tab or from the palette. The rest of the Templates tab keeps working. Importing a bundle with an invalid template imports nothing and names the template.
 
 ## Worked example

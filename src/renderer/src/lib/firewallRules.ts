@@ -147,3 +147,19 @@ export function readTemplateRules(raw: unknown): { rules: TemplateRule[]; error?
   }
   return { rules }
 }
+
+/**
+ * BinaryLane's external firewall covers IPv4 only, and the API reference allows only IPv4 addresses in a rule, so an IPv6
+ * address (anything with a colon) can neither match nor be written. Templates saved by earlier versions carry `::/0`.
+ */
+export const isIpv6 = (address: string): boolean => address.includes(':')
+
+/**
+ * A template rule as it is written: IPv6 addresses left out. A rule that is left with no source addresses was about IPv6
+ * alone, which the firewall does not see, so it is dropped (null) rather than written with nothing to match.
+ */
+export function withoutIpv6<T extends { source_addresses: string[]; destination_addresses: string[] }>(rule: T): T | null {
+  const source_addresses = rule.source_addresses.filter((a) => !isIpv6(a))
+  if (source_addresses.length === 0 && rule.source_addresses.length > 0) return null
+  return { ...rule, source_addresses, destination_addresses: rule.destination_addresses.filter((a) => !isIpv6(a)) }
+}
