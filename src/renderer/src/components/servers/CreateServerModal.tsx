@@ -24,6 +24,7 @@ import {
   planMonthlyPrice,
   configuredCost,
   retentionOptionLabel,
+  retentionWording,
   planUnavailableReason,
   belowImageMinimum,
   type PlanBlock,
@@ -32,6 +33,7 @@ import {
   diskFloor,
   defaultDisk,
   billingTotal,
+  taxBasis,
   compareVersionNames,
   type SizeLike
 } from '../../lib/serverPricing'
@@ -91,12 +93,17 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const [sizeSlug, setSizeSlug] = useState<string | null>(null)
   const [memoryMb, setMemoryMb] = useState<number | null>(null)
   const [diskGb, setDiskGb] = useState<number | null>(null)
+  /** Whether the storage size was picked (by the person, or by a template) rather than worked out from the plan and image. */
+  const diskChosenRef = useRef(false)
 
   // --- settings ---
   const [showAll, setShowAll] = useState(false)
   const [hostname, setHostname] = useState('')
   const [vpcId, setVpcId] = useState<number | undefined>(undefined)
   const [selectedKeys, setSelectedKeys] = useState<number[]>([])
+  /** The key names the template asked for. Those this account does not have are listed against the keys as they are now, so the note follows the list. */
+  const [templateKeyNames, setTemplateKeyNames] = useState<string[]>([])
+  const missingKeyNames = sshKeysQuery.data ? templateKeyNames.filter((n) => !sshKeys.some((k: any) => k.name === n)) : []
   const [ipCount, setIpCount] = useState(1)
   const [dailyBackups, setDailyBackups] = useState(0)
   const [weeklyBackups, setWeeklyBackups] = useState(0)
@@ -117,20 +124,18 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   // as the last visit to Servers: a key deleted in the web panel was still
   // offered. Reload everything the form picks from each time it opens.
   //
-  // A fresh open (not from a template) also resets the key selection to the
-  // account's current defaults, as a newly loaded web panel page does, rather
-  // than keeping last time's ticks. It is applied again once the reloaded list
-  // arrives, unless the user has already changed a key in the meantime.
+  // The key selection is the account's default keys until someone decides otherwise: a fresh open, or a template that says
+  // nothing about keys, ticks the defaults as a newly loaded web panel page does, and follows the list when it reloads.
+  // Unticking a key, adding one, or a template that names keys (even none at all) is a decision, and a reload of the
+  // list never overrides it.
   const keysTouchedRef = useRef(false)
   useEffect(() => {
     if (!isOpen) return
-    const fresh = !initial
-    keysTouchedRef.current = false
-    const defaultIds = (list: any[] | undefined) => (list || []).filter((k: any) => k.default).map((k: any) => k.id as number)
-    if (fresh && sshKeysQuery.data) setSelectedKeys(defaultIds(sshKeysQuery.data as any[]))
-    void sshKeysQuery.refetch().then((r) => {
-      if (fresh && !keysTouchedRef.current && r.data) setSelectedKeys(defaultIds(r.data as any[]))
-    })
+    keysTouchedRef.current = initial?.sshKeyNames !== undefined
+    setTemplateKeyNames([])
+    if (initial?.sshKeyNames !== undefined) setSelectedKeys([])
+    else if (sshKeysQuery.data) setSelectedKeys((sshKeysQuery.data as any[]).filter((k: any) => k.default).map((k: any) => k.id as number))
+    void sshKeysQuery.refetch()
     void vpcsQuery.refetch()
     void sizesQuery.refetch()
     void regionsQuery.refetch()
@@ -165,12 +170,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (initial.weeklyBackups !== undefined) setWeeklyBackups(initial.weeklyBackups)
     if (initial.monthlyBackups !== undefined) setMonthlyBackups(initial.monthlyBackups)
     if (initial.offsiteBackups !== undefined) setOffsiteBackups(initial.offsiteBackups)
-    if (hasBackupChoice || initial.memory !== undefined || initial.disk !== undefined) setShowAll(true)
+    // The keys are only shown in View All, so a template that decides them opens there: what is shown is what is deployed.
+    if (hasBackupChoice || initial.memory !== undefined || initial.disk !== undefined || initial.sshKeyNames !== undefined) setShowAll(true)
     if (initial.cloudInit !== undefined) {
       setCloudInit(initial.cloudInit)
       setCloudInitOn(!!initial.cloudInit.trim())
     }
-    if (initial.sshKeyNames && initial.sshKeyNames.length === 0) setSelectedKeys([])
   }, [isOpen, initial])
 
   // Distributions present, in web-panel order, with anything unexpected appended
@@ -228,6 +233,17 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       if (sz) {
         setPlanType(sz.size_type?.slug || 'vps')
         setSizeSlug(sz.slug)
+        // The plan-reset effect only runs when the plan changes, so for the plan that is already selected the
+        // template's memory and storage are applied here, rather than waiting for the next plan that is picked.
+        if (sz.slug === sizeSlug) {
+          if (p.memory !== undefined) setMemoryMb(p.memory)
+          if (p.disk !== undefined) {
+            setDiskGb(p.disk)
+            diskChosenRef.current = true
+          }
+          p.memory = undefined
+          p.disk = undefined
+        }
       }
       p.sizeSlug = undefined
     }
@@ -236,9 +252,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       if (v) setVpcId(v.id)
       p.vpcName = undefined
     }
-    if (p.sshKeyNames?.length && sshKeys.length) {
-      const ids = sshKeys.filter((k: any) => p.sshKeyNames!.includes(k.name)).map((k: any) => k.id)
-      if (ids.length) setSelectedKeys(ids)
+    if (p.sshKeyNames && sshKeysQuery.data) {
+      const names = p.sshKeyNames
+      setSelectedKeys(sshKeys.filter((k: any) => names.includes(k.name)).map((k: any) => k.id))
+      setTemplateKeyNames(names)
       p.sshKeyNames = undefined
     }
   }, [isOpen, images, sizes, vpcs, sshKeys])
@@ -305,36 +322,48 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const p = prefillRef.current
     setMemoryMb(p?.memory ?? selectedSize.memory)
     setDiskGb(p?.disk ?? defaultDisk(selectedSize))
+    diskChosenRef.current = p?.disk !== undefined
     if (p) {
       p.memory = undefined
       p.disk = undefined
     }
   }, [selectedSize?.slug])
 
-  // Pre-select every default SSH key, as the web panel does. Only the first was
-  // ticked, and because a key list is then sent, the other defaults were dropped.
+  // Tick every default SSH key, as the web panel does, while nobody has decided otherwise. A background reload of the
+  // list that returns a changed list used to tick the defaults again after an untick, and send them.
   useEffect(() => {
-    if (!sshKeys.length || selectedKeys.length) return
-    const defaults = sshKeys.filter((k: any) => k.default).map((k: any) => k.id)
-    if (defaults.length) setSelectedKeys(defaults)
+    if (keysTouchedRef.current || !sshKeysQuery.isSuccess) return
+    setSelectedKeys(sshKeys.filter((k: any) => k.default).map((k: any) => k.id))
   }, [sshKeys])
 
   const memory = memoryMb ?? selectedSize?.memory ?? 0
   const disk = diskGb ?? (selectedSize ? defaultDisk(selectedSize) : 0)
 
   // An image with a larger minimum (Windows Server with SQL needs 30 GB) raises
-  // the storage floor; a value below it would be rejected at create.
+  // the storage floor; a value below it would be rejected at create. While the storage
+  // is the plan's own (nobody chose a size, and a template did not set one), it also follows
+  // the floor back down when the image changes back, rather than staying at 30 GB and billing it.
   useEffect(() => {
     if (!selectedSize) return
     const floor = diskFloor(selectedSize, image)
-    if (disk < floor) setDiskGb(floor)
+    const wanted = Math.max(defaultDisk(selectedSize), floor)
+    if (disk < floor) {
+      setDiskGb(floor)
+      diskChosenRef.current = false // the image decided it now, so it follows the image back down
+    } else if (!diskChosenRef.current && disk !== wanted) setDiskGb(wanted)
   }, [selectedSize?.slug, image?.slug, disk])
+
+  useEffect(() => {
+    if (offsiteBackups && dailyBackups + weeklyBackups + monthlyBackups === 0) setOffsiteBackups(false)
+  }, [dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
 
   // The backups the request sends, and the total prices. The simple view
   // collapses the three retention dropdowns into one choice.
+  // Offsite backups copy on-site ones, so with none of those there are no offsite backups either, whatever the box says.
   const backups = showAll
-    ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups }
+    ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups && dailyBackups + weeklyBackups + monthlyBackups > 0 }
     : { daily: simpleBackups === 'none' ? 0 : 2, weekly: 0, monthly: 0, offsite: simpleBackups === 'both' }
+  type Backups = typeof backups
 
   // The total and each simple-view backup option are priced by the same two steps,
   // the cost and then the account's tax treatment, so an option shows exactly what
@@ -358,12 +387,30 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const withTax = (b: typeof backups) => billingTotal(priceWith(b), taxCode).total
   const optionCost = (daily: number, offsite: boolean) =>
     withTax({ daily, weekly: 0, monthly: 0, offsite }) - withTax({ daily: 0, weekly: 0, monthly: 0, offsite: false })
+  // Every "+$" on this form is what choosing the option adds to the Monthly Total, so it is on the total's basis and says
+  // so: with the account's tax added ("incl. GST"), or "before tax" while the tax cannot be worked out.
+  const basis = taxBasis(taxCode)
+  const basisText = basis ? ` ${basis}` : ''
+  // What a View All retention choice adds to the Monthly Total, with the other retentions and the offsite choice as they are:
+  // the same calculation as the total, so it includes offsite copies of what it adds.
+  const retentionCost = (word: 'daily' | 'weekly' | 'monthly', n: number) => {
+    const at = (count: number): Backups => {
+      const c = { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, [word]: count }
+      return { ...c, offsite: offsiteBackups && c.daily + c.weekly + c.monthly > 0 }
+    }
+    return withTax(at(n)) - withTax(at(0))
+  }
   // With no plan chosen there is nothing to price, so no price is shown rather than $0.00.
-  const optionPrice = (daily: number, offsite: boolean) => (selectedSize ? ` (+$${optionCost(daily, offsite).toFixed(2)})` : '')
+  const optionPrice = (daily: number, offsite: boolean) => (selectedSize ? ` (+$${optionCost(daily, offsite).toFixed(2)}${basisText})` : '')
 
   const { total: monthlyTotal, note: taxNote } = billingTotal(monthly, taxCode)
 
   if (!isOpen) return null
+
+  // The keys the request names: the ticked ones, even none, once the form has the account's keys to show (a reload that
+  // failed after they loaded still leaves them on screen) or a decision has been made. Before that the field is left
+  // out and BinaryLane deploys the account's defaults.
+  const sshKeysSent = sshKeysQuery.data !== undefined || keysTouchedRef.current ? selectedKeys : undefined
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -374,6 +421,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const blocked = planUnavailableReason(selectedSize, region, image)
     if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
+    // A template that names keys cannot be honoured without the account's key list: sending none would contradict it.
+    if (prefillRef.current?.sshKeyNames?.length && sshKeysQuery.data === undefined) return setErrorMsg("Your SSH keys could not be loaded, so the template's keys cannot be selected. Try again in a moment.")
 
     // The form is the review, so this records rather than confirms — and the
     // id must be resolved either side of the request or History says
@@ -385,7 +434,11 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       changes: [
         { label: 'Region', to: region },
         { label: 'Size', to: selectedSize.slug },
-        { label: 'Image', to: image.slug }
+        { label: 'Image', to: image.slug },
+        {
+          label: 'SSH keys',
+          to: sshKeysSent === undefined ? "the account's default keys (the list had not loaded)" : sshKeysSent.length ? sshKeysSent.map((id) => sshKeys.find((k: any) => k.id === id)?.name ?? `#${id}`).join(', ') : 'none'
+        }
       ],
       source: 'ui'
     })
@@ -395,10 +448,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
         region,
         size: selectedSize.slug,
         image: image.slug,
-        // Unticking every key means deploy none, which is an empty list: leaving it
-        // out deploys the account's default keys. It is still left out when the
-        // picker was never touched, so that path is unchanged.
-        ssh_keys: selectedKeys.length || keysTouchedRef.current ? selectedKeys : undefined,
+        // What the form shows is what is deployed. An empty list means deploy none, and leaving the field
+        // out deploys the account's default keys, so the list is always sent once the account's keys have
+        // loaded and the form has been able to show them.
+        ssh_keys: sshKeysSent,
         vpc_id: vpcId,
         options: {
           // Sent only when changed: left null, the plan's default applies, which
@@ -563,7 +616,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                           </td>
                           <td className="py-1.5 px-1 sm:py-2 sm:px-3 text-center">
                             {isSel && diskChoices(p, image).length > 1 ? (
-                              <Select value={disk} onChange={(v) => setDiskGb(v)} options={diskChoices(p, image).map((d) => ({ value: d, label: `${d} GB` }))} />
+                              <Select value={disk} onChange={(v) => { diskChosenRef.current = true; setDiskGb(v) }} options={diskChoices(p, image).map((d) => ({ value: d, label: `${d} GB` }))} />
                             ) : (
                               <span className="text-[#212529] dark:text-white">
                                 {defaultDisk(p)} GB{p.storage_description ? ` ${p.storage_description.trim()}` : ''}
@@ -637,7 +690,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                     </TileRow>
                   </Field>
 
-                  <Field label="SSH Keys" hint="Select your SSH key/s to deploy during installation, or add a new keypair.">
+                  <Field label="SSH Keys" hint="Select your SSH key/s to deploy during installation, or add a new keypair. With none selected, no SSH key is deployed.">
+                    {missingKeyNames.length > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">The template names keys this account does not have: {missingKeyNames.join(', ')}.</p>
+                    )}
                     <TileRow>
                       {sshKeys.map((k: any) => {
                         const on = selectedKeys.includes(k.id)
@@ -672,7 +728,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                       onChange={setIpCount}
                       options={Array.from({ length: selectedSize?.options?.ipv4_addresses_max || 1 }, (_, i) => ({
                         value: i + 1,
-                        label: i === 0 ? '1 IP address (included)' : `${i + 1} IP addresses (+$${(i * (selectedSize?.options?.ipv4_addresses_cost_per_address || 0)).toFixed(2)})`
+                        label: i === 0 ? '1 IP address (included)' : `${i + 1} IP addresses (+$${billingTotal(i * (selectedSize?.options?.ipv4_addresses_cost_per_address || 0), taxCode).total.toFixed(2)}${basisText})`
                       }))}
                     />
                   </Field>
@@ -696,7 +752,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                               // Shared with Change Plan so the two cannot drift
                               // from the web panel's wording independently -
                               // this said "periods" for weekly and monthly.
-                              label: retentionOptionLabel(word, n, disk, selectedSize)
+                              label: !selectedSize || n === 0 ? retentionOptionLabel(word, n, disk, selectedSize) : `${retentionWording(word, n)} (+$${retentionCost(word, n).toFixed(2)} per month${basisText})`
                             }))}
                           />
                         </div>
@@ -704,7 +760,7 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                       <label className="flex items-center gap-2 text-xs cursor-pointer pt-1">
                         <input
                           type="checkbox"
-                          checked={offsiteBackups}
+                          checked={backups.offsite}
                           disabled={dailyBackups + weeklyBackups + monthlyBackups === 0}
                           onChange={(e) => setOffsiteBackups(e.target.checked)}
                         />
@@ -771,7 +827,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                       image: image?.slug ?? undefined,
                       options: { memory, disk, ipv4_addresses: ipCount, daily_backups: backups.daily, weekly_backups: backups.weekly, monthly_backups: backups.monthly, offsite_backups: backups.offsite },
                       vpc: vpcId ? (vpcs.find((v: any) => v.id === vpcId)?.name as string | undefined) : undefined,
-                      sshKeys: selectedKeys.length ? sshKeys.filter((k: any) => selectedKeys.includes(k.id)).map((k: any) => k.name as string) : undefined,
+                      // None ticked is recorded as none ([]), which is not the same as saying nothing: a template that says
+                      // nothing deploys the account's default keys when it is used.
+                      sshKeys: sshKeysSent ? sshKeys.filter((k: any) => sshKeysSent.includes(k.id)).map((k: any) => k.name as string) : undefined,
                       cloudInit: cloudInitOn && cloudInit.trim() ? cloudInit : undefined
                     }
                   })}

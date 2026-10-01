@@ -106,3 +106,44 @@ export function insertRule<T extends FirewallRuleLike>(list: T[], rule: T): T[] 
   const at = list.findIndex((existing) => swallows(existing, rule))
   return at === -1 ? [...list, rule] : [...list.slice(0, at), rule, ...list.slice(at)]
 }
+
+/** A firewall rule as a template stores it. */
+export interface TemplateRule {
+  action: string
+  protocol: string
+  source_addresses: string[]
+  destination_addresses: string[]
+  destination_ports: string[] | null
+  description: string | null
+}
+
+/**
+ * Read the firewall rules of a saved template. Lenient where a rule is edited by hand: addresses and ports may carry
+ * `{{variables}}` that are filled in when the template is applied, so they are not checked as addresses, and a missing
+ * destination or port list reads as none. What it does insist on is the shape the rest of the app indexes into, so one
+ * malformed rule makes the template invalid, with the rule named, instead of failing wherever the rules are shown.
+ */
+export function readTemplateRules(raw: unknown): { rules: TemplateRule[]; error?: undefined } | { rules?: undefined; error: string } {
+  if (!Array.isArray(raw)) return { error: 'Firewall rules must be a list.' }
+  const rules: TemplateRule[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i] as Record<string, unknown> | null
+    const at = `Firewall rule ${i + 1}`
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return { error: `${at} is not a rule.` }
+    if (typeof r.action !== 'string' || !ACTIONS.includes(r.action)) return { error: `${at}: action must be accept or drop.` }
+    if (typeof r.protocol !== 'string' || !PROTOCOLS.includes(r.protocol)) return { error: `${at}: protocol must be all, icmp, tcp or udp.` }
+    if (!isStrings(r.source_addresses)) return { error: `${at}: source_addresses must be a list of addresses.` }
+    if (r.destination_addresses != null && !isStrings(r.destination_addresses)) return { error: `${at}: destination_addresses must be a list of addresses.` }
+    if (r.destination_ports != null && !isStrings(r.destination_ports)) return { error: `${at}: destination_ports must be a list of ports, as text.` }
+    if (r.description != null && typeof r.description !== 'string') return { error: `${at}: description must be text.` }
+    rules.push({
+      action: r.action,
+      protocol: r.protocol,
+      source_addresses: r.source_addresses,
+      destination_addresses: (r.destination_addresses as string[] | null | undefined) ?? [],
+      destination_ports: (r.destination_ports as string[] | null | undefined) ?? null,
+      description: (r.description as string | null | undefined) ?? null
+    })
+  }
+  return { rules }
+}

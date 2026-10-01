@@ -27,6 +27,7 @@ import {
   configuredCost,
   transferForResize,
   retentionOptionLabel,
+  taxBasis,
   memoryChoices,
   diskChoices,
   diskFloor,
@@ -588,7 +589,7 @@ export const ChangePlanPanel: React.FC<{
 
   const monthly = newCost?.total ?? 0
   const taxCode = accountQuery.data?.tax_code
-  const { total, tax, note: taxNote } = billingTotal(monthly, taxCode)
+  const { total, note: taxNote } = billingTotal(monthly, taxCode)
   const delta = total - billingTotal(oldCost?.total ?? 0, taxCode).total
   const reinstalling = !keepImage && !!newImageSlug
   /*
@@ -626,6 +627,9 @@ export const ChangePlanPanel: React.FC<{
    * may be reassigned, and anything pointing at it breaks. Reinstalling is the
    * worse one this change adds, because it destroys the disks outright.
    */
+  // The API reference says that reducing weekly backups to 0 removes all of them, which "4 → 0" in the table does not.
+  const weeklyRemoved = weeklyBackups === 0 && ((current.weekly_backups as number) ?? 0) > 0
+  const WEEKLY_REMOVED_NOTE = "Setting weekly backups to 0 removes all of this server's weekly backups. They will no longer be available."
   const confirmExtra =
     reinstalling || ipsToRemove.length
       ? {
@@ -647,11 +651,15 @@ export const ChangePlanPanel: React.FC<{
                     `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
                   ]
                 : []),
+            ...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []),
             ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])
           ]
         }
-      : storageChanging
-        ? { notes: [STORAGE_CHANGE_NOTE] }
+      : storageChanging || weeklyRemoved
+        ? {
+            ...(weeklyRemoved ? { severity: 'destructive' as const } : {}),
+            notes: [...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []), ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])]
+          }
         : undefined
 
   const cellClass = 'py-1.5 px-1 sm:py-2 sm:px-3'
@@ -1257,7 +1265,8 @@ export const ChangePlanPanel: React.FC<{
                 }
               >
                 {delta < 0 ? '-' : '+'}${Math.abs(delta).toFixed(2)}
-                {tax === null && ` ${taxNote}`}
+                {/* The change is worked out the same way as the total beside it, so it says what that is quoted on. */}
+                {taxBasis(taxCode) && ` ${taxBasis(taxCode)}`}
               </span>
             </div>
             <div className="flex justify-between gap-6">

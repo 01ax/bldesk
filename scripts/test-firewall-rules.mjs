@@ -84,3 +84,17 @@ test('a new rule goes ahead of the first drop that would swallow it, and last wh
   const dropIcmp = rule('drop', 'icmp')
   assert.deepEqual(insertRule([web, dropIcmp], ssh), [web, dropIcmp, ssh])
 })
+
+test('a template whose firewall rules are malformed is refused with the rule named; variables are left alone', async () => {
+  const { readTemplateRules } = await import('../src/renderer/src/lib/firewallRules.ts')
+  const ok = readTemplateRules([{ action: 'accept', protocol: 'tcp', destination_ports: ['{{port}}'], source_addresses: ['{{admin_cidr}}'] }])
+  assert.equal(ok.error, undefined)
+  assert.deepEqual(ok.rules, [{ action: 'accept', protocol: 'tcp', source_addresses: ['{{admin_cidr}}'], destination_addresses: [], destination_ports: ['{{port}}'], description: null }])
+  assert.deepEqual(readTemplateRules([]).rules, [])
+  assert.match(readTemplateRules('x').error, /must be a list/)
+  assert.match(readTemplateRules([null]).error, /^Firewall rule 1 is not a rule/)
+  assert.match(readTemplateRules([{ action: 'accept', protocol: 'tcp' }]).error, /^Firewall rule 1: source_addresses/)
+  assert.match(readTemplateRules([rule('accept', 'tcp', ['22']), { action: 'allow', protocol: 'tcp', source_addresses: [] }]).error, /^Firewall rule 2: action/)
+  assert.match(readTemplateRules([{ action: 'accept', protocol: 'gre', source_addresses: [] }]).error, /protocol/)
+  assert.match(readTemplateRules([{ action: 'accept', protocol: 'tcp', source_addresses: [], destination_ports: [22] }]).error, /destination_ports/)
+})

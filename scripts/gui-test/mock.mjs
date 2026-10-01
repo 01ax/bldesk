@@ -103,6 +103,8 @@ const sizeBySlug = (s) => allSizes().find((x) => x.slug === s)
 const imgRows = [
   [101, 'ubuntu-24.04', 'Ubuntu 24.04 LTS', 'Ubuntu', 0, 0], [102, 'debian-12', 'Debian 12', 'Debian', 0, 0],
   [103, 'almalinux-9', 'AlmaLinux 9', 'AlmaLinux', 0, 0], [104, 'rockylinux-9', 'Rocky Linux 9', 'Rocky Linux', 0, 0],
+  // A Linux image that needs 30 GB of storage, more than a Standard plan's smallest included amount, so the storage floor rises with it.
+  [105, 'debian-12-30gb', 'Debian 12 (30 GB minimum)', 'Debian', 0, 30],
   [201, 'windows-2022', 'Windows Server 2022', 'Windows', 2048, 40], [202, 'windows-2022-sql', 'Windows Server 2022 + SQL Server', 'Windows', 4096, 60],
   [301, 'cpanel-whm-rocky-8', 'cPanel/WHM on Rocky Linux 8', 'cPanel', 2048, 40]
 ]

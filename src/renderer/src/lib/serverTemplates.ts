@@ -2,6 +2,7 @@ import { parse, stringify } from 'yaml'
 import type { components } from '@shared/api/schema'
 import { MAX_TEMPLATE_BYTES, TEMPLATE_KIND, templateSlug } from '@shared/templates'
 import type { FwRule } from './firewallMatrix'
+import { readTemplateRules } from './firewallRules'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -155,6 +156,21 @@ export function templateToYaml(t: ServerTemplate): string {
   return assertSize(stringify(safe, { lineWidth: 0 }))
 }
 
+/** The SSH key names of a stored template: none named, or a list of names. A list with anything else in it is invalid, not "no keys". */
+function templateKeyNames(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!Array.isArray(raw) || raw.some((x) => typeof x !== 'string')) throw new Error('sshKeys must be a list of key names.')
+  return raw
+}
+
+/** The rules of a stored template, or an error naming the first malformed one: it would otherwise fail wherever the rules are shown. */
+function templateRules(raw: unknown): FwRule[] | undefined {
+  if (raw === undefined || raw === null) return undefined
+  const read = readTemplateRules(raw)
+  if (read.error !== undefined) throw new Error(read.error)
+  return read.rules
+}
+
 /** Parse a stored document — the current schema, or the first cut's `name` + `user_data`. */
 export function templateFromYaml(document: string): ServerTemplate {
   const value = parse(assertSize(document))
@@ -176,9 +192,9 @@ export function templateFromYaml(document: string): ServerTemplate {
         size: typeof spec.size === 'string' ? spec.size : undefined,
         image: typeof spec.image === 'string' ? spec.image : undefined,
         options: spec.options && typeof spec.options === 'object' ? spec.options : undefined,
-        sshKeys: Array.isArray(spec.sshKeys) ? spec.sshKeys.filter((x: unknown) => typeof x === 'string') : undefined,
+        sshKeys: templateKeyNames(spec.sshKeys),
         vpc: typeof spec.vpc === 'string' ? spec.vpc : undefined,
-        firewallRules: Array.isArray(spec.firewallRules) ? spec.firewallRules : undefined,
+        firewallRules: templateRules(spec.firewallRules),
         tags: Array.isArray(spec.tags) ? spec.tags.filter((x: unknown) => typeof x === 'string') : undefined,
         cloudInit: typeof spec.cloudInit === 'string' ? spec.cloudInit : undefined
       }
@@ -214,7 +230,14 @@ export function templatesFromImport(text: string, fallbackName = 'Imported'): Se
     value = null
   }
   if (value && typeof value === 'object' && value.kind === 'bldesk/template-bundle@1' && Array.isArray(value.templates)) {
-    return value.templates.map((t: unknown) => templateFromYaml(stringify(t)))
+    return value.templates.map((t: any, i: number) => {
+      try {
+        return templateFromYaml(stringify(t))
+      } catch (err: any) {
+        // Nothing is imported when one is invalid, so say which one.
+        throw new Error(`${typeof t?.name === 'string' && t.name ? `“${t.name}”` : `Template ${i + 1}`}: ${err?.message || 'invalid'}`)
+      }
+    })
   }
   if (value && typeof value === 'object' && (value.kind === TEMPLATE_KIND || (typeof value.name === 'string' && typeof value.user_data === 'string'))) {
     return [templateFromYaml(trimmed)]
