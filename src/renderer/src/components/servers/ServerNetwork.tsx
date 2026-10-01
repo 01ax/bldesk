@@ -18,6 +18,7 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useIsMutating } from '@tanstack/react-query'
 import {
+  ACCEPTED_WITHOUT_ACTION,
   NetworkActionPayload,
   networkActionMutationKey,
   useNetworkActionMutation,
@@ -273,7 +274,7 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
 
   /**
    * Confirm, run, poll, and report — every mutation on this tab goes through here.
-   * Resolves true only when BinaryLane reported the action completed.
+   * Resolves true when BinaryLane reported the action completed, or accepted it with no action to follow.
    */
   const run = async (label: string, payload: NetworkActionPayload, confirmText: string): Promise<boolean> => {
     if (inFlight.current || busy) return false
@@ -289,15 +290,18 @@ export const ServerNetwork: React.FC<ServerNetworkProps> = ({ client, server: in
       setError(null)
       setNotice(null)
       setPending(label)
+      let accepted = false
       try {
         const done = await action.mutateAsync(payload)
-        void updateChange(c.changeId, { outcome: 'completed', actionId: done?.id })
+        // null: accepted with no action to follow, which is not the same as completed.
+        void updateChange(c.changeId, done ? { outcome: 'completed', actionId: done.id } : { outcome: 'submitted', detail: ACCEPTED_WITHOUT_ACTION })
+        accepted = !done
       } catch (err) {
         void updateChange(c.changeId, { outcome: 'failed', detail: err instanceof Error ? err.message : String(err) })
         throw err
       }
-      setNotice(`${label} — done.`)
-      window.bldeskApi?.sendNotification?.({ title: `Network: ${server.name}`, body: `${label} completed.` })
+      setNotice(accepted ? `${label} — accepted by BinaryLane, which returned no action to follow. Check this tab for the result.` : `${label} — done.`)
+      window.bldeskApi?.sendNotification?.({ title: `Network: ${server.name}`, body: accepted ? `${label} accepted by BinaryLane.` : `${label} completed.` })
       return true
     } catch (err: any) {
       setError(`${label} failed: ${err?.message || 'Unknown error'}`)
