@@ -241,6 +241,8 @@ function backupPlan(s, body) {
   return replace ? { type, replace } : { error: `No replaceable ${type} backups.` }
 }
 const invoices = Array.from({ length: 27 }, (_, i) => mk('InvoicesResponse', 'invoices', {
+  // The account's tax code (GET /v2/account), not the generator's placeholder.
+  tax_code: { name: 'GST', type: 'scalar', fixed_percent: 10 },
   invoice_id: 4000 + i, invoice_number: `INV-${20260 - i}`, amount: 40 + i * 3.3, tax: 3.6, created: new Date(Date.now() - i * 30 * 86400000).toISOString(), date_due: new Date(Date.now() - (i * 30 - 14) * 86400000).toISOString(),
   paid: i !== 0, refunded: false, reference: '', invoice_view_url: 'https://home.binarylane.com.au/invoice/' + i, invoice_download_url: 'https://home.binarylane.com.au/invoice/' + i + '.pdf', payment_failure_count: i === 0 ? 1 : 0, invoice_items: []
 }))
