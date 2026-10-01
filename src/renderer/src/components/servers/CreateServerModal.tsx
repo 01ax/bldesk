@@ -328,7 +328,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     if (disk < floor) setDiskGb(floor)
   }, [selectedSize?.slug, image?.slug, disk])
 
-  const monthly = useMemo(() => {
+  // The backups the request sends, and the total prices. The simple view
+  // collapses the three retention dropdowns into one choice.
+  const backups = showAll
+    ? { daily: dailyBackups, weekly: weeklyBackups, monthly: monthlyBackups, offsite: offsiteBackups }
+    : { daily: simpleBackups === 'none' ? 0 : 2, weekly: 0, monthly: 0, offsite: simpleBackups === 'both' }
+
+  // The total and each simple-view backup option are both priced here, so an
+  // option can only show what choosing it adds to the total.
+  const priceWith = (b: typeof backups) => {
     if (!selectedSize) return 0
     return configuredCost({
       size: selectedSize,
@@ -336,12 +344,15 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
       memoryMb: memory,
       diskGb: disk,
       ipCount,
-      dailyBackups,
-      weeklyBackups,
-      monthlyBackups,
-      offsiteBackups
+      dailyBackups: b.daily,
+      weeklyBackups: b.weekly,
+      monthlyBackups: b.monthly,
+      offsiteBackups: b.offsite
     }).total
-  }, [selectedSize, image, memory, disk, ipCount, dailyBackups, weeklyBackups, monthlyBackups, offsiteBackups])
+  }
+  const monthly = priceWith(backups)
+  const optionCost = (daily: number, offsite: boolean) =>
+    priceWith({ daily, weekly: 0, monthly: 0, offsite }) - priceWith({ daily: 0, weekly: 0, monthly: 0, offsite: false })
 
   const { total: monthlyIncGst, gst } = billingTotal(monthly)
 
@@ -356,10 +367,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     const blocked = planUnavailableReason(selectedSize, region, image)
     if (blocked) return setErrorMsg(blocked.message)
     if (!agreed) return setErrorMsg('You need to accept the Terms of Service and refund policy.')
-
-    // The simple view collapses the three retention dropdowns into one choice.
-    const daily = showAll ? dailyBackups : simpleBackups === 'none' ? 0 : 2
-    const offsite = showAll ? offsiteBackups : simpleBackups === 'both'
 
     // The form is the review, so this records rather than confirms — and the
     // id must be resolved either side of the request or History says
@@ -392,10 +399,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           ...(memory !== selectedSize.memory ? { memory } : {}),
           ...(disk !== defaultDisk(selectedSize) ? { disk } : {}),
           ipv4_addresses: ipCount,
-          daily_backups: daily,
-          weekly_backups: showAll ? weeklyBackups : 0,
-          monthly_backups: showAll ? monthlyBackups : 0,
-          offsite_backups: offsite
+          daily_backups: backups.daily,
+          weekly_backups: backups.weekly,
+          monthly_backups: backups.monthly,
+          offsite_backups: backups.offsite
         },
         user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
       } as any)
@@ -588,8 +595,8 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                 <Field label="Backups">
                   {(
                     [
-                      ['onsite', `Onsite daily backups, stored for 2 days (+$${(2 * disk * (selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0)).toFixed(2)})`],
-                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${(2 * disk * ((selectedSize?.options?.backups_cost_per_backup_per_gigabyte || 0) + (selectedSize?.options?.offsite_backups_cost_per_gigabyte || 0))).toFixed(2)})`],
+                      ['onsite', `Onsite daily backups, stored for 2 days (+$${optionCost(2, false).toFixed(2)})`],
+                      ['both', `Onsite and offsite daily backups, stored for 2 days (+$${optionCost(2, true).toFixed(2)})`],
                       ['none', 'Backups are not required']
                     ] as const
                   ).map(([val, label]) => (
