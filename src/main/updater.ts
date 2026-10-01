@@ -5,6 +5,7 @@ import { createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFil
 import { ensureOwnerDir, writeOwnerFileAtomic } from './ownerFiles'
 import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
+import { restartArguments } from '../shared/deeplink'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
 const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as any).default?.autoUpdater || electronUpdater
@@ -12,10 +13,11 @@ const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as 
 /**
  * Auto-update via electron-updater against GitHub Releases.
  *
- * Channel model: package.json "version" with no prerelease component publishes
- * `latest.yml` (stable); a `-beta.N` version publishes `beta.yml`. A client on
- * the beta channel reads beta.yml and will also accept stable releases newer
- * than its current version, so beta users are never stranded behind stable.
+ * Channel model: every release, a `-beta.N` version included, is a full GitHub
+ * release carrying `latest*.yml`; no `beta*.yml` is published (decision #166).
+ * The Stable channel (`latest`, no prereleases) therefore sees betas too, and
+ * the Beta channel (`beta`, prereleases allowed) reads the same releases. See
+ * docs/AUTO_UPDATE.md.
  *
  * The update feed URL is static (GitHub Releases today); switching to a
  * self-hosted "generic" provider later only needs `setFeedURL` here.
@@ -445,7 +447,7 @@ function isFeedUnreachable(err: any): boolean {
 function relaunchAfterExit(): void {
   const waitThenRun = 'i=0; while kill -0 "$0" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.2; i=$((i+1)); done; exec "$@"'
   try {
-    spawn('/bin/sh', ['-c', waitThenRun, String(process.pid), process.execPath, ...process.argv.slice(1)], {
+    spawn('/bin/sh', ['-c', waitThenRun, String(process.pid), process.execPath, ...restartArguments(process.argv)], {
       detached: true,
       stdio: 'ignore'
     }).unref()

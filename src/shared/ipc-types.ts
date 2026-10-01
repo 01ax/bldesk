@@ -223,7 +223,7 @@ export interface IpcApi extends HelpApi {
   // Terminal & Console
   pty?: PtyApi
   launchNativeTerminal: (options: TerminalLaunchOptions) => Promise<TerminalLaunchResult>
-  openRescueConsole: (options: ConsoleWindowOptions) => Promise<{ success: boolean }>
+  openRescueConsole: (options: ConsoleWindowOptions) => Promise<{ success: boolean; error?: string }>
   
   // SSH Keys & Local FS
   getLocalSshKeys: (selectedPaths?: string[]) => Promise<LocalSshKey[]>

@@ -262,7 +262,16 @@ function registerIpcHandlers(): void {
       autoHideMenuBar: true,
       webPreferences: { partition: RESCUE_CONSOLE_PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false }
     })
-    consoleWindow.loadURL(url)
+    try {
+      await consoleWindow.loadURL(url)
+    } catch (err: any) {
+      // The window was closed before the page loaded, or the load was handed on (a redirect): not a failure.
+      if (consoleWindow.isDestroyed() || err?.code === 'ERR_ABORTED') return { success: true }
+      // A blank black window with nothing to say is no console: close it and report why. The message names the error,
+      // not the address, which carries the console's access token.
+      consoleWindow.close()
+      return { success: false, error: `The rescue console page could not be loaded (${err?.code || 'unknown error'}). Check your connection and try again.` }
+    }
     return { success: true }
   })
 

@@ -252,3 +252,38 @@ test('an action can stop and ask a question, and is answered at /proceed', async
   await sleep(500)
   assert.equal((await request(`/v2/actions/${declined.action.id}`)).action.status, 'errored')
 })
+
+test('list responses carry the reference\'s links.pages (#237)', async () => {
+  const { spec, pathRegexes, validatorFor, esc } = await import('./spec.mjs')
+  const routes = ['/v2/servers', '/v2/account/keys', '/v2/actions', '/v2/vpcs', '/v2/load_balancers', '/v2/domains', '/v2/domains/example.com.au/records',
+    '/v2/customers/my/invoices', '/v2/images', '/v2/sizes', '/v2/regions', '/v2/servers/8100/backups', '/v2/servers/8100/software',
+    '/v2/data_usages/current', '/v2/vpcs/901/members', '/v2/servers/8100/actions']
+  for (const route of routes) {
+    const body = await request(route)
+    assert.ok(body.links && typeof body.links.pages === 'object', `${route}: links.pages is missing (links: ${JSON.stringify(body.links)})`)
+    // Whatever else in a response differs from the reference, `links` must not.
+    const hit = pathRegexes.find((x) => x.re.test(route))
+    const schema = spec.paths[hit.p].get.responses['200'].content['application/json'].schema
+    const validate = validatorFor(schema.$ref ? schema.$ref.replace(/^#/, '') : `/paths/${esc(hit.p)}/get/responses/200/content/application~1json/schema`)
+    validate(body)
+    const linkErrors = (validate.errors ?? []).filter((e) => e.instancePath === '/links' || e.instancePath.startsWith('/links/'))
+    assert.deepEqual(linkErrors, [], route)
+  }
+})
+
+test('a created server answers with links.pages too', async () => {
+  const created = await request('/v2/servers', { name: 'links-check-01', size: 'std-1vcpu', region: 'syd', image: 'ubuntu-24.04' })
+  assert.ok(created.links && typeof created.links.pages === 'object')
+})
+
+test('a second account (extraToken) sees only its own server (#138)', async () => {
+  await request('/__mock/config', { extraToken: 'second-token-for-the-mock-test' })
+  const get = (path) => fetch(base + path, { headers: { authorization: 'Bearer second-token-for-the-mock-test' } })
+  const list = await (await get('/v2/servers')).json()
+  assert.deepEqual(list.servers.map((s) => s.id), [9101])
+  assert.equal((await get('/v2/servers/9101')).status, 200)
+  assert.equal((await get('/v2/servers/8100')).status, 404)
+  assert.equal((await get('/v2/servers/8100/backups')).status, 404)
+  // The first account is unchanged.
+  assert.ok((await request('/v2/servers')).servers.length > 1)
+})

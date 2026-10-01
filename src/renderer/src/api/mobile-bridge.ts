@@ -8,6 +8,62 @@ import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 const PROFILES_KEY = 'bldesk_profiles_v1'
 const APK_URL = /^https:\/\/github\.com\/termau\/bldesk\/releases\/(?:download\/v[0-9][0-9A-Za-z.+-]*|latest\/download)\/[A-Za-z0-9._-]+\.apk$/
 const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
+const UPDATE_CHANNEL_KEY = 'bldesk_update_channel_v1'
+
+/** The update channel chosen earlier, or stable. Kept across launches, as the desktop app keeps it in its settings. */
+async function readSavedChannel(): Promise<UpdateChannel> {
+  let value: string | null = null
+  try {
+    value = (await Preferences.get({ key: UPDATE_CHANNEL_KEY })).value
+  } catch {
+    try {
+      value = localStorage.getItem(UPDATE_CHANNEL_KEY)
+    } catch {
+      value = null
+    }
+  }
+  return value === 'beta' ? 'beta' : 'stable'
+}
+
+async function saveChannel(channel: UpdateChannel): Promise<void> {
+  try {
+    await Preferences.set({ key: UPDATE_CHANNEL_KEY, value: channel })
+  } catch {
+    try {
+      localStorage.setItem(UPDATE_CHANNEL_KEY, channel)
+    } catch {
+      // not saved: the choice holds until the app is closed
+    }
+  }
+}
+
+/**
+ * Hand a link to Android and say whether an app took it. Capacitor's WebView gives no answer when nothing handles the
+ * link, so this watches for the page being sent to the background (another app coming to the front) for a few
+ * seconds: true if it was, false if the page stayed in front the whole time. A slow app can miss the wait, and a
+ * system dialog can end it early, so false is "could not tell", and is worded that way.
+ */
+function openedAnotherApp(open: () => void, waitMs = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (opened: boolean) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('blur', onHide)
+      resolve(opened)
+    }
+    const onHide = () => finish(true)
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onHide)
+    window.addEventListener('blur', onHide)
+    timer = setTimeout(() => finish(false), waitMs)
+    open()
+  })
+}
 
 // No account client, token, profile id, server ids, History or ticket text.
 async function helpRequest(path: string, body?: { id: number; helpful: boolean }): Promise<unknown> {
@@ -356,8 +412,15 @@ export async function initMobileBridge(): Promise<void> {
       // sshUriHost brackets IPv6 and percent-encodes a zone delimiter, as an ssh:// URI needs.
       const host = sshUriHost(opts.host) ?? opts.host.trim()
       const uri = `ssh://${opts.username || 'root'}@${host}${opts.port ? `:${opts.port}` : ''}`
-      window.open(uri, '_system')
-      return { success: true, terminal: 'ssh:// handler', command: formatSshCommand(opts, 'posix') }
+      const command = formatSshCommand(opts, 'posix')
+      if (!(await openedAnotherApp(() => window.open(uri, '_system')))) {
+        return {
+          success: false,
+          error: "BLDesk couldn't tell that an app opened the ssh:// link. If nothing opened, install an SSH app that handles ssh:// links, or run the command below in one.",
+          command
+        }
+      }
+      return { success: true, terminal: 'ssh:// handler', command }
     },
     openRescueConsole: async (opts) => {
       window.open(opts.url, '_blank')
@@ -416,6 +479,8 @@ export async function initMobileBridge(): Promise<void> {
       window.open(url, '_system')
     },
     setUpdateChannel: async (channel: UpdateChannel) => {
+      if (channel !== 'stable' && channel !== 'beta') return currentMobileUpdaterState
+      await saveChannel(channel)
       broadcastMobileUpdater({ channel })
       return checkMobileGithubUpdates()
     },
@@ -439,8 +504,11 @@ export async function initMobileBridge(): Promise<void> {
 
   ;(window as any).bldeskApi = mobileApi
 
+  // The saved channel is read at once, and the launch check waits for it: it would otherwise look at the stable feed.
+  const channelReady = readSavedChannel().then((channel) => broadcastMobileUpdater({ channel }))
+
   // Perform background update check on app launch
   setTimeout(() => {
-    checkMobileGithubUpdates().catch(() => {})
+    void channelReady.then(() => checkMobileGithubUpdates()).catch(() => {})
   }, 4000)
 }

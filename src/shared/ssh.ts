@@ -1,4 +1,4 @@
-import { TerminalLaunchOptions } from './ipc-types'
+import type { TerminalLaunchOptions } from './ipc-types'
 
 /**
  * SSH command building shared by the main process (which spawns it) and the
@@ -144,6 +144,27 @@ export function sshArgv(options: TerminalLaunchOptions, remoteCommand?: string):
 /** POSIX single-quote a word so it survives `sh -c`. */
 export function shQuote(word: string): string {
   return `'${word.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * `sh -c` body that runs ssh, then execs the user's shell so the window stays open
+ * after ssh exits (auth failure, declined host key…) and the message can be read.
+ * A relative $SHELL with a slash would resolve against our cwd, so fall back to sh.
+ */
+export function keepOpenScript(argv: string[]): string {
+  const ssh = argv.map(shQuote).join(' ')
+  return `${ssh}; s="\${SHELL:-sh}"; case "$s" in /*) ;; */*) s=sh ;; esac; exec "$s"`
+}
+
+/**
+ * The AppleScript that opens `argv` in iTerm2, in a new tab or, with no window, a new window. iTerm2 runs the command
+ * through the user's shell, so the whole `sh -c` is one shell command (the script has double quotes and `$` of its own,
+ * so it is single-quoted), and that command is then one AppleScript string (backslash and double quote escaped once).
+ */
+export function iterm2Script(argv: string[]): string {
+  const command = `sh -c ${shQuote(keepOpenScript(argv))}`
+  const literal = `"${command.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return `tell application "iTerm"\n  activate\n  try\n    tell current window to create tab with default profile command ${literal}\n  on error\n    create window with default profile command ${literal}\n  end try\nend tell`
 }
 
 /**

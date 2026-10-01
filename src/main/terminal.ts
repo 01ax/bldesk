@@ -2,7 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { accessSync, constants } from 'fs'
 import { basename, delimiter, extname, isAbsolute, join } from 'path'
 import { TerminalLaunchOptions, TerminalLaunchResult } from '../shared/ipc-types'
-import { formatSshCommand, psQuote, shQuote, sshArgv, validateSshTarget } from '../shared/ssh'
+import { formatSshCommand, iterm2Script, keepOpenScript, psQuote, shQuote, sshArgv, validateSshTarget } from '../shared/ssh'
 
 // ---------------------------------------------------------------------------
 // PATH lookup
@@ -82,16 +82,6 @@ function resolveLinuxTerminal(): { name: string; path: string; argv: (cmd: strin
   return null
 }
 
-/**
- * `sh -c` body that runs ssh, then execs the user's shell so the window stays open
- * after ssh exits (auth failure, declined host key…) and the message can be read.
- * A relative $SHELL with a slash would resolve against our cwd, so fall back to sh.
- */
-function keepOpenScript(argv: string[]): string {
-  const ssh = argv.map(shQuote).join(' ')
-  return `${ssh}; s="\${SHELL:-sh}"; case "$s" in /*) ;; */*) s=sh ;; esac; exec "$s"`
-}
-
 // ---------------------------------------------------------------------------
 // macOS terminal support
 // ---------------------------------------------------------------------------
@@ -131,9 +121,7 @@ const MAC_TERMINALS: MacTerminalRunner[] = [
     name: 'iTerm2',
     isAvailable: () => hasMacApp('iTerm') || hasMacApp('iTerm2'),
     launch: async (argv) => {
-      const asString = keepOpenScript(argv).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      const script = `tell application "iTerm"\n  activate\n  try\n    tell current window to create tab with default profile command "sh -c \\"${asString}\\""\n  on error\n    create window with default profile command "sh -c \\"${asString}\\""\n  end try\nend tell`
-      await spawnDetached('osascript', ['-e', script])
+      await spawnDetached('osascript', ['-e', iterm2Script(argv)])
     }
   },
   {

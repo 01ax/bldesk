@@ -294,7 +294,8 @@ function MainDashboard() {
     onSwitchProfile: handleSwitchProfile,
     onSelectServer: handleSelectServer,
     onSelectServerSubTab: setActiveServerSubTab,
-    onSelectTab: setActiveTab
+    onSelectTab: setActiveTab,
+    ready: !isInitializing
   })
 
   if (isInitializing) {

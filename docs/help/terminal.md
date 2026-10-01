@@ -30,7 +30,7 @@ The connect bar and connection-error message offer Open in native terminal. Pref
 Native launches use the resolved or explicitly selected key, but do not learn: BLDesk cannot observe that terminal's SSH lifetime or exit status.
 
 ## Search and reopen
-Ctrl/Cmd+F while the terminal has focus opens scrollback search. Use Find next, Previous, or Escape to return to the session. Each terminal keeps up to 5,000 scrollback lines in memory, not a recording.
+Cmd+F, or Ctrl+Shift+F, while the terminal has focus opens scrollback search; plain Ctrl+F is sent to the session. Use Find next, Previous, or Escape to return to the session. Each terminal keeps up to 5,000 scrollback lines in memory, not a recording.
 
 On restart, the terminal view offers Reopen or Dismiss for previously open interactive tabs. Nothing connects automatically. The tab list remembers only server names, usernames, hosts and server IDs, not key paths, custom ports, commands or output. Address preferences and key associations are stored separately. Reopen resolves the current address and key for servers found in the active profile; other tabs retain their remembered host. It preserves the username but does not restore a custom port; use the connect bar when a custom port is required. Renderer reload can recover running connections, but not old scrollback.
 

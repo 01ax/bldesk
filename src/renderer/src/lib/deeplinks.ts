@@ -37,6 +37,8 @@ interface RouterDeps {
   onSelectServer: (server: ServerResponse) => void
   onSelectServerSubTab: (tab: ServerSubTab) => void
   onSelectTab: (tab: ActiveTab) => void
+  /** The saved profiles have been read. Before that a link naming an account cannot be matched, and must wait. */
+  ready: boolean
 }
 
 /**
@@ -48,9 +50,22 @@ interface RouterDeps {
  */
 export function useDeepLinkRouter(deps: RouterDeps): void {
   const [pending, setPending] = useState<DeepLink | null>(null)
+  // Bumped when a link finishes, so one that arrived meanwhile is looked at again (the effect skips links while one is open).
+  const [settled, setSettled] = useState(0)
   const depsRef = useRef(deps)
   depsRef.current = deps
   const busyRef = useRef(false)
+  /**
+   * The profile a link asked to switch to, until it is the active one. The link is kept while the switch lands: acting
+   * on it sooner would look the server up in the profile still in use (and say it was not found there), or open it
+   * there. It ends when the link is acted on or a newer link replaces it, so its timeout cannot fire for a link that
+   * has already been dealt with.
+   */
+  const awaiting = useRef<{ profileId: string; timer?: ReturnType<typeof setTimeout> } | null>(null)
+  const stopAwaiting = () => {
+    if (awaiting.current?.timer) clearTimeout(awaiting.current.timer)
+    awaiting.current = null
+  }
 
   // Subscribe once
   useEffect(() => {
@@ -63,6 +78,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
         console.warn('[DeepLink] Ignoring unrecognised link:', url)
         return
       }
+      stopAwaiting() // a newer link replaces one that was waiting for a profile switch
       setPending(link)
     }
 
@@ -81,6 +97,7 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
     const link = pending
 
     if (link.kind === 'help') {
+      stopAwaiting()
       openHelp({ slug: link.slug, heading: link.heading })
       setPending(null)
       return
@@ -88,14 +105,28 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
 
     // 1. Account switch requested?
     if (link.account) {
+      // Until the saved profiles have been read nothing can match: stripping the account then would open the link on
+      // the default profile.
+      if (!d.ready) return
       const wanted = link.account.toLowerCase()
       const matches = (p: { name: string; email?: string }) =>
         p.name.toLowerCase() === wanted || (p.email || '').toLowerCase() === wanted
       const target = d.profiles.find(matches)
       const stripped = { ...link, account: undefined } as DeepLink
       if (target && (!d.activeProfile || d.activeProfile.id !== target.id)) {
+        stopAwaiting()
+        const entry: { profileId: string; timer?: ReturnType<typeof setTimeout> } = { profileId: target.id }
+        const giveUp = () => {
+          if (awaiting.current !== entry) return
+          awaiting.current = null
+          setPending(null)
+          alert(`Couldn't switch to the account "${link.account}", so the link was not opened.`)
+        }
+        awaiting.current = entry
         setPending(stripped) // re-run after the switch lands
-        void d.onSwitchProfile(target.id)
+        Promise.resolve(d.onSwitchProfile(target.id)).catch(giveUp)
+        // A switch that never lands must not hold the link for ever.
+        entry.timer = setTimeout(giveUp, 15000)
         return
       }
       if (!target) console.warn(`[DeepLink] No profile matches account "${link.account}"; using the active one`)
@@ -105,16 +136,22 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
 
     // 2. Navigation-only links need no data
     if (link.kind === 'home') {
+      stopAwaiting()
       setPending(null)
       return
     }
     if (link.kind === 'tab') {
+      stopAwaiting()
       d.onSelectTab(link.tab as ActiveTab)
       setPending(null)
       return
     }
 
     // 3. Server-scoped links need a client and (ideally) the server list
+    if (awaiting.current) {
+      if (d.activeProfile?.id !== awaiting.current.profileId) return // the switch has not landed yet
+      stopAwaiting()
+    }
     if (!d.client) return // wait for auth
     const cached = d.servers.find((s) => s.id === link.serverId)
     if (!cached && d.isLoadingServers) return // wait for the first fetch
@@ -158,13 +195,14 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
               alert(`Couldn't get a rescue console URL for ${server.name}.`)
               break
             }
-            await window.bldeskApi?.openRescueConsole?.({
+            const opened = await window.bldeskApi?.openRescueConsole?.({
               serverId: server.id,
               serverName: server.name,
               url,
               width: data?.console?.width || 1024,
               height: data?.console?.height || 768
             })
+            if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
             break
           }
         }
@@ -173,8 +211,10 @@ export function useDeepLinkRouter(deps: RouterDeps): void {
         alert(`Couldn't open link: ${err?.message || err}`)
       } finally {
         busyRef.current = false
-        setPending(null)
+        // Only this link: one that arrived while it was being opened (a console page can take a while) stays.
+        setPending((p) => (p === link ? null : p))
+        setSettled((n) => n + 1)
       }
     })()
-  }, [pending, deps.activeProfile?.id, deps.client, deps.servers, deps.isLoadingServers, deps.profiles])
+  }, [pending, deps.activeProfile?.id, deps.client, deps.servers, deps.isLoadingServers, deps.profiles, deps.ready, settled])
 }

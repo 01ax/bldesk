@@ -1,9 +1,9 @@
 name: Build & Release Desktop
 
-# Tag `vX.Y.Z` → stable release (latest.yml). Tag `vX.Y.Z-beta.N` → GitHub
-# prerelease on the "beta" update channel (beta.yml). electron-builder derives
-# the channel from the semver prerelease component of package.json "version",
-# so the tag and the version field must agree.
+# Tag `vX.Y.Z` or `vX.Y.Z-beta.N` → a GitHub release with the latest*.yml update
+# manifests. A beta is a full release, not a prerelease, so the Stable channel is
+# offered it too (decision #166, docs/AUTO_UPDATE.md). The tag and the
+# package.json "version" must agree.
 #
 # Token scope: the build matrix only ever holds a read-only token. It packages
 # with `--publish never` and hands its outputs to the `publish` job as

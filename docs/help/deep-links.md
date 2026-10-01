@@ -20,7 +20,7 @@ bldesk://help/firewall#copy-a-ruleset
 Server links accept a sub-tab; a missing or unknown sub-tab falls back to the overview. Help links open bundled documentation and can jump to a heading without looking up an account.
 
 ## Accounts and sharing
-Resource links can include ?account=<profile name or email> to select a saved profile. If it does not match, routing uses the active profile. Always verify the resulting account and target. Help links do not switch profiles.
+Resource links can include ?account=<profile name or email> to select a saved profile. BLDesk switches to it first and then opens the link, so the server is looked up on that account; if the switch does not land, it says so and the link is not opened. If the name or email does not match a profile, routing uses the active profile. Always verify the resulting account and target. Help links do not switch profiles.
 
 Copy link on a server includes its current sub-tab. Such links can expose server IDs or account labels; treat them as account context, not public help questions. SSH and console links launch access tools rather than merely showing text.
 

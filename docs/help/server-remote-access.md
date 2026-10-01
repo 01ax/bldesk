@@ -5,12 +5,12 @@ keywords: [ssh, console, keys, root, connection, remote access, tailscale, magic
 ---
 
 # Remote access
-Use Remote Access to connect to the selected server. SSH opens an embedded desktop tab using the chosen local key unless Prefer native terminal is enabled. Android hands off to an SSH app. See [Terminal](help:terminal); no file upload is involved.
+Use Remote Access to connect to the selected server. SSH opens an embedded desktop tab using the chosen local key unless Prefer native terminal is enabled. Android hands off to an SSH app; if BLDesk cannot tell within a few seconds that an app opened the ssh:// link, it says so and copies the command, so the connection can still be made by hand. See [Terminal](help:terminal); no file upload is involved.
 
 ## SSH and console
 Check the target address and key before connecting. Public keys saved in BinaryLane are separate from the private key files on your device. Adding an account key does not install it into every existing guest.
 
-Use the rescue console when ordinary network access is broken. It follows BinaryLane's console path rather than the guest's SSH port.
+Use the rescue console when ordinary network access is broken. It follows BinaryLane's console path rather than the guest's SSH port. If the console page cannot be loaded, its window closes and BLDesk says why instead of leaving it blank.
 
 ## Key for this server
 On desktop, choose Key for this server to associate a discovered local private-key path with this server in the current profile. The header selector changes the same association. Set by hand identifies your selection; Learned from an SSH session identifies an automatically remembered path.

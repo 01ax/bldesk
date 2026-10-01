@@ -201,11 +201,11 @@ Auto-update relies on `electron-updater` querying GitHub Releases. Releases **mu
 `v*` tags are protected by a ruleset: they cannot be moved or deleted. If a tagged build fails, fix it and release the next version number rather than re-tagging. Pull requests and pushes to `main` run `.github/workflows/ci.yml` (typecheck, guards, terminal test, build).
 
 ### Beta Channel Releases
-For prereleases (e.g. `1.1.0-beta.1`):
+For betas (e.g. `1.1.0-beta.1`):
 ```bash
 npm version 1.1.0-beta.1 --no-git-tag-version
 git commit -am "chore(release): v1.1.0-beta.1"
 git tag v1.1.0-beta.1
 git push origin main && git push origin v1.1.0-beta.1
 ```
-This produces `beta.yml` manifests, targeting only clients that selected the **Beta** channel in their Update Settings.
+A beta is published as a full release with the same `latest*.yml` manifests, not as a GitHub prerelease with `beta*.yml`, so clients on the Stable channel are offered it too (decision #166). See `docs/AUTO_UPDATE.md`.

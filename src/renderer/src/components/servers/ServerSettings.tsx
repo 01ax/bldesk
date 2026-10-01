@@ -357,11 +357,33 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     )
   }
 
+  // What `password_reset` does depends on the server (`password_change_supported`, from the reference): where it is
+  // supported a new password is generated and emailed to the account address; where it is not, the action only clears
+  // the root/administrator password, and a new one is set at the web console. Nothing is emailed then.
+  const passwordResetWording = (() => {
+    const supported = (server as { password_change_supported?: boolean | null }).password_change_supported
+    if (supported === true) {
+      return {
+        card: 'Generates a new root/administrator password and sends it to your account email.',
+        summary: 'Generates a new root/administrator password and emails it to the account address. Anything using the old password stops authenticating.'
+      }
+    }
+    if (supported === false) {
+      return {
+        card: "Clears the root/administrator password so a new one can be set at the server's web console. No password is emailed.",
+        summary: "Clears the root/administrator password, which this server cannot change from here: a new one is set at the server's web console. No password is emailed. Anything using the old password stops authenticating."
+      }
+    }
+    return {
+      card: 'Resets the root/administrator password. Depending on the server, a new password is emailed to your account address or the password is cleared to be set at the web console.',
+      summary: 'Resets the root/administrator password. Depending on the server, a new password is emailed to the account address or the password is cleared and a new one is set at the web console. Anything using the old password stops authenticating.'
+    }
+  })()
   const handleResetPassword = async () => {
     await executeAction(
       'Reset Root/Admin Password',
       { type: 'password_reset' },
-      { summary: 'Generates a new root/administrator password and emails it to the account address. Anything using the old password stops authenticating.', severity: 'destructive', confirmLabel: 'Reset password' }
+      { summary: passwordResetWording.summary, severity: 'destructive', confirmLabel: 'Reset password' }
     )
   }
 
@@ -1122,7 +1144,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
                     Reset Root/Administrator Password
                   </span>
                   <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
-                    Generates a new root password and sends it to your account email.
+                    {passwordResetWording.card}
                   </p>
                 </div>
                 <button onClick={handleResetPassword} disabled={busy} className={primaryBtn}>

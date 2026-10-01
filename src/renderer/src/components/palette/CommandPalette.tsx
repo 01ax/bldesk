@@ -264,13 +264,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       if (error || !response.ok) throw apiFailure(error, response)
       const url = data?.console?.browser || data?.console?.iframe
       if (!url) throw new Error('BinaryLane returned no console URL.')
-      await window.bldeskApi?.openRescueConsole?.({
+      const opened = await window.bldeskApi?.openRescueConsole?.({
         serverId: s.id,
         serverName: s.name,
         url,
         width: data?.console?.width || 1024,
         height: data?.console?.height || 768
       })
+      if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
     } catch (err: any) {
       alert(`Couldn't open a rescue console for ${s.name}: ${err?.message || err}`)
     }
