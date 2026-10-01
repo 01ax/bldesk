@@ -430,9 +430,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
       {/* Automated Backup Schedule Banner */}
       {activeServer && (
-        <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded bg-[#017cb6]/10 flex items-center justify-center">
+        <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3 min-w-0 flex-1 basis-60">
+            <div className="w-9 h-9 flex-shrink-0 rounded bg-[#017cb6]/10 flex items-center justify-center">
               <Clock className="w-5 h-5 text-[#017cb6]" />
             </div>
             <div>
@@ -459,7 +459,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           <button
             onClick={handleToggleAuto}
             disabled={toggleAutomatedBackups.isPending}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition border ${
+            className={`px-3 py-1.5 text-xs font-medium rounded transition border whitespace-nowrap ${
               isAutoBackupEnabled
                 ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
                 : 'text-[#017cb6] bg-[#017cb6]/10 border-[#017cb6]/30 hover:bg-[#017cb6]/20'
