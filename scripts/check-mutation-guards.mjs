@@ -53,9 +53,7 @@ const MODAL_SHELL = 'components/ui/Modal.tsx'
 // a <Modal>.
 const OVERLAY_EXCEPTIONS = {
   'components/palette/CommandPalette.tsx': 'the command palette, a search box rather than a dialog',
-  'components/layout/Sidebar.tsx': 'the phone navigation drawer, which is navigation rather than a dialog',
-  // A dialog, and the only one left (#186): #249 is changing the Take Backup dialog, and converting it first would conflict. It moves to <Modal> once that lands.
-  'components/backups/BackupManager.tsx': 'the Take Backup dialog, until it moves to <Modal> after #249'
+  'components/layout/Sidebar.tsx': 'the phone navigation drawer, which is navigation rather than a dialog'
 }
 
 function walk(dir, out = []) {
