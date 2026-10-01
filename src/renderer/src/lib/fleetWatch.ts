@@ -1,15 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { components } from '@shared/api/schema'
 import { TrayFleetSummary } from '@shared/ipc-types'
 import { primaryIpv4 } from './deeplinks'
-
-type ServerResponse = components['schemas']['Server']
+import type { AnnotatedServer } from './powerState'
 
 /** Below this much prepaid credit, and falling, the tray says so. */
 const LOW_CREDIT_AUD = 20
 
 interface FleetWatchInput {
-  servers: ServerResponse[]
+  servers: AnnotatedServer[]
   /**
    * True once the list has been fetched from BinaryLane in this session — not
    * merely rehydrated from the local cache. Diffing against the cache would
@@ -57,7 +55,7 @@ export function useFleetWatch(input: FleetWatchInput): void {
   const { servers, isFetchedAfterMount, inProgress, awaitingAnswerIds, trackedIds, failedInvoices, accountName, availableCredit, profileId } = input
 
   const lastPushed = useRef<string>('')
-  const baseline = useRef<Map<number, { name: string; status: string }> | null>(null)
+  const baseline = useRef<Map<number, { name: string; status: string; apiStatus: string; powerKnown: boolean }> | null>(null)
   const baselineProfile = useRef<string | undefined>(undefined)
   const creditWasAbove = useRef<boolean | null>(null)
   const seenAwaiting = useRef<Set<number> | null>(null)
@@ -142,7 +140,12 @@ export function useFleetWatch(input: FleetWatchInput): void {
       baseline.current = null
     }
 
-    const now = new Map(servers.map((s) => [s.id, { name: s.name, status: s.status as string }]))
+    const now = new Map(
+      servers.map((s) => [
+        s.id,
+        { name: s.name, status: s.status as string, apiStatus: s._apiStatus as string, powerKnown: s._power?.state === 'on' || s._power?.state === 'off' }
+      ])
+    )
     const prev = baseline.current
     baseline.current = now
     if (!prev) return
@@ -155,6 +158,9 @@ export function useFleetWatch(input: FleetWatchInput): void {
       if (!was) {
         notify(`${cur.name} appeared`, `New server on ${accountName ?? 'this account'} — ${describeStatus(cur.status)}.`)
       } else if (was.status !== cur.status) {
+        // The API reports a powered-off server as active; its real state arrives with its first power reading
+        // (lib/powerState.ts), a few seconds after the list. That reading settles the baseline, it is not a change.
+        if (!was.powerKnown && cur.powerKnown && was.apiStatus === cur.apiStatus) continue
         notify(`${cur.name} is now ${describeStatus(cur.status)}`, `Was ${describeStatus(was.status)}.`)
       }
     }

@@ -273,6 +273,24 @@ Branch: `fix/vpc-list-paging`. No new runtime dependencies.
 - Not exercised live: more than 200 VPCs, which would take `fetchAllPages` past its first 200-item request. That path is the one `useImages` already uses.
 - Not exercised live: more than 20 load balancers, which cost money, or more than 20 servers for data usage. Both go through the same `fetchAllPages` call as the lists above.
 
+## Server-state notifications on first load (1 October 2026, after 1.0.62-beta.9)
+
+Branch: `fix/no-power-notifications-on-first-load`. No new runtime dependencies. No help text changes: the one sentence that describes these notifications is still true, and is recorded here because what triggers them changed.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `tray.md`: “Notifications can report server state, action results and balance conditions.” | `fleetWatch.ts`: `kind: 'server-state'` (a server appearing, changing state, or no longer listed) and `'balance'` (a failed invoice payment, prepaid credit below a floor); action results come from the components that call `sendNotification` after an action | Unchanged, still true. Not edited. |
+| “<name> is now off” with “Was running.” (and the other words from `describeStatus`: running, off, being provisioned, archived) | `fleetWatch.ts`, the server-state effect | Strings unchanged. Changed when it is raised: not for the first power reading of a server whose API status has not changed, because the API keeps reporting a powered-off server as `active` and `usePowerState` only learns the real state from the server's latest sample a moment after the list. Before, that first reading read as a server switching off (or on) in front of the user. Still raised for every later change, for a change of API status (for example `new` to `active`), and for appearing and disappearing servers. |
+
+### Checks performed
+
+- `npm run typecheck`, `npm run test:terminal` and `npm run build`.
+- Real Electron against the GUI mock, BASE (`origin/main`) against this branch, with the main process's notification calls logged and the OS toast suppressed. API-active servers given a stale latest sample and the rest a fresh one (answered synthetically in the page, nothing forwarded), first load with no cached list. BASE: “is now off / Was running.” for each stale server and “is now running / Was off.” for a server the API lists as off whose latest sample was fresh. This branch: no notification. The same run with the account empty at first and then filled: both builds raise “appeared” once per server (unchanged), and BASE adds the two power notifications above; this branch adds none.
+- Real transitions after the first reading, BASE and this branch alike: a server whose latest sample goes stale raises one “is now off / Was running.”, and one “is now running / Was off.” when the sample is fresh again, each once.
+- Live account (read-only for existing servers, one disposable server powered off through the API and deleted afterwards), first load with no cached list: BASE raised “is now off / Was running.” for the powered-off disposable server within seconds of launch; this branch raised nothing and showed it as off. With this branch open, a second disposable server powered off through the API raised one “is now off / Was running.” once the sweep saw its latest sample go stale, and one “is now running / Was off.” after it was powered on again.
+- Not reproduced on BASE: relaunching with a cached server list present (the cached list counts as fresh for 10 s, so the first real fetch comes with the 15 s refresh, by when the power readings are in; seen on the mock and on the live account). The problem needs the first fetched list to arrive before the readings: a first launch, an account not loaded before, or after the crash screen's Reset Cache & Reload.
+- Not exercised: a change of API status such as `new` to `active` (the code keeps raising it, since the new condition requires the API status to be unchanged), and switching profiles in the app (from the code: `baselineProfile` resets the list baseline, and `usePowerState` empties its readings on the same `profileId` change, so the new account's first readings are again the baseline). Android, which uses the same hook.
+
 ## Honest token storage (security batch 4)
 
 Branch: `security/honest-storage`.
