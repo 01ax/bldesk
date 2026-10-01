@@ -30,6 +30,21 @@ export function describeActionType(type: string): string {
     .join(' ')
 }
 
+/**
+ * Actions BLDesk sends that BinaryLane's public API reference does not list. Each is a recorded exception to the
+ * "public API only" rule (AGENTS.md), kept on the maintainer's decision, and the confirmation says so: what it does is
+ * not documented in the reference and could change. scripts/gui-test/check-requests.mjs carries the same list.
+ */
+const UNPUBLISHED_ACTIONS = new Set(['enable_rescue_mode'])
+
+export const UNPUBLISHED_ACTION_NOTE =
+  "This action is not in BinaryLane's public API reference, so its behaviour is not documented there and it could change or stop working."
+
+/** The note to show in a confirmation for an action the public reference does not list, or none. */
+export function unpublishedActionNotes(type: string): string[] | undefined {
+  return UNPUBLISHED_ACTIONS.has(type) ? [UNPUBLISHED_ACTION_NOTE] : undefined
+}
+
 /** One honest sentence per power action, for the confirm dialog. */
 export function powerActionSummary(type: string): string {
   switch (type) {

@@ -951,3 +951,20 @@ Service facts, from `openapi.json` only: `Server.password_change_supported` is "
 - Dependabot alert 3 (uuid < 11.1.1, via `@capacitor/cli` → `xcode@3.0.1`, development only): `overrides` for `xcode`'s `uuid` and the lock entry edited by hand, because regenerating the lock with this npm rewrote 238 unrelated lines. `npm ls` shows `uuid@11.1.1` under xcode, `npm audit --package-lock-only` reports 0 vulnerabilities, `npm ci --dry-run --legacy-peer-deps` (the way CI installs) succeeds, and xcode's `require('uuid').v4()` works with 11.1.1.
 - `docs/AUTO_UPDATE.md` (#163) was rewritten from the code: the workflow (read-only build jobs, one publish job with `contents: write`, a draft release then published), the `.deb` and AppImage updaters, the macOS zip path (not Squirrel), Android's own check, and that betas are full releases with `latest*.yml` so Stable is offered them (#166, still a decision). The same claim is corrected in `AGENTS.md`, the `release.yml` header and `updater.ts`.
 - Not checked: macOS (the iTerm2 launcher, the updater), a physical phone, the live API and a real update restart on Linux.
+
+## Boot into Rescue Mode stays, as a recorded exception (2 October 2026, after 1.0.62-beta.17, #129)
+
+Branch: `fix/rescue-mode-exception`. One help page changed (`server-recovery`). The sources are `UNPUBLISHED_ACTIONS` and `UNPUBLISHED_ACTION_NOTE` in `actionLabels.ts`, `handleAction` in `ServerDetails.tsx`, `AGENTS.md` ("Accepted exceptions") and `scripts/gui-test/check-requests.mjs`.
+
+Service fact, from `openapi.json` only: the `enable_rescue_mode` action is not in the public reference, so nothing there says what it does or promises it will stay. The maintainer decided to keep it.
+
+| Claim | Decided by | Result |
+| --- | --- | --- |
+| `server-recovery.md`: the confirmation also says “This action is not in BinaryLane's public API reference, so its behaviour is not documented there and it could change or stop working.”; BLDesk keeps Boot into Rescue Mode, it is the one action the reference does not list, and what it does to the server is not described there | `unpublishedActionNotes` in `handleAction` | New. Checked by `check-help-guards.mjs`. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guards and the unit tests).
+- Real Electron through `scripts/gui-test`, the installed 1.0.62-beta.17 as BASE next to this branch as FIXED. The Recovery tab's “Boot into Rescue Mode”: BASE's confirmation reads “Submits "Enable Rescue Mode" to BinaryLane.” and FIXED adds the note above, and the button has a tooltip saying the action is not in the reference. Both send the request once on confirm.
+- `check-requests.mjs`, on a synthetic log with `enable_rescue_mode`, an invented action and `reboot`: the invented one is reported invalid, `reboot` is checked, and `enable_rescue_mode` is counted as an accepted exception instead of being reported.
+- Not checked: what the action does on a real server (it is not documented in the reference) and the live API.
