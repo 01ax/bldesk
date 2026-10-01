@@ -58,7 +58,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
   const charges = (balance?.charges || []) as any[]
 
   // A figure that has not loaded shows a dash; one whose read finished without it says so. Neither may read as zero
-  // dollars or an unlimited allowance. If a refresh fails, the last figure that did load stays on screen.
+  // dollars or a zero allowance. If a refresh fails, the last figure that did load stays on screen.
   const credit = balance?.available_credit
   const unbilled = balance?.unbilled_total
   const creditFailed = !balanceQuery.isPending && typeof credit !== 'number'
@@ -66,7 +66,8 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
   const usageKnown = dataUsageQuery.data != null
   const usageFailed = !usageKnown && !dataUsageQuery.isPending
 
-  // Total pooled transfer calculation
+  // Transfer added up over every server in the list. Each row is one server's included transfer and use in that server's own
+  // current period. The reference gives no rule for when pooling applies and no "unlimited" value, so the card claims neither.
   const totalAllocatedGb = dataUsages.reduce((acc: number, u: any) => acc + (u.transfer_gigabytes || 0), 0)
   const totalUsedGb = dataUsages.reduce((acc: number, u: any) => acc + (u.current_transfer_usage_gigabytes || 0), 0)
 
@@ -94,7 +95,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
           <HelpLink slug="billing" />
         </h1>
         <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
-          Real-time account balance, pooled bandwidth, and tax invoice history.
+          Real-time account balance, data transfer, and tax invoice history.
         </p>
       </div>
 
@@ -164,15 +165,15 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
           )}
         </div>
 
-        {/* Pooled Bandwidth Transfer */}
+        {/* Data transfer, all servers */}
         <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-xs text-[#6c757d] dark:text-slate-400">
-            <span>Pooled Bandwidth</span>
+            <span>Data Transfer</span>
             <Database className="w-4 h-4 text-[#017cb6]" />
           </div>
           <div className="text-2xl font-bold text-[#212529] dark:text-white font-mono">
             {usageKnown ? (
-              `${totalUsedGb.toFixed(1)} / ${totalAllocatedGb > 0 ? `${totalAllocatedGb} GB` : 'Unlimited'}`
+              `${totalUsedGb.toFixed(1)} / ${totalAllocatedGb} GB`
             ) : (
               <span className="text-[#adb5bd]">—</span>
             )}
@@ -181,12 +182,19 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
             <div
               className="bg-[#017cb6] h-full"
               style={{
-                width: `${!usageKnown ? 0 : totalAllocatedGb > 0 ? Math.min(100, (totalUsedGb / totalAllocatedGb) * 100) : 5}%`
+                width: `${!usageKnown ? 0 : totalAllocatedGb > 0 ? Math.min(100, (totalUsedGb / totalAllocatedGb) * 100) : totalUsedGb > 0 ? 100 : 0}%`
               }}
             />
           </div>
           {usageFailed && (
             <div className="text-[11px] text-rose-700 dark:text-rose-300">Couldn't load the data transfer usage.</div>
+          )}
+          {usageKnown && (
+            <div className="text-[11px] text-[#6c757d]">
+              {dataUsages.length === 0
+                ? "BinaryLane's transfer list has no servers."
+                : `Used / included across ${dataUsages.length} server${dataUsages.length === 1 ? '' : 's'}, each for its own current period`}
+            </div>
           )}
         </div>
       </div>
