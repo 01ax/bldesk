@@ -1,6 +1,7 @@
 import { HelpLink } from '../ui/HelpLink'
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import {
+  AlertCircle,
   Archive,
   Plus,
   RotateCcw,
@@ -10,6 +11,7 @@ import {
   Disc,
   Clock,
   Download,
+  RefreshCw,
   X
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
@@ -26,7 +28,8 @@ import {
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
-import { availableBackupSlots, BACKUP_SLOT_LABELS } from '../../lib/backupSlots'
+import type { FieldChange } from '../../lib/diff'
+import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest } from '../../lib/backupSlots'
 
 interface BackupManagerProps {
   /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
@@ -88,10 +91,33 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
   const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
 
-  // Take a manual backup
+  // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
+  // the same request again, which the client refuses, leaving a failed History entry and an alert.
+  const [taking, setTaking] = useState(false)
+  const takingRef = useRef(false)
   const handleTakeBackup = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!activeServerId || takingRef.current) return
+    takingRef.current = true
+    setTaking(true)
+    try {
+      await takeBackup()
+    } finally {
+      takingRef.current = false
+      setTaking(false)
+    }
+  }
+
+  // Take a manual backup
+  const takeBackup = async () => {
     if (!activeServerId) return
+
+    // The backups list has no polling, so a backup locked elsewhere since it loaded would be named as replaceable.
+    // Read it again before asking, and trust only that read: `fresh` stays null when it failed, or did not finish after
+    // this submit, and a take with no list to check is asked about anyway, because nothing says no backup is replaced.
+    const startedAt = Date.now()
+    const read = await backupsQuery.refetch()
+    const fresh = !read.isError && read.dataUpdatedAt >= startedAt ? (read.data ?? []) : null
 
     let replacementStrategy: 'oldest' | 'specified' = 'oldest'
     let backupType: 'daily' | 'weekly' | 'monthly' | 'temporary' | undefined = 'temporary'
@@ -106,17 +132,79 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       replacementStrategy = 'oldest'
     }
 
-    const changeId = await recordChange({
-      label: 'Take Backup',
-      target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
-      severity: 'normal',
-      summary: backupLabel.trim() ? `Label "${backupLabel.trim()}"` : undefined,
-      source: 'ui'
-    })
+    // What this take will replace, when it will (or, for a temporary slot, may) replace something.
+    // A locked or attached backup is never replaced, so naming one would be untrue.
+    const specified = replacementStrategy === 'specified'
+    const attachedId = activeServer?.attached_backup?.id
+    const chosen = fresh?.find((b) => b.id === backupIdToReplace)
+    const replaced =
+      fresh === null
+        ? null
+        : specified
+          ? chosen && !chosen.backup_info?.locked && chosen.id !== attachedId
+            ? { backup: chosen, certain: true }
+            : null
+          : replacedByOldest(backupType ?? 'temporary', activeServer?.selected_size_options, fresh, attachedId)
+    // A specified replacement is sent with the type of the backup it replaces. A backup's type never changes, so when
+    // there is no fresh read the list on screen (where the backup was picked) still gives it.
+    const picked = backups.find((b) => b.id === backupIdToReplace)
+    const newType = backupType ?? (chosen ?? picked)?.backup_info?.type
+    const named = (b: { id: number; name?: string | null }) => `${b.name ?? 'Backup'} (#${b.id})`
+    const toNew = newType ? `New ${newType} backup` : 'New backup'
+
+    // What to ask, if anything. With no fresh list it cannot name a backup, so it says what it cannot tell.
+    let ask: { summary: string; change?: FieldChange } | null = null
+    if (fresh === null) {
+      ask = specified
+        ? {
+            summary:
+              "Couldn't read this server's backups, so BLDesk can't check whether the backup you chose can still be replaced. If it can, this backup replaces it and the replaced backup will no longer be available.",
+            change: { label: 'Backup you chose', from: picked ? `${named(picked)}, ${describeBackup(picked)}` : `Backup #${backupIdToReplace}`, to: toNew }
+          }
+        : {
+            summary:
+              "Couldn't read this server's backups, so BLDesk can't say which one would be replaced if no slot is free. A backup that is replaced will no longer be available."
+          }
+    } else if (replaced) {
+      ask = {
+        summary: specified
+          ? 'This backup replaces the backup you chose. The replaced backup will no longer be available.'
+          : replaced.certain
+            ? `No ${backupType} slot is free, so this backup replaces the oldest ${backupType} backup that is not locked or attached. The replaced backup will no longer be available.`
+            : 'If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.',
+        change: {
+          label: replaced.certain ? 'Replaced backup' : 'Replaced if no slot is free',
+          from: `${named(replaced.backup)}, ${describeBackup(replaced.backup)}`,
+          to: toNew
+        }
+      }
+    }
+
+    let changeId: string | undefined
+    if (ask) {
+      const c = await confirmAction({
+        title: 'Take Backup',
+        helpSlug: 'backups#take-backup',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        summary: ask.summary,
+        severity: 'destructive',
+        changes: [...(ask.change ? [ask.change] : []), ...(backupLabel.trim() ? [{ label: 'Label', to: backupLabel.trim() }] : [])]
+      })
+      if (!c.ok) return
+      changeId = c.changeId
+    } else {
+      changeId = await recordChange({
+        label: 'Take Backup',
+        target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
+        severity: 'normal',
+        summary: backupLabel.trim() ? `Label "${backupLabel.trim()}"` : undefined,
+        source: 'ui'
+      })
+    }
     try {
       const queued = await takeBackupMutation.mutateAsync({
         label: backupLabel.trim() || undefined,
-        backupType: backupType ?? backups.find((b) => b.id === backupIdToReplace)?.backup_info?.type,
+        backupType: newType,
         replacementStrategy,
         backupIdToReplace
       })
@@ -307,10 +395,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
           <button
             onClick={() => setIsTakingBackup(true)}
-            disabled={!activeServerId || takeBackupMutation.isPending}
+            disabled={!activeServerId || takeBackupMutation.isPending || taking}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-50"
           >
-            {takeBackupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {takeBackupMutation.isPending || taking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             <span>Take Backup</span>
           </button>
           <HelpLink slug="backups" />
@@ -407,7 +495,31 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           </div>
         )}
 
-        {!backupsQuery.isLoading && backups.length === 0 && (
+        {backupsQuery.isError && (
+          <div
+            role="alert"
+            className="m-3.5 flex items-start gap-2 p-3 rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs"
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-px" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <p className="font-semibold break-words">
+                {backupsQuery.data ? "Couldn't refresh this server's backups." : "Couldn't read this server's backups."}
+              </p>
+              <p className="break-words line-clamp-3">{backupsQuery.error?.message}</p>
+              {backupsQuery.data && <p>The list below is from the last successful load.</p>}
+              <button
+                onClick={() => void backupsQuery.refetch()}
+                disabled={backupsQuery.isFetching}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${backupsQuery.isFetching ? 'animate-spin' : ''}`} />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!backupsQuery.isLoading && !backupsQuery.isError && backups.length === 0 && (
           <div className="p-12 text-center text-xs text-[#6c757d] space-y-2">
             <Disc className="w-8 h-8 text-[#6c757d]/50 mx-auto" />
             <div className="font-semibold text-[#212529] dark:text-white">No Backups Found</div>
@@ -564,10 +676,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                 </button>
                 <button
                   type="submit"
-                  disabled={takeBackupMutation.isPending}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+                  disabled={takeBackupMutation.isPending || taking}
+                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                 >
-                  {takeBackupMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {(takeBackupMutation.isPending || taking) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>Take Backup</span>
                 </button>
               </div>

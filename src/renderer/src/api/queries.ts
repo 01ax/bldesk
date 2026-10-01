@@ -311,7 +311,7 @@ export function useFirewallRules(client: BinaryLaneClient | null, serverId: numb
 }
 
 /** Run `fn` over `items` with at most `limit` in flight; per-item failures become `null`. */
-async function mapLimitNullable<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<Array<R | null>> {
+export async function mapLimitNullable<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<Array<R | null>> {
   const out: Array<R | null> = new Array(items.length).fill(null)
   let next = 0
   const worker = async () => {
@@ -965,10 +965,13 @@ export function useServerBackups(client: BinaryLaneClient | null, serverId: numb
     queryKey: ['serverBackups', serverId],
     queryFn: async () => {
       if (!client || !serverId) return []
-      const { data, error } = await client.GET('/v2/servers/{server_id}/backups', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/backups', {
         params: { path: { server_id: serverId } }
       })
-      if (error) return []
+      // A failed read must not become "no backups": Take Backup decides whether it replaces one from this list, and an
+      // empty list said nothing would be. Throw instead, so the query reports the failure and keeps any list that
+      // loaded. A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
+      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
       return data?.backups || []
     },
     enabled: !!client && !!serverId

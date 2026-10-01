@@ -17,5 +17,8 @@ For an example backup named before-upgrade with image ID 123, Restore shows:
 
 The name and ID in your dialog will match your chosen image. Type the target server's name and choose Restore only after checking it. Follow the full [backup restore example](help:backups#worked-example), including checking History afterwards.
 
+## Taking a backup
+Take Backup can replace an existing backup when the slot is full, and asks first. See [Take Backup](help:backups#take-backup).
+
 ## Retention
 Use [Change Plan](help:server-change-plan) for purchased backup counts and offsite options. Automatic backup retention is controlled by BinaryLane, not by keeping BLDesk running.
