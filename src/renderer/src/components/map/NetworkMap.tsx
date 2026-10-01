@@ -292,6 +292,16 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     clone.setAttribute('width', String(layout.width))
     clone.setAttribute('height', String(layout.height))
     clone.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`)
+    // Fills, strokes and the font come from Tailwind classes, which a saved file does not carry: without this every card
+    // and band exports black. Write what the page paints (current theme included) onto each shape. Before the [data-bg] fill below.
+    const shapes = 'rect, circle, ellipse, line, path, text'
+    const painted = clone.querySelectorAll(shapes)
+    svg.querySelectorAll(shapes).forEach((el, i) => {
+      const style = getComputedStyle(el)
+      painted[i].setAttribute('fill', style.fill)
+      painted[i].setAttribute('stroke', style.stroke)
+      if (el.tagName === 'text') painted[i].setAttribute('font-family', style.fontFamily)
+    })
     const g = clone.querySelector('[data-world]')
     g?.setAttribute('transform', '')
     const dark = document.documentElement.classList.contains('dark')
