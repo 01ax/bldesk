@@ -373,7 +373,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                   <span className="font-mono truncate">{domain.name}</span>
                   <span className="flex items-center gap-2 flex-shrink-0">
                     <DelegationBadge domain={domain} localNameservers={localNameservers} />
-                    <span className="text-[10px] text-[#6c757d]">TTL {domain.ttl}s</span>
+                    {domain.ttl != null && <span className="text-[10px] text-[#6c757d]">TTL {domain.ttl}s</span>}
                   </span>
                 </button>
               )
