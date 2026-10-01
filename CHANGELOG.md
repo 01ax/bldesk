@@ -5,6 +5,24 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.12] - 2026-10-01
+
+**Firewall changes use the current list, and dialogs keep the keyboard**
+
+### Fixed
+- **A firewall edit is built from the list as it is now** (#113, #206). BinaryLane applies a firewall change a few seconds after it accepts it. Until it landed, the tab still showed the old list, so the next edit could write a deleted rule back. Editing is now switched off while your own change is being applied, the list is read again when it lands, and closing the progress notice does not switch editing back on early. Fleet matrix reads the source and every target again when you press Review diff, so a rule added to a target in the last minute shows as removed in the diff instead of the target being skipped as already matching.
+- **Removing every rule is confirmed like Disable firewall** (#112). Importing an empty list and deleting a server's last rule ask you to type the server's name. A matrix copy from a server with no rules is refused.
+- **A new rule goes where it can match** (#114). One added after Drop All used to land behind it and never match. It now goes ahead of the first drop that would swallow it, and a block on a single address stays in front of it.
+- **Every firewall rule is written with a destination** (#125). The API reference requires one, and a rule from Add Rule or a pasted import had none. A rule with none is now written with 0.0.0.0/0 (any destination), which the confirmation shows, for Add Rule, Import, Clone, Fleet matrix copy and templates. An import is checked before you are asked: addresses must be IPv4, ports must be named, a description at most 250 characters, and the first rule that is not is named. Add Rule refuses a port of "," and a source that is not IPv4.
+- **Dialogs keep the keyboard** (#172, #173, #174). Tab and Shift+Tab stay inside an open dialog, a held Enter key no longer confirms a dialog or repeats a side action, Ctrl+K does not open the command palette over a dialog (and Enter in it no longer confirms the dialog beneath), Escape closes only the dialog on top, and focus goes back to what opened the dialog.
+- **Take Backup goes to the server you started it for** (#249, #254). Cancel and close are off while it checks the server's backups and sends the request. Before, cancelling still sent the backup, and picking another server in the meantime sent it to that server and named the wrong one in the dialog. The check gives up after 20 seconds and asks as if the backups could not be read.
+- **A double-click no longer confirms the next queued dialog** (#250, #255). The second click of a double-click is ignored by the confirm button. One click, Enter and Space confirm as before.
+- **One rule reads "1 rule"** (#207).
+
+### Changed
+- **Every dialog is the same shell** (#186): Firewall Import and Clone, Create and Attach for VPCs and load balancers, Add DNS Record, Add Public SSH Key, the API Token Vault, the question BinaryLane asks about an action, and Take Backup. Escape and a click outside close them, and they fit small windows. Their wording is unchanged. On Android the back button closes a dialog, but leaves the question dialog alone, and the sign-in dialog while there is no account.
+- The GUI test harness checks firewall bodies against the schema and can raise a question from an action (#256). BinaryLane has confirmed that plan prices are before GST, which is what the app already assumed (#257). Nothing else in the app changes.
+
 ## [1.0.62-beta.11] - 2026-10-01
 
 **A failed load now says so instead of looking empty**
