@@ -5,6 +5,24 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.11] - 2026-10-01
+
+**A failed load now says so instead of looking empty**
+
+### Fixed
+- **Failed loads say what went wrong** (#248, #147, #200, #222, #223). When BinaryLane could not return something, several screens showed it as empty or as "none". Billing now says "Couldn't load the invoices." or "Couldn't load the payment details.", and "Couldn't check whether any invoices are unpaid." when that check fails, each with Retry, instead of "No past invoices found." or "No payment method configured". Create Server says "Couldn't load the locations." with Retry. A server list or backups list with one page that failed now fails as a whole instead of showing the pages that did load as if they were everything. Error messages are plain words, never raw JSON, and the "Error invoking remote method" prefix is gone from messages that come from inside the app (#219).
+- **A refused request is not always a failed token** (#148, #185). A 403 when deleting a VPC is BinaryLane refusing that delete, and now says so instead of "API token authorization failed". Reads answered with 401, 403 or 404 are reported at once instead of being retried first.
+- **Firewall rules that never load give up** (#189). The read now stops after 20 seconds and shows the failure with Retry, instead of staying on "Fetching…". It can take about a minute to show, because a failed read is tried three times first.
+- **The backups list shows every backup** (#199). It read only the first page, so a server with many backups could show some of them. The command palette's check before a backup replaces one reads the whole list too.
+- **A damaged saved server list no longer crashes BLDesk at start** (#240). It is ignored and the list is fetched again, so Reload recovers without Reset Cache & Reload.
+- **A change BinaryLane accepted is no longer shown as failed** (#242). BinaryLane answers some Settings and Network changes, a rename for one, with "accepted" and no action to follow. BLDesk showed a red error and recorded Failed in History. It now says the change was accepted, and History records it as Submitted.
+- **Two confirmations in a row no longer lock the second** (#243). The second one opened with its buttons disabled and could not be closed. Clicking Apply Rules in Firewall clone twice quickly queued two; it now asks once.
+- **No false "is now off" at launch** (#244). A powered-off server could raise "is now off" and "Was running." just after BLDesk started, although it had not been seen running.
+- **Network Map export keeps its colours and fonts** (#245). SVG and PNG exports came out mostly black.
+
+### Changed
+- A reply with no body, such as a 204, is no longer rebuilt by the request layer, which hid errors it hit (#187). The GUI test harness gives its invoices the account's tax code (#241), and a dev-only dependency (brace-expansion) is updated to its patched releases (#247). Nothing else in the app changes.
+
 ## [1.0.62-beta.10] - 2026-10-01
 
 **Safer backups and prices, and a batch of fixes from testing**
