@@ -207,7 +207,7 @@ export const BillingOverview: React.FC<BillingOverviewProps> = ({ client }) => {
         {tab === 'pending' && (
           <PendingCharges
             charges={charges}
-            isLoading={balanceQuery.isLoading}
+            isLoading={balanceQuery.isPending}
             failed={!balanceQuery.isPending && !balance}
             generatedAt={balance?.generated_at}
           />

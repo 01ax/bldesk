@@ -144,8 +144,12 @@ async function executeFetch(
       // rides out.
       if ((err as { code?: string } | null)?.code !== 'UNIMPLEMENTED') {
         console.warn('[NativeFetch] CapacitorHttp request failed, not resent:', err)
+        // A read changed nothing, so the "may have gone through" advice would only mislead (an offline phone, a failed list).
+        const read = req.method === 'GET' || req.method === 'HEAD'
         throw new TypeError(
-          'No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.',
+          read
+            ? 'No response from BinaryLane.'
+            : 'No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.',
           { cause: err }
         )
       }

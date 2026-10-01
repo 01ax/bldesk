@@ -212,7 +212,7 @@ export function diskChoices(size: SizeLike, image?: ImageLike, keep?: number): n
 }
 
 /**
- * Every monthly component of a configured server, ex-GST.
+ * Every monthly component of a configured server, before tax.
  *
  * Extracted from the create form so Change Plan bills the same way - Change Plan
  * previously showed `planMonthlyPrice` alone, ignoring addresses, retention and
@@ -227,7 +227,7 @@ export function diskChoices(size: SizeLike, image?: ImageLike, keep?: number): n
  *   offsite   the per-GB rate on the raw selected count - inclusions are not
  *             deducted here, unlike on-site - plus a one-off per-GB surcharge
  *             for the first enabled frequency in daily, weekly, monthly order.
- *             Both quirks are the web panel's, verified against its source.
+ *             Both quirks match what mPanel charges customers. Check mPanel's price before changing either.
  *   transfer  charged per GB above the plan's included allowance.
  *
  * None of the three currently moves a number on the 21 offered sizes: every one
@@ -261,7 +261,7 @@ export interface ConfiguredCostInput {
   offsiteBackups: boolean
   /** Total monthly transfer in TB. Defaults to the plan's included allowance. */
   transferTb?: number
-  /** Monthly ex-GST cost of the selected licences, if any. */
+  /** Monthly cost of the selected licences before tax, if any. */
   licencesMonthly?: number
 }
 

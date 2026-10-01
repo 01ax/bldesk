@@ -365,11 +365,15 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
               className="px-2 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded focus:outline-none"
             >
               <option value="">choose a source…</option>
-              {scoped.map((s) => (
-                <option key={s.id} value={s.id} disabled={rulesByServer.get(s.id) === null}>
-                  {s.name} ({rulesByServer.get(s.id) === null ? 'unreadable' : `${(rulesByServer.get(s.id) ?? []).length} rules`})
-                </option>
-              ))}
+              {scoped.map((s) => {
+                // undefined = the fleet read has not answered yet; null = it answered and this server could not be read.
+                const r = rulesByServer.get(s.id)
+                return (
+                  <option key={s.id} value={s.id} disabled={r == null}>
+                    {s.name} ({r === null ? 'unreadable' : r === undefined ? 'loading' : `${r.length} rules`})
+                  </option>
+                )
+              })}
             </select>
             <span className="text-[#6c757d]">to:</span>
             <button onClick={() => setTargetIds(new Set(scoped.filter((s) => s.id !== sourceId && readable(s.id)).map((s) => s.id)))} className="underline text-[#017cb6]">
@@ -385,12 +389,13 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
               .map((s) => (
                 <label
                   key={s.id}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded border ${readable(s.id) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded border ${readable(s.id) ? 'cursor-pointer' : 'cursor-not-allowed'} ${
                     targets.includes(s) ? 'border-[#017cb6] bg-[#017cb6]/10' : 'border-[#ced4da] dark:border-[#373b3e]'
                   }`}
                 >
-                  <input type="checkbox" checked={targets.includes(s)} disabled={!readable(s.id)} onChange={() => toggleTarget(s.id)} />
-                  <span className="font-mono">{s.name}</span>
+                  <input type="checkbox" className={readable(s.id) ? '' : 'opacity-60'} checked={targets.includes(s)} disabled={!readable(s.id)} onChange={() => toggleTarget(s.id)} />
+                  <span className={`font-mono ${readable(s.id) ? '' : 'opacity-60'}`}>{s.name}</span>
+                  {/* Not dimmed with the rest: it is the only explanation for the disabled box. */}
                   {rulesByServer.get(s.id) === null && <span className="text-[#6c757d]">unreadable</span>}
                 </label>
               ))}
@@ -465,7 +470,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                       <span className="font-semibold">{s.name}</span>
                     </button>
                     <div className="text-[10px] text-[#6c757d] font-mono pl-3.5">
-                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : `${rules?.length ?? 0} rule${(rules?.length ?? 0) === 1 ? '' : 's'}`}
+                      {primaryIpv4(s) ?? '—'} · {rules === null ? 'unreadable' : rules === undefined ? 'loading' : `${rules.length} rule${rules.length === 1 ? '' : 's'}`}
                     </div>
                     <div className="flex flex-wrap items-center gap-1 pl-3.5 mt-1">
                       {tagsOf(tags, s.id).map((t) => (

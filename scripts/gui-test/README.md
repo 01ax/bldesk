@@ -81,4 +81,6 @@ Steps 1 to 5 still apply, with these differences:
 - `./gradlew assembleDebug` fails with "SDK location not found" unless `ANDROID_HOME` is set or `android/local.properties` exists (`sdk.dir=<path to the Android SDK>`; the file is git-ignored).
 - The phone locks after its screen timeout and the test stops. Turn on Developer options > Stay awake (or use a longer timeout), and keep the phone unlocked for adb.
 - A debug build with the normal application id (`applicationId` in `android/app/build.gradle`) cannot be installed over a release-signed BLDesk, and uninstalling that one wipes its data. Give the throwaway build a different `applicationId` and the two install side by side.
-- If `adb devices` does not list the phone at all, change the phone's USB "controlled by" setting.
+- If `adb devices` does not list the phone at all, change the phone's USB "controlled by" setting, and accept the "Allow USB debugging" prompt on the phone.
+- With an emulator and a phone both attached, add `-s <serial>` (from `adb devices`) to every `adb` command, `adb install` included.
+- When you finish, clean up the phone as well as the worktree: `adb uninstall <the throwaway applicationId>` and `adb reverse --remove tcp:8445`.

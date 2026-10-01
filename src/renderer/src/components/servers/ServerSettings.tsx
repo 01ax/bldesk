@@ -312,7 +312,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     await executeAction(
       'Change Partner Server',
       { type: 'change_partner', partner_server_id: partnerId },
-      { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : undefined }] }
+      { summary: 'BinaryLane keeps HA partners on separate physical hypervisors.', changes: [{ label: 'HA partner', from, to: partnerServer ? `${partnerServer.name} (#${partnerId})` : partnerId ? `#${partnerId}` : undefined }] }
     )
   }
 

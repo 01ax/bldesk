@@ -108,7 +108,7 @@ Branch: `fix/android-no-replay-after-transport-error`. No help page changed, no 
 
 | String | Rendered by | Result |
 | --- | --- | --- |
-| “No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.” | Thrown as a `TypeError` by `executeFetch` in `client.ts` when the native `CapacitorHttp` call fails for any reason other than the plugin being unimplemented (a lost response, a timeout, a response that cannot be read). Callers show `err.message`: the create-server dialog's red line (`setErrorMsg(err.message)`) and History's failed detail, or an `alert()` where the caller still uses one | New. Before, the request was sent a second time through `fetch` and the second answer was shown as if it were the first. |
+| “No response from BinaryLane. If this request changed anything, it may or may not have gone through; check before trying again.” | Thrown as a `TypeError` by `executeFetch` in `client.ts` when the native `CapacitorHttp` call fails for any reason other than the plugin being unimplemented (a lost response, a timeout, a response that cannot be read). Callers show `err.message`: the create-server dialog's red line (`setErrorMsg(err.message)`) and History's failed detail, or an `alert()` where the caller still uses one | New. Before, the request was sent a second time through `fetch` and the second answer was shown as if it were the first. A GET or HEAD, which cannot have changed anything, throws the shorter “No response from BinaryLane.” without the second sentence (a failed read, such as the firewall tab's error card, shows this). |
 
 ### Checks performed
 
@@ -226,7 +226,7 @@ Branch: `security/honest-storage`.
 | Vault title "API Token Vault" (was "Hardware Encrypted Vault") | `AuthModal.tsx` header | The old title was untrue for the keyring-less and pre-fix fallback cases. |
 | Template capture note: "User data is copied exactly as it is on the server, including any passwords, keys or tokens in it: remove those before saving or sharing the template." | `ServerDetails.tsx` Cloud-init tab, above "Save server as template" | `templateFromServer` copies `userData` verbatim into `spec.cloudInit`; nothing strips secrets from it. |
 
-## Prices use the account's tax code (30 September 2026, after 1.0.62-beta.9)
+## Prices use the account's tax code (1 October 2026, after 1.0.62-beta.9)
 
 Branch: `fix/price-tax-from-account-tax-code`. No new runtime dependencies. No help page or `FEATURES.md` sentence changes: none of them states a rate, a tax name, or that a total includes tax.
 

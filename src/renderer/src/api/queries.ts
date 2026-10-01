@@ -196,8 +196,10 @@ export function useBalance(client: BinaryLaneClient | null) {
     queryKey: ['balance'],
     queryFn: async () => {
       if (!client) return null
-      const { data, error } = await client.GET('/v2/customers/my/balance')
-      if (error) throw new Error(JSON.stringify(error))
+      const { data, error, response } = await client.GET('/v2/customers/my/balance')
+      // A failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too: a failed refresh must
+      // keep the last balance on screen, not replace it with nothing.
+      if (error || !response.ok) throw new Error(error ? describeApiError(error) : `HTTP ${response.status}`)
       return data?.balance || null
     },
     enabled: !!client,
