@@ -43,7 +43,8 @@ function statusLine(action: TrackedAction): string {
 }
 
 export function ActionToasts() {
-  const { tracked, dismiss } = useTrackedActions()
+  const { tracked: all, dismiss } = useTrackedActions()
+  const tracked = all.filter((a) => !a.dismissed)
   if (tracked.length === 0) return null
 
   return (

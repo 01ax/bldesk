@@ -11,7 +11,8 @@
  * Rules:
  *  1. No window.confirm / confirm( / alert-as-confirm outside ConfirmContext.
  *  2. One dialog shell: `createPortal(` only inside components/ui/Modal.tsx.
- *     Every dialog is a <Modal>; confirmations are useConfirm() on top.
+ *     Every dialog is a <Modal>; confirmations are useConfirm() on top. A
+ *     hand-built `fixed inset-0` dimmed overlay is the same mistake and fails too.
  *  3. Every mutation call (client.POST/PUT/DELETE/PATCH, .mutate, .mutateAsync)
  *     must have confirmAction()/recordChange() earlier in the same handler, or
  *     `// history: n/a — <reason>` on the line above. Transport/shim files are
@@ -47,6 +48,15 @@ const MUTATION_EXCEPTIONS = {
 
 const SHARED_DIALOG = 'context/ConfirmContext.tsx'
 const MODAL_SHELL = 'components/ui/Modal.tsx'
+
+// Full-screen overlays that are not dialogs, so they are not the Modal shell, with why. A dialog is never added here: it is
+// a <Modal>.
+const OVERLAY_EXCEPTIONS = {
+  'components/palette/CommandPalette.tsx': 'the command palette, a search box rather than a dialog',
+  'components/layout/Sidebar.tsx': 'the phone navigation drawer, which is navigation rather than a dialog',
+  // A dialog, and the only one left (#186): #249 is changing the Take Backup dialog, and converting it first would conflict. It moves to <Modal> once that lands.
+  'components/backups/BackupManager.tsx': 'the Take Backup dialog, until it moves to <Modal> after #249'
+}
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -86,8 +96,20 @@ for (const file of walk(SRC)) {
   if (rel !== MODAL_SHELL && /createPortal\s*\(/.test(codeOnly.join('\n'))) {
     failures.push(`${rel}: createPortal outside the shared shell — render a <Modal> from components/ui/Modal.tsx instead (title, icon, footer, size, as="form"). Mutations still go through useConfirm().`)
   }
-  if (rel !== MODAL_SHELL && rel !== SHARED_DIALOG && /fixed inset-0[^"'`]*(bg-black\/|backdrop)/.test(src) && /role="dialog"|aria-modal/.test(src)) {
-    failures.push(`${rel}: hand-rolled modal overlay — use <Modal> from components/ui/Modal.tsx.`)
+  //    A full-screen dimmed overlay is a dialog that skipped the shell, whether or not it says
+  //    role="dialog": it would have no focus trap, no Escape, no backdrop handling. Read per class
+  //    string, so the order of the classes and a string that spans lines do not matter.
+  if (rel !== MODAL_SHELL && rel !== SHARED_DIALOG && !(rel in OVERLAY_EXCEPTIONS)) {
+    const isOverlay = (cls) =>
+      /(^|[\s"'`{])fixed(?=[\s"'`}]|$)/.test(cls) &&
+      (/\binset-0\b/.test(cls) || (/\binset-x-0\b/.test(cls) && /\binset-y-0\b/.test(cls))) &&
+      /\bbg-[a-z]+(?:-\d+)?\/\d+|\bbackdrop-/.test(cls)
+    for (const m of stripped.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{'([^']*)'\}|\{"([^"]*)"\})/g)) {
+      if (isOverlay(m[1] ?? m[2] ?? m[3] ?? m[4] ?? '')) {
+        const line = stripped.slice(0, m.index).split('\n').length
+        failures.push(`${rel}:${line}: hand-rolled modal overlay — render a <Modal> from components/ui/Modal.tsx instead (title, icon, footer, size, as="form"). It brings the focus trap, Escape and backdrop behaviour. A full-screen overlay that is not a dialog goes in OVERLAY_EXCEPTIONS with a reason.`)
+      }
+    }
   }
 
   // 3. Every mutation call must be confirmed or recorded in the handler that

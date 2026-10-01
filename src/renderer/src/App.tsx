@@ -127,7 +127,8 @@ function MainDashboard() {
   const backRef = React.useRef<() => boolean>(() => false)
   backRef.current = () => {
     if (isPaletteOpen) { setIsPaletteOpen(false); return true }
-    if (document.querySelector('[role="dialog"]')) {
+    // Not a dialog that has to be answered (no Escape closes it), and not the vault while there is no account to go back to.
+    if (document.querySelector('[role="dialog"][data-dismissible="true"]') && !(isAuthOpen && profiles.length === 0)) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       return true
     }

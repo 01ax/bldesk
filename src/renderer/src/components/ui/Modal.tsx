@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, type LucideIcon } from 'lucide-react'
 
@@ -12,14 +12,40 @@ import { X, type LucideIcon } from 'lucide-react'
  * Dialogs that *change* something still go through `useConfirm()`; this is
  * the shell underneath it. The mutation guard fails any `createPortal` outside
  * this file, so a new dialog has to be a `<Modal>` (AGENTS.md rule 2).
+ *
+ * The shell also owns the keyboard while it is open: focus moves into the
+ * dialog, Tab and Shift+Tab stay inside it, a held Enter key does not repeat,
+ * and focus goes back to what opened it. Where dialogs are stacked, only the
+ * top one does this.
  */
+
+/** The dialogs that are open, oldest first. */
+const openModals: symbol[] = []
+
+/** Whether any dialog is open, for things that must not start while one is (the command palette). */
+export function isModalOpen(): boolean {
+  return openModals.length > 0
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+// Where a dialog's focus goes first: a text field if it has one (a select or a checkbox first would take typing as a
+// choice), then any field.
+const TEXT_FIELDS = 'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea:not([disabled])'
+const FIELDS = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
+
+const focusablesIn = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0)
 
 export interface ModalProps {
   title: React.ReactNode
   icon?: LucideIcon
   /** Tailwind classes for the icon and title, e.g. a rose tone for danger. */
   headTone?: string
-  onClose: () => void
+  /**
+   * Called for Escape, the backdrop and the close button. Leave it out for a dialog that has to be answered: it then has
+   * no close button, and Escape and the backdrop do nothing.
+   */
+  onClose?: () => void
   /** Panel width. */
   size?: 'sm' | 'md' | 'lg' | 'xl'
   /** Centre (default) or hang from the top, which suits tall forms. */
@@ -65,16 +91,84 @@ export const Modal: React.FC<ModalProps> = ({
   labelledBy = 'modal-title',
   children
 }) => {
+  const id = useRef<symbol>(Symbol('modal')).current
+  // The key listeners are added once, when the dialog mounts, so that an older dialog's listener always runs before a
+  // newer one's. Re-adding them on each render (an inline onClose is a new function every time) moved a listener to the
+  // end of the line, and then Escape could be heard by the dialog beneath after the one on top had closed.
+  const latest = useRef({ onClose, busy })
+  latest.current = { onClose, busy }
+  const panelRef = useRef<HTMLElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  // Read while rendering: by the time an effect runs, an autofocused field inside the dialog has already taken focus.
+  const opener = useRef<Element | null | undefined>(undefined)
+  if (opener.current === undefined) opener.current = document.activeElement
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) {
+    openModals.push(id)
+    const panel = panelRef.current
+
+    // Take focus into the dialog, unless something in it has already asked for it (a field with autoFocus, the confirm
+    // button). A touch screen gets the panel itself, so opening a form does not raise the on-screen keyboard.
+    if (panel && !panel.contains(document.activeElement)) {
+      const touch = window.matchMedia?.('(pointer: coarse)').matches
+      const visible = (el: HTMLElement) => el.getClientRects().length > 0
+      const inBody = (selector: string) => Array.from(bodyRef.current?.querySelectorAll<HTMLElement>(selector) ?? []).find(visible)
+      const field = touch ? undefined : (inBody(TEXT_FIELDS) ?? inBody(FIELDS))
+      ;(field ?? (touch ? undefined : bodyRef.current && focusablesIn(bodyRef.current)[0]) ?? panel).focus()
+    }
+
+    const onKeyCapture = (e: KeyboardEvent) => {
+      if (!panel || openModals[openModals.length - 1] !== id) return
+      // A held Enter repeats. The one that opened a dialog would otherwise land on its focused confirm button, and one
+      // held on a side action would run it again and again. A text area keeps its repeats: they are new lines.
+      if (e.key === 'Enter' && e.repeat && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault()
-        onClose()
+        e.stopPropagation()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = focusablesIn(panel)
+      if (items.length === 0) {
+        e.preventDefault()
+        panel.focus()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!panel.contains(active)) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+      } else if (e.shiftKey && (active === first || active === panel)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
       }
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose, busy])
+    document.addEventListener('keydown', onKeyCapture, true)
+
+    const onEscape = (e: KeyboardEvent) => {
+      // Escape closes the dialog on top, not the ones beneath it, and not one that something else has already answered.
+      if (e.key !== 'Escape' || e.defaultPrevented || openModals[openModals.length - 1] !== id) return
+      const { onClose: close, busy: isBusy } = latest.current
+      if (!close || isBusy) return
+      e.preventDefault()
+      close()
+    }
+    document.addEventListener('keydown', onEscape)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyCapture, true)
+      document.removeEventListener('keydown', onEscape)
+      openModals.splice(openModals.indexOf(id), 1)
+      // Give focus back to what opened the dialog, unless it has gone or focus has since been put somewhere on purpose.
+      const back = opener.current
+      const now = document.activeElement
+      if (back instanceof HTMLElement && back.isConnected && (!now || now === document.body || panel?.contains(now))) back.focus()
+    }
+  }, [])
 
   const Panel: any = as
   const panelProps = as === 'form' ? { onSubmit } : {}
@@ -87,16 +181,20 @@ export const Modal: React.FC<ModalProps> = ({
       // the drag region and window controls stay reachable.
       style={{ zIndex: z, paddingTop: 'calc(2.75rem + max(1rem, env(safe-area-inset-top, 0px)))' }}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose()
+        if (e.target === e.currentTarget && !busy) onClose?.()
       }}
     >
       <Panel
         {...panelProps}
+        ref={panelRef}
+        tabIndex={-1}
         onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
-        className={`w-full ${WIDTH[size]} max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden`}
+        className={`w-full ${WIDTH[size]} max-h-full flex flex-col bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden outline-none`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
+        // Whether Escape (and so the Android back button) can close it: a dialog that has to be answered cannot.
+        data-dismissible={onClose ? 'true' : 'false'}
       >
         <div className="flex-shrink-0 flex items-start justify-between gap-3 p-4 border-b border-[#ced4da] dark:border-[#373b3e]">
           <div className={`flex items-center gap-2 min-w-0 ${headTone}`}>
@@ -107,19 +205,23 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {headerRight}
-            <button
-              type="button"
-              onClick={() => !busy && onClose()}
-              disabled={busy}
-              className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition disabled:opacity-40"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={() => !busy && onClose()}
+                disabled={busy}
+                className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white transition disabled:opacity-40"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto select-text">{children}</div>
+        <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto select-text">
+          {children}
+        </div>
 
         {footer && <div className="flex-shrink-0 border-t border-[#ced4da] dark:border-[#373b3e]">{footer}</div>}
       </Panel>

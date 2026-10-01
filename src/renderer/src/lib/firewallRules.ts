@@ -1,0 +1,108 @@
+// What a firewall rule written to BinaryLane must contain, and how a rule is placed in a list. No imports, so it can be
+// tested on its own (scripts/test-firewall-rules.mjs).
+
+export interface FirewallRuleLike {
+  action?: string | null
+  protocol?: string | null
+  source_addresses?: string[] | null
+  destination_addresses?: string[] | null
+  destination_ports?: string[] | null
+  description?: string | null
+}
+
+/** "1 rule", "3 rules". */
+export function ruleCount(n: number): string {
+  return `${n} rule${n === 1 ? '' : 's'}`
+}
+
+/**
+ * The destination sent for a rule that names none. The API reference requires at least one destination address on every
+ * rule, and the firewall already belongs to one server, so "any" is the only value that adds no condition of its own.
+ */
+export const ANY_ADDRESS = '0.0.0.0/0'
+
+/** The rule as it is written: with the destination the reference requires. A rule that already has one is returned as it is. */
+export function toRuleRequest<T extends FirewallRuleLike>(rule: T): T & { destination_addresses: string[] } {
+  if (Array.isArray(rule.destination_addresses) && rule.destination_addresses.length > 0) return rule as T & { destination_addresses: string[] }
+  return { ...rule, destination_addresses: [ANY_ADDRESS] }
+}
+
+const ACTIONS = ['accept', 'drop']
+const PROTOCOLS = ['all', 'icmp', 'tcp', 'udp']
+/** The reference caps a rule's description at this many characters. */
+export const MAX_DESCRIPTION = 250
+
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+
+/** An IPv4 address or a range in IPv4 CIDR notation, which is all the reference allows for a rule's addresses. */
+export function isIpv4OrRange(value: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(value.trim())
+  if (!m) return false
+  return m.slice(1, 5).every((o) => Number(o) <= 255) && (m[5] === undefined || Number(m[5]) <= 32)
+}
+
+/**
+ * Check a pasted or uploaded rule list against the API reference (`AdvancedFirewallRuleRequest`) and return the rules
+ * as they will be written: only the fields the reference defines, with a destination on every rule. The first rule that
+ * cannot be written is named, so nothing is sent for a list the API would refuse.
+ */
+export function readImportedRules(parsed: unknown): { rules: Array<FirewallRuleLike & { destination_addresses: string[] }>; error?: undefined } | { rules?: undefined; error: string } {
+  if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
+  const rules: Array<FirewallRuleLike & { destination_addresses: string[] }> = []
+  for (let i = 0; i < parsed.length; i++) {
+    const r = parsed[i] as Record<string, unknown> | null
+    const at = `Rule ${i + 1}`
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return { error: `${at} is not a rule object.` }
+    if (typeof r.action !== 'string' || !ACTIONS.includes(r.action)) return { error: `${at}: "action" must be "accept" or "drop".` }
+    if (typeof r.protocol !== 'string' || !PROTOCOLS.includes(r.protocol)) return { error: `${at}: "protocol" must be "all", "icmp", "tcp" or "udp".` }
+    if (!isStrings(r.source_addresses) || r.source_addresses.length === 0) return { error: `${at}: "source_addresses" must list at least one address.` }
+    if (!r.source_addresses.every(isIpv4OrRange)) return { error: `${at}: "source_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
+    if (r.destination_addresses != null && !isStrings(r.destination_addresses)) return { error: `${at}: "destination_addresses" must be a list of addresses.` }
+    if (isStrings(r.destination_addresses) && !r.destination_addresses.every(isIpv4OrRange)) return { error: `${at}: "destination_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
+    if (r.destination_ports != null && (!isStrings(r.destination_ports) || r.destination_ports.some((p) => !p.trim()))) return { error: `${at}: "destination_ports" must be a list of ports, as text.` }
+    if (r.description != null && typeof r.description !== 'string') return { error: `${at}: "description" must be text.` }
+    if (typeof r.description === 'string' && r.description.length > MAX_DESCRIPTION) return { error: `${at}: "description" is ${r.description.length} characters; the most BinaryLane accepts is ${MAX_DESCRIPTION}.` }
+    rules.push(
+      toRuleRequest({
+        action: r.action,
+        protocol: r.protocol,
+        source_addresses: r.source_addresses,
+        destination_addresses: r.destination_addresses as string[] | null | undefined,
+        ...(r.destination_ports != null ? { destination_ports: r.destination_ports } : {}),
+        ...(r.description != null ? { description: r.description } : {})
+      })
+    )
+  }
+  return { rules }
+}
+
+/** Whether `wider` names every address in `narrower`: it lists the any-address, or lists each of them. `blankIsAny` reads an empty list as any. */
+function coversAddresses(wider: string[] | null | undefined, narrower: string[] | null | undefined, blankIsAny: boolean): boolean {
+  if (!wider || wider.length === 0) return blankIsAny
+  if (wider.includes(ANY_ADDRESS)) return true
+  return !!narrower && narrower.length > 0 && narrower.every((a) => wider.includes(a))
+}
+
+/**
+ * Whether the drop rule `drop` would swallow `rule` if it came first: it drops the rule's protocol (or every protocol),
+ * its ports (or all ports), its sources and its destinations, or more. Addresses and ports are compared as written, so
+ * a range that only contains another is not recognised, and the rule is not moved ahead of it.
+ */
+export function swallows(drop: FirewallRuleLike, rule: FirewallRuleLike): boolean {
+  if (drop.action !== 'drop') return false
+  if (drop.protocol !== 'all' && drop.protocol !== rule.protocol) return false
+  const dropPorts = drop.destination_ports ?? []
+  const rulePorts = rule.destination_ports ?? []
+  if (dropPorts.length > 0 && (rulePorts.length === 0 || !rulePorts.every((p) => dropPorts.includes(p)))) return false
+  return coversAddresses(drop.source_addresses, rule.source_addresses, false) && coversAddresses(drop.destination_addresses, rule.destination_addresses, true)
+}
+
+/**
+ * The list with `rule` placed where it can match. Rules are evaluated first to last, so it goes immediately ahead of the
+ * first drop that would swallow it, and last when nothing would. A drop that covers only some sources, such as a block
+ * on one address, is left in front of it, so the block still applies.
+ */
+export function insertRule<T extends FirewallRuleLike>(list: T[], rule: T): T[] {
+  const at = list.findIndex((existing) => swallows(existing, rule))
+  return at === -1 ? [...list, rule] : [...list.slice(0, at), rule, ...list.slice(at)]
+}

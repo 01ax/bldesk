@@ -7,6 +7,7 @@ import {
   useActionsAwaitingInteraction
 } from '../../api/queries'
 import { BinaryLaneClient } from '../../api/client'
+import { Modal } from '../ui/Modal'
 
 type UserInteractionType = components['schemas']['UserInteractionType']
 type ServerResponse = components['schemas']['Server']
@@ -122,84 +123,17 @@ export function ActionInteractionPrompt({ client, profileId, servers = [] }: Act
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm animate-in fade-in duration-100">
-      <div className="w-full max-w-lg bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-2xl overflow-hidden flex flex-col text-xs">
-        {/* Header */}
-        <div
-          className={`flex items-center gap-2 px-5 py-4 border-b ${
-            isDanger
-              ? 'bg-red-500/10 border-red-500/40'
-              : 'bg-[#f1f1f1] dark:bg-[#262a2e] border-[#ced4da] dark:border-[#373b3e]'
-          }`}
-        >
-          {isDanger ? (
-            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          ) : (
-            <HelpCircle className="w-4 h-4 text-[#017cb6] flex-shrink-0" />
-          )}
-          <h3 className="font-bold text-sm text-[#212529] dark:text-white">
-            {copy?.heading || 'BinaryLane needs an answer to continue'}
-          </h3>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {/* Which machine this is about */}
-          <div className="flex items-center gap-2 text-[#495057] dark:text-[#ced4da]">
-            <ServerIcon className="w-3.5 h-3.5 text-[#6c757d] flex-shrink-0" />
-            <span className="font-semibold">
-              {server?.name || (current.resource_id ? `Resource #${current.resource_id}` : 'Your account')}
-            </span>
-            <span className="text-[#6c757d]">
-              · {current.title} · action #{current.id}
-            </span>
-          </div>
-
-          {/* BinaryLane's own description of this specific action */}
-          {current.reason && (
-            <div className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-3 text-[#212529] dark:text-white">
-              {current.reason}
-            </div>
-          )}
-
-          <p className="text-[#495057] dark:text-[#ced4da] leading-relaxed">
-            {copy
-              ? copy.explanation(current)
-              : 'This action is paused until you answer. BLDesk does not recognise this interaction type, so please check the BinaryLane control panel before answering.'}
-          </p>
-
-          <p className="font-semibold text-[#212529] dark:text-white">
-            {copy?.question || 'Proceed with this action?'}
-          </p>
-
-          {/* Deliberately not the app's usual #6c757d small-print grey: that is
-              2.8:1 on this panel, and the fact that nothing moves until someone
-              answers is the whole reason the modal is interrupting anyone. */}
-          <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
-            This action stays paused until it is answered — it will not continue on its own.
-          </p>
-
-          {outstanding.length > 1 && (
-            <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
-              {outstanding.length - 1} other action{outstanding.length > 2 ? 's are' : ' is'} also waiting.
-            </p>
-          )}
-
-          {error?.actionId === current.id && (
-            <div className="bg-red-500/10 border border-red-500/40 text-red-500 rounded p-2.5 flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>{error.message}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Both answers are submissions, so neither is a safe close — there is
-            deliberately no close button and no backdrop click-to-dismiss. The
-            watch is account-wide, though, so an action left paused in an earlier
-            session shows up here on launch; without a way to defer, the app
-            would be unusable until someone made a data-loss decision about a
-            server they may not have been thinking about. "Decide later" answers
-            nothing and lasts only for this session. */}
-        <div className="flex items-center gap-2 px-5 py-4 border-t border-[#ced4da] dark:border-[#373b3e] bg-[#f8f9fa] dark:bg-[#262a2e]">
+    /* Both answers are submissions, so neither is a safe close: the dialog is given no onClose, so it has no close button
+       and Escape and the backdrop do nothing. The watch is account-wide, though, so an action left paused in an earlier
+       session shows up here on launch; without a way to defer, the app would be unusable until someone made a data-loss
+       decision about a server they may not have been thinking about. "Decide later" answers nothing and lasts only for
+       this session. */
+    <Modal
+      title={copy?.heading || 'BinaryLane needs an answer to continue'}
+      icon={isDanger ? AlertTriangle : HelpCircle}
+      headTone={isDanger ? 'text-red-500' : undefined}
+      footer={
+        <div className="flex items-center gap-2 p-4">
           <button
             type="button"
             disabled={proceedMutation.isPending}
@@ -229,7 +163,57 @@ export function ActionInteractionPrompt({ client, profileId, servers = [] }: Act
             <span>{copy?.confirmLabel || 'Yes, continue'}</span>
           </button>
         </div>
+      }
+    >
+      <div className="p-5 space-y-4 text-xs">
+        {/* Which machine this is about */}
+        <div className="flex items-center gap-2 text-[#495057] dark:text-[#ced4da]">
+          <ServerIcon className="w-3.5 h-3.5 text-[#6c757d] flex-shrink-0" />
+          <span className="font-semibold">
+            {server?.name || (current.resource_id ? `Resource #${current.resource_id}` : 'Your account')}
+          </span>
+          <span className="text-[#6c757d]">
+            · {current.title} · action #{current.id}
+          </span>
+        </div>
+
+        {/* BinaryLane's own description of this specific action */}
+        {current.reason && (
+          <div className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded p-3 text-[#212529] dark:text-white">
+            {current.reason}
+          </div>
+        )}
+
+        <p className="text-[#495057] dark:text-[#ced4da] leading-relaxed">
+          {copy
+            ? copy.explanation(current)
+            : 'This action is paused until you answer. BLDesk does not recognise this interaction type, so please check the BinaryLane control panel before answering.'}
+        </p>
+
+        <p className="font-semibold text-[#212529] dark:text-white">
+          {copy?.question || 'Proceed with this action?'}
+        </p>
+
+        {/* Deliberately not the app's usual #6c757d small-print grey: that is
+            2.8:1 on this panel, and the fact that nothing moves until someone
+            answers is the whole reason the modal is interrupting anyone. */}
+        <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
+          This action stays paused until it is answered — it will not continue on its own.
+        </p>
+
+        {outstanding.length > 1 && (
+          <p className="text-[11px] text-[#495057] dark:text-[#adb5bd]">
+            {outstanding.length - 1} other action{outstanding.length > 2 ? 's are' : ' is'} also waiting.
+          </p>
+        )}
+
+        {error?.actionId === current.id && (
+          <div className="bg-red-500/10 border border-red-500/40 text-red-500 rounded p-2.5 flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span>{error.message}</span>
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   )
 }

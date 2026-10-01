@@ -211,3 +211,44 @@ test('reset clears new backups and an old pending action cannot leak into the re
   assert.equal((await backups()).length, 4)
   assert.ok((await backups()).every((b) => !['Added', 'Pending before reset'].includes(b.name)))
 })
+
+test('firewall writes are checked against the rule schema, and a write lands when its action completes', async () => {
+  const write = (rules, status = 200) => request('/v2/servers/8100/actions', { type: 'change_advanced_firewall_rules', firewall_rules: rules }, 'POST', status)
+  const rule = { action: 'accept', protocol: 'tcp', source_addresses: ['0.0.0.0/0'], destination_addresses: ['0.0.0.0/0'], destination_ports: ['22'] }
+  const { destination_addresses, ...noDestination } = rule
+  assert.match((await write([noDestination], 400)).message, /destination_addresses/)
+  assert.match((await write([{ ...rule, destination_addresses: [] }], 400)).message, /destination_addresses/)
+  assert.match((await write([{ ...rule, action: 'allow' }], 400)).message, /action/)
+  const before = (await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules
+
+  // The change is applied when the action completes, not when it is queued.
+  await request('/__mock/config', { actionMs: 60 })
+  const queued = await write([rule])
+  assert.deepEqual((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules, before)
+  await sleep(100)
+  assert.deepEqual((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules, [rule])
+  assert.equal((await request(`/v2/actions/${queued.action.id}`)).action.status, 'completed')
+  assert.deepEqual((await write([], 200)).action.type, 'change_advanced_firewall_rules')
+})
+
+test('an action can stop and ask a question, and is answered at /proceed', async () => {
+  await request('/__mock/config', { actionMs: 15, interaction: 'continue-after-ping-failure' })
+  const { action } = await request('/v2/servers/8100/actions', { type: 'reboot' }, 'POST')
+  await sleep(60)
+  const waiting = (await request(`/v2/actions/${action.id}`)).action
+  assert.equal(waiting.status, 'in-progress')
+  assert.equal(waiting.user_interaction_required.interaction_type, 'continue-after-ping-failure')
+  // Other actions are not asked anything.
+  const rename = await request('/v2/servers/8100/actions', { type: 'rename', name: 'x' }, 'POST')
+  await sleep(60)
+  assert.equal((await request(`/v2/actions/${rename.action.id}`)).action.user_interaction_required, null)
+  await request(`/v2/actions/${action.id}/proceed`, { proceed: true }, 'POST', 204)
+  await sleep(500)
+  const done = (await request(`/v2/actions/${action.id}`)).action
+  assert.equal(done.status, 'completed')
+  assert.equal(done.user_interaction_required, null)
+  const declined = await request('/v2/servers/8100/actions', { type: 'shutdown' }, 'POST')
+  await request(`/v2/actions/${declined.action.id}/proceed`, { proceed: false }, 'POST', 204)
+  await sleep(500)
+  assert.equal((await request(`/v2/actions/${declined.action.id}`)).action.status, 'errored')
+})

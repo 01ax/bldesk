@@ -159,7 +159,7 @@ function reset() {
     mkServer({ id: 9009, name: 'multi-ip-v6-01', size_slug: 'std-4vcpu', region: 'mel', image: 'almalinux-9', vpc_id: 903, ip: '192.0.2.98', extra_ips: ['192.0.2.99', '192.0.2.100'], v6: true, failover: ['192.0.2.150'] }),
     mkServer({ id: 9010, name: 'cpanel-host-01', size_slug: 'std-6vcpu', region: 'syd', image: 'cpanel-whm-rocky-8', vpc_id: 901, ip: '203.0.113.101' })
   )
-  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0 }
+  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null }
   servers.forEach((s, index) => {
     const list = s.next_backup_window ? [
       ['temporary', 'Before database upgrade', 1], ['daily', 'Nightly production baseline', 2],
@@ -251,13 +251,14 @@ const softwareFor = (slug) => /windows/.test(slug) ? [mk('SoftwaresResponse', 's
 
 // ---------- actions ----------
 function newAction(type, server, body) {
-  const id = nextId++, a = { id, type, server_id: server?.id, body, startedAt: Date.now(), ms: cfg.actionMs, outcome: cfg.actionOutcome }
+  // `interaction` makes reboots, shutdowns and power cycles stop and ask a question (UserInteractionType) until it is answered at POST /v2/actions/{id}/proceed.
+  const id = nextId++, a = { id, type, server_id: server?.id, body, startedAt: Date.now(), ms: cfg.actionMs, outcome: cfg.actionOutcome, waiting: cfg.interaction && ['reboot', 'shutdown', 'power_cycle'].includes(type) ? cfg.interaction : null }
   actions.set(id, a)
   setTimeout(() => applyAction(a, server), a.ms)
   return id
 }
 function applyAction(a, server) {
-  if (a.outcome !== 'completed' || !server || !servers.includes(server)) return
+  if (a.waiting || a.outcome !== 'completed' || !server || !servers.includes(server)) return
   const b = a.body || {}
   if (['power_on', 'reboot', 'power_cycle', 'boot'].includes(a.type)) server.status = 'active'
   if (['shutdown', 'power_off'].includes(a.type)) server.status = 'off'
@@ -276,13 +277,13 @@ function applyAction(a, server) {
   if (a.type === 'change_advanced_firewall_rules') fwOverride.set(server.id, b.firewall_rules || [])
 }
 function actionView(a) {
-  const done = Date.now() - a.startedAt >= a.ms, server = servers.find((s) => s.id === a.server_id)
+  const done = !a.waiting && Date.now() - a.startedAt >= a.ms, server = servers.find((s) => s.id === a.server_id)
   const status = !done ? 'in-progress' : a.outcome === 'errored' ? 'errored' : 'completed'
   const base = mk('ActionsResponse', 'actions', {
     id: a.id, status, type: a.type, started_at: new Date(a.startedAt).toISOString(), completed_at: done ? new Date(a.startedAt + a.ms).toISOString() : null,
     resource_type: 'server', resource_id: a.server_id ?? 0, region: server?.region, region_slug: server?.region?.slug, title: a.type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()),
     reason: 'Your request is being processed', progress: { current_step: done ? '' : 'Working', current_step_detail: null, percent_complete: done ? 100 : Math.min(90, Math.round((Date.now() - a.startedAt) / a.ms * 100)), completed_steps: done ? ['Working'] : [] },
-    error_message: done && a.outcome === 'errored' ? a.error || 'The simulated action failed (mock server).' : null, result_data: null, blocking_invoice_id: null, user_interaction_required: null
+    error_message: done && a.outcome === 'errored' ? a.error || 'The simulated action failed (mock server).' : null, result_data: null, blocking_invoice_id: null, user_interaction_required: a.waiting ? { interaction_type: a.waiting } : null
   })
   return base
 }
@@ -309,6 +310,13 @@ async function handleApi(req, res, u, body) {
     if (m === 'DELETE') { keys = keys.filter((x) => x !== k); return json(res, 204) }
   }
   if (m === 'GET' && p === '/v2/actions') return json(res, 200, page([...actions.values()].reverse().map(actionView), q, 'actions'))
+  if ((mt = p.match(/^\/v2\/actions\/(\d+)\/proceed$/)) && m === 'POST') {
+    const a = actions.get(+mt[1]); if (!a) return json(res, 404, { id: 'not_found', message: 'Action not found' })
+    // Answering lets the action carry on (true) or stops it (false); either way it settles shortly after.
+    a.waiting = null; a.startedAt = Date.now(); a.ms = 400; a.outcome = body?.proceed ? 'completed' : 'errored'; a.error = body?.proceed ? null : 'Stopped: the answer was no.'
+    setTimeout(() => applyAction(a, servers.find((s) => s.id === a.server_id)), a.ms)
+    return json(res, 204)
+  }
   if ((mt = p.match(/^\/v2\/actions\/(\d+)$/)) && m === 'GET') { const a = actions.get(+mt[1]); return a ? json(res, 200, { action: actionView(a) }) : json(res, 404, { id: 'not_found', message: 'Action not found' }) }
   if (m === 'GET' && p === '/v2/customers/my/balance') return json(res, 200, { balance: mk('BalanceResponse', 'balance', { available_credit: 2480, balance: 2480, unbilled_total: 684.2, charges: [] }) })
   if (m === 'GET' && p === '/v2/customers/my/invoices') return json(res, 200, page(invoices, q, 'invoices'))
@@ -381,6 +389,17 @@ async function handleApi(req, res, u, body) {
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })
+      if (body?.type === 'change_advanced_firewall_rules') {
+        // AdvancedFirewallRuleRequest requires action, protocol, source_addresses and destination_addresses, each address list with at least one entry.
+        const bad = (Array.isArray(body.firewall_rules) ? body.firewall_rules : [null]).map((r, i) => {
+          if (!r || typeof r !== 'object') return `firewall_rules[${i}] must be a rule.`
+          if (!['accept', 'drop'].includes(r.action)) return `firewall_rules[${i}].action must be accept or drop.`
+          if (!['all', 'icmp', 'tcp', 'udp'].includes(r.protocol)) return `firewall_rules[${i}].protocol must be all, icmp, tcp or udp.`
+          for (const f of ['source_addresses', 'destination_addresses']) if (!Array.isArray(r[f]) || r[f].length === 0) return `firewall_rules[${i}].${f} must have at least one address.`
+          return null
+        }).find(Boolean)
+        if (bad) return json(res, 400, { id: 'bad_request', message: bad })
+      }
       return json(res, 200, { action: actionView(actions.get(newAction(body?.type || 'unknown', s, body))) })
     }
     if (sub === '/advanced_firewall_rules') return json(res, 200, { firewall_rules: fwOverride.get(s.id) ?? firewall(s) })

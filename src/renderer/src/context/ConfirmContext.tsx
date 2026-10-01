@@ -176,7 +176,10 @@ function ConfirmDialog({ req, onSettle }: { req: ConfirmRequest; onSettle: (ok: 
       // a focused button, which keeps its own Enter: Cancel cancels, the side action runs.
       const dialog = primaryRef.current?.closest('[role="dialog"]')
       const onButton = e.target instanceof Element && !!dialog?.contains(e.target) && !!e.target.closest('button')
-      if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !onButton) {
+      // Only a key that starts in this dialog, or in nothing at all, answers it. One typed into something on top of it,
+      // such as the command palette, is not an answer, and neither is a held key repeating.
+      const elsewhere = e.target instanceof Element && e.target !== document.body && e.target !== document.documentElement && !dialog?.contains(e.target)
+      if (e.key === 'Enter' && !e.repeat && !elsewhere && !(e.target instanceof HTMLTextAreaElement) && !onButton) {
         e.preventDefault()
         finish(true)
       }

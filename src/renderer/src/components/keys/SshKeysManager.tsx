@@ -1,6 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, X, Pencil, RefreshCw, KeyRound } from 'lucide-react'
+import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, Pencil, RefreshCw, KeyRound } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
@@ -322,69 +322,70 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
 
       {/* Add Modal */}
       {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-safe bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-              <h2 className="text-base font-bold text-[#212529] dark:text-white">Add Public SSH Key</h2>
-              <button onClick={() => setIsAdding(false)} className="text-[#6c757d] hover:text-[#212529] dark:hover:text-white">
-                <X className="w-4 h-4" />
+        <Modal
+          title="Add Public SSH Key"
+          size="sm"
+          onClose={() => setIsAdding(false)}
+          busy={addKeyMutation.isPending}
+          as="form"
+          onSubmit={handleManualAdd}
+          footer={
+            <div className="flex justify-end gap-2 p-4">
+              <button
+                type="button"
+                onClick={() => setIsAdding(false)}
+                className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addKeyMutation.isPending}
+                className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
+              >
+                {addKeyMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Save SSH Key</span>
               </button>
             </div>
+          }
+        >
+          <div className="p-5 space-y-4">
 
-            <form onSubmit={handleManualAdd} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Key Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. MacBook Pro M3"
-                  value={keyName}
-                  onChange={(e) => setKeyName(e.target.value)}
-                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
-                  Public Key (ssh-ed25519 or ssh-rsa)
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5..."
-                  value={publicKey}
-                  onChange={(e) => setPublicKey(e.target.value)}
-                  className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white p-3 rounded font-mono focus:outline-none focus:border-[#017cb6]"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input type="checkbox" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
-                <span className="text-[#212529] dark:text-white">Select this SSH Key for all new Cloud Server Installations</span>
+            <div>
+              <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Key Name
               </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. MacBook Pro M3"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+              />
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAdding(false)}
-                  className="px-3 py-1.5 text-xs text-[#6c757d] hover:text-[#212529] dark:hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addKeyMutation.isPending}
-                  className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm"
-                >
-                  {addKeyMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Save SSH Key</span>
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
+                Public Key (ssh-ed25519 or ssh-rsa)
+              </label>
+              <textarea
+                required
+                rows={4}
+                placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5..."
+                value={publicKey}
+                onChange={(e) => setPublicKey(e.target.value)}
+                className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white p-3 rounded font-mono focus:outline-none focus:border-[#017cb6]"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
+              <span className="text-[#212529] dark:text-white">Select this SSH Key for all new Cloud Server Installations</span>
+            </label>
+
           </div>
-        </div>
+        </Modal>
       )}
 
       {generating && (
