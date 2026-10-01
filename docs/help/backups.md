@@ -31,6 +31,16 @@ Choosing a backup under “Replace Existing Image” replaces exactly that backu
 
 If the backup you chose is locked or attached, BLDesk does not claim it will be replaced: it shows no dialog, sends the request and shows BinaryLane's answer. Use Download on any image you need to keep before you take a backup that could replace it.
 
+BLDesk reads the server's backups again when you submit. If that read fails, it cannot tell whether a slot is full, or whether the backup you chose can still be replaced, so it asks anyway. For a slot, it names no backup, because it cannot tell which one would go, and the dialog says:
+
+“Couldn't read this server's backups, so BLDesk can't say which one would be replaced if no slot is free. A backup that is replaced will no longer be available.”
+
+For a backup you chose under “Replace Existing Image”, it says:
+
+“Couldn't read this server's backups, so BLDesk can't check whether the backup you chose can still be replaced. If it can, this backup replaces it and the replaced backup will no longer be available.”
+
+The row “Backup you chose” gives its name, ID, slot and date as the list on this page showed them. The button is red and History records the entry as destructive. Cancel sends nothing; confirming sends the request. When the list on this page cannot be read, it says “Couldn't read this server's backups.” with a Retry button, instead of “No Backups Found”.
+
 ## Worked example
 Suppose you want to restore example image before-upgrade, ID 123, to the selected server. Take another backup first if you may need its current state. Choose Restore on the intended image.
 

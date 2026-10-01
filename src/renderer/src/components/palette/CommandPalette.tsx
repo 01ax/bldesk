@@ -30,7 +30,7 @@ import {
 import { components } from '@shared/api/schema'
 import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useServerActionMutation, describeApiError } from '../../api/queries'
+import { useDomains, useServerActionMutation, describeApiError, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -205,7 +205,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
    * BinaryLane replaces the oldest temporary backup that is not locked or
    * attached. The palette only has each server's backup ids, so before the review
    * can be confirmed it reads the backups of every server that holds any (the read
-   * the Backups tab makes) and names the one that would go.
+   * the Backups tab makes), four at a time so a large selection is not a burst of
+   * requests, and names the one that would go.
    */
   const checkReplacements = async (targets: ServerResponse[]) => {
     if (!client) return
@@ -213,22 +214,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setChecking(true)
     setReplaceLines([])
     replaceMap.current = new Map()
-    const found = await Promise.all(
-      targets
-        .filter((s) => s.backup_ids?.length)
-        .map(async (s) => {
-          try {
-            const { data, error } = await client.GET('/v2/servers/{server_id}/backups', { params: { path: { server_id: s.id } } })
-            if (error || !data) throw new Error('no backup list')
-            const hit = replacedByOldest('temporary', undefined, data.backups, s.attached_backup?.id)
-            if (!hit) return null
-            const what = `${hit.backup.name ?? 'Backup'} (#${hit.backup.id}), ${describeBackup(hit.backup)}`
-            replaceMap.current.set(s.id, what)
-            return `${s.name}: ${what}`
-          } catch {
-            return `${s.name}: could not list its backups, so BLDesk cannot say which would be replaced`
-          }
-        })
+    const found = await mapLimitNullable(
+      targets.filter((s) => s.backup_ids?.length),
+      4,
+      async (s) => {
+        // The review was left while this one waited its turn: nothing is left to report to.
+        if (run !== checkRun.current) return null
+        try {
+          const { data, error } = await client.GET('/v2/servers/{server_id}/backups', { params: { path: { server_id: s.id } } })
+          if (error || !data) throw new Error('no backup list')
+          const hit = replacedByOldest('temporary', undefined, data.backups, s.attached_backup?.id)
+          if (!hit) return null
+          const what = `${hit.backup.name ?? 'Backup'} (#${hit.backup.id}), ${describeBackup(hit.backup)}`
+          replaceMap.current.set(s.id, what)
+          return `${s.name}: ${what}`
+        } catch {
+          return `${s.name}: could not list its backups, so BLDesk cannot say which would be replaced`
+        }
+      }
     )
     if (run !== checkRun.current) return
     setReplaceLines(found.filter((l): l is string => !!l))
