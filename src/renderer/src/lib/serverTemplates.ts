@@ -2,7 +2,7 @@ import { parse, stringify } from 'yaml'
 import type { components } from '@shared/api/schema'
 import { MAX_TEMPLATE_BYTES, TEMPLATE_KIND, templateSlug } from '@shared/templates'
 import type { FwRule } from './firewallMatrix'
-import { readTemplateRules } from './firewallRules'
+import { readTemplateRules, withoutIpv6 } from './firewallRules'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -426,13 +426,18 @@ export interface CreateServerPrefill {
 export function renderRules(rules: FwRule[] | undefined, values: Record<string, string>): FwRule[] {
   if (!rules) return []
   const r = (s: string) => renderCloudInit(s, values)
-  return rules.map((rule) => ({
-    ...rule,
-    source_addresses: rule.source_addresses.map(r),
-    destination_addresses: rule.destination_addresses.map(r),
-    destination_ports: rule.destination_ports ? rule.destination_ports.map(r) : rule.destination_ports,
-    description: rule.description ? r(rule.description) : rule.description
-  }))
+  // The firewall is IPv4 only: IPv6 addresses (`::/0` in templates saved before this was known) are left out, and so is a rule that was about nothing else.
+  return rules
+    .map((rule): FwRule | null =>
+      withoutIpv6<FwRule>({
+        ...rule,
+        source_addresses: rule.source_addresses.map(r),
+        destination_addresses: rule.destination_addresses.map(r),
+        destination_ports: rule.destination_ports ? rule.destination_ports.map(r) : rule.destination_ports,
+        description: rule.description ? r(rule.description) : rule.description
+      })
+    )
+    .filter((rule): rule is FwRule => rule !== null)
 }
 
 /** Everything the create form needs, with variables filled in. */

@@ -28,6 +28,7 @@ import type { BinaryLaneClient } from '../../api/client'
 import { useRegions, useSizes, useDistributionImages, useVpcs, useSshKeys } from '../../api/queries'
 import { Modal } from '../ui/Modal'
 import { useConfirm } from '../../context/ConfirmContext'
+import { isIpv6 } from '../../lib/firewallRules'
 import { CreateServerModal } from '../servers/CreateServerModal'
 import {
   TEMPLATE_KIND,
@@ -712,7 +713,7 @@ const TemplateEditor: React.FC<{
         <section>
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-xs font-bold text-[#212529] dark:text-white flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-[#017cb6]" />Firewall rules <span className="font-normal text-[#6c757d]">— first match wins; end with a drop or everything else is allowed</span></h4>
-            <button type="button" className={btn} onClick={() => spec({ firewallRules: [...rules, { action: 'accept', protocol: 'tcp', destination_ports: ['22'], source_addresses: ['0.0.0.0/0', '::/0'], destination_addresses: ['0.0.0.0/0', '::/0'], description: '' }] })}><Plus className="w-3 h-3" />Rule</button>
+            <button type="button" className={btn} onClick={() => spec({ firewallRules: [...rules, { action: 'accept', protocol: 'tcp', destination_ports: ['22'], source_addresses: ['0.0.0.0/0'], destination_addresses: ['0.0.0.0/0'], description: '' }] })}><Plus className="w-3 h-3" />Rule</button>
           </div>
           {rules.length ? (
             <div className="space-y-1.5">
@@ -728,6 +729,9 @@ const TemplateEditor: React.FC<{
               ))}
             </div>
           ) : <p className="text-xs text-[#6c757d]">No rules: the server is created with BinaryLane's default (open).</p>}
+          {rules.some((r) => [...r.source_addresses, ...r.destination_addresses].some(isIpv6)) && (
+            <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">BinaryLane's external firewall covers IPv4 only. IPv6 addresses are left out when the template is applied, and a rule with only IPv6 sources is not written.</p>
+          )}
         </section>
 
         <section>
