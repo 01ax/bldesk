@@ -116,7 +116,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     try {
       const queued = await takeBackupMutation.mutateAsync({
         label: backupLabel.trim() || undefined,
-        backupType,
+        backupType: backupType ?? backups.find((b) => b.id === backupIdToReplace)?.backup_info?.type,
         replacementStrategy,
         backupIdToReplace
       })
