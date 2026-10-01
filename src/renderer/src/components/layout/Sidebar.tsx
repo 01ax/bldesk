@@ -56,6 +56,8 @@ interface SidebarProps {
   activeTab: ActiveTab
   onSelectTab: (tab: ActiveTab) => void
   serverCount?: number
+  /** From the server-list read, the app's main call: the footer must not claim more than that read showed. */
+  apiStatus?: 'online' | 'checking' | 'unreachable' | 'refused'
   selectedServer?: any | null
   activeServerSubTab?: ServerSubTab
   onSelectServerSubTab?: (tab: ServerSubTab) => void
@@ -68,6 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
   serverCount = 0,
+  apiStatus = 'online',
   selectedServer = null,
   activeServerSubTab = 'overview',
   onSelectServerSubTab,
@@ -201,10 +204,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center justify-between px-3 py-1.5 bg-black/20 rounded text-[11px] text-slate-300">
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      {apiStatus === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${apiStatus === 'online' ? 'bg-emerald-500' : apiStatus === 'checking' ? 'bg-amber-400' : 'bg-rose-500'}`}></span>
                     </span>
-                    <span>API Online</span>
+                    <span>{apiStatus === 'online' ? 'API Online' : apiStatus === 'checking' ? 'Checking API' : apiStatus === 'refused' ? 'API refused the token' : 'API not answering'}</span>
                   </div>
                   <Activity className="w-3.5 h-3.5 text-slate-400" />
                 </div>

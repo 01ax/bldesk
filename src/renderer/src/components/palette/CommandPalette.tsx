@@ -30,7 +30,7 @@ import {
 import { components } from '@shared/api/schema'
 import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useServerActionMutation, describeApiError, fetchServerBackups, mapLimitNullable } from '../../api/queries'
+import { useDomains, useServerActionMutation, apiFailure, fetchServerBackups, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -38,7 +38,7 @@ import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeBackup, replacedByOldest } from '../../lib/backupSlots'
-import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags } from '../../lib/serverGroups'
+import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags, normaliseTag } from '../../lib/serverGroups'
 import {
   POWER_VERBS,
   TARGET_HELP,
@@ -258,10 +258,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     openServer(s, 'remote-access')
     close()
     try {
-      const { data, error } = await client.GET('/v2/servers/{server_id}/console', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/console', {
         params: { path: { server_id: s.id } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       const url = data?.console?.browser || data?.console?.iframe
       if (!url) throw new Error('BinaryLane returned no console URL.')
       await window.bldeskApi?.openRescueConsole?.({
@@ -494,17 +494,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               label: 'Add DNS record',
               target: { kind: 'domain', name: target.domain },
               severity: 'normal',
-              changes: [{ label: `${parsed.type} ${target.name}`, to: parsed.value }],
+              changes: [{ label: `${parsed.type} ${target.name}`, to: parsed.priority !== undefined ? `${parsed.priority} ${parsed.value}` : parsed.value }],
               summary: `Palette: ${query.trim()}`,
               source: 'palette'
             })
-            const { error } = await client.POST('/v2/domains/{domain_name}/records', {
+            const { error, response } = await client.POST('/v2/domains/{domain_name}/records', {
               params: { path: { domain_name: target.domain } },
               body: { type: parsed.type, name: target.name, data: parsed.value, priority: parsed.priority ?? null }
             })
-            if (error) {
-              void updateChange(changeId, { outcome: 'failed', detail: describeApiError(error) })
-              return [{ target: summary, ok: false, detail: describeApiError(error) }]
+            if (error || !response.ok) {
+              const detail = apiFailure(error, response).message
+              void updateChange(changeId, { outcome: 'failed', detail })
+              return [{ target: summary, ok: false, detail }]
             }
             void updateChange(changeId, { outcome: 'completed' })
             void queryClient.invalidateQueries({ queryKey: ['domainRecords', target.domain] })
@@ -519,7 +520,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     // --- Tags (local): tag add web wp-* / tag remove web #101
     if (parsed.kind === 'tag') {
       const { matches, unmatched } = resolveTargets(parsed.targets)
-      const verbLabel = parsed.op === 'add' ? `Tag @${parsed.tag}` : `Untag @${parsed.tag}`
+      // Show the name that will be stored: spaces and other characters are dropped, so `"my tag"` is `@mytag`.
+      const tagName = normaliseTag(parsed.tag)
+      if (!tagName) {
+        header = { icon: AlertTriangle, text: `"${parsed.tag}" has no usable characters. A tag is letters, numbers, dots, dashes and underscores.`, tone: 'bad' }
+        return { rows, header, primary, plan }
+      }
+      const verbLabel = parsed.op === 'add' ? `Tag @${tagName}` : `Untag @${tagName}`
       if (matches.length === 0) {
         header = { icon: AlertTriangle, text: `No server matches "${parsed.targets}". ${TARGET_HELP}`, tone: 'bad' }
         return { rows, header, primary, plan }
@@ -541,9 +548,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       // Local only, no API call — apply immediately, no review step.
       primary = () => {
         if (!profileId) return
-        saveTags(profileId, withTag(loadTags(profileId), matches.map((m) => m.server.id), parsed.tag, parsed.op === 'add'))
+        saveTags(profileId, withTag(loadTags(profileId), matches.map((m) => m.server.id), tagName, parsed.op === 'add'))
         rememberCommand(query)
-        setNotice(`${verbLabel}: ${matches.length} server${matches.length === 1 ? '' : 's'}. Use @${parsed.tag} as a target anywhere.`)
+        setNotice(`${verbLabel}: ${matches.length} server${matches.length === 1 ? '' : 's'}. Use @${tagName} as a target anywhere.`)
         setTimeout(close, 900)
       }
       return { rows, header, primary, plan }

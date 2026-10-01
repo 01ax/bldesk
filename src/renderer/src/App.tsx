@@ -231,7 +231,10 @@ function MainDashboard() {
   }, [activeProfile?.token])
 
   // Queries with local cache rehydration
-  const { data: apiServers = [], isLoading: isLoadingServers, isFetchedAfterMount } = useServers(client, activeProfile?.id)
+  const serversQuery = useServers(client, activeProfile?.id)
+  const { data: apiServers = [], isLoading: isLoadingServers, isFetchedAfterMount } = serversQuery
+  // What the sidebar's API status and the Servers page say about the list read: a failed refresh leaves the saved list on screen.
+  const serverListError = serversQuery.isError ? { message: serversQuery.error?.message, hasData: (serversQuery.data?.length ?? 0) > 0, isFetching: serversQuery.isFetching, onRetry: () => void serversQuery.refetch() } : null
 
   // The API's `status` does not track power. Every view below
   // gets servers whose `status` reflects the inferred power state instead, with
@@ -363,6 +366,7 @@ function MainDashboard() {
             activeTab={activeTab}
             onSelectTab={handleSelectTab}
             serverCount={servers.length}
+            apiStatus={serverListError ? ([401, 403].includes((serversQuery.error as { status?: number } | null)?.status ?? 0) ? 'refused' : 'unreachable') : serversQuery.isFetching && !isFetchedAfterMount ? 'checking' : 'online'}
             selectedServer={selectedServer}
             activeServerSubTab={activeServerSubTab}
             onSelectServerSubTab={setActiveServerSubTab}
@@ -396,6 +400,7 @@ function MainDashboard() {
                   onOpenTerminal={handleOpenTerminalForIp}
                   onOpenTemplates={() => setActiveTab('templates')}
                   profileId={activeProfile?.id}
+                  loadError={serverListError}
                 />
               )
             )}

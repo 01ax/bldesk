@@ -1,11 +1,12 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
+import { LoadError } from '../ui/LoadError'
 import React, { useEffect, useState } from 'react'
 import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { describeApiError } from '../../api/queries'
+import { apiFailure } from '../../api/queries'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeDnsRecord } from '../../lib/diff'
 
@@ -112,6 +113,22 @@ const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; children: Re
   </button>
 )
 
+/** What a record carries besides its data, in the order its zone-file line reads them. */
+function recordExtras(r: { type?: string; priority?: number | null; weight?: number | null; port?: number | null; flags?: number | null; tag?: string | null }): string {
+  const parts: string[] = []
+  if (r.type === 'MX' && r.priority != null) parts.push(`priority ${r.priority}`)
+  if (r.type === 'SRV') {
+    if (r.priority != null) parts.push(`priority ${r.priority}`)
+    if (r.weight != null) parts.push(`weight ${r.weight}`)
+    if (r.port != null) parts.push(`port ${r.port}`)
+  }
+  if (r.type === 'CAA') {
+    if (r.flags != null) parts.push(`flags ${r.flags}`)
+    if (r.tag) parts.push(`tag ${r.tag}`)
+  }
+  return parts.join(' · ')
+}
+
 export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -125,6 +142,12 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
   const [recordType, setRecordType] = useState('A')
   const [recordName, setRecordName] = useState('@')
   const [recordData, setRecordData] = useState('')
+  // The fields only some types have (the API reference: priority for MX and SRV, port and weight for SRV, flags and tag for CAA).
+  const [recordPriority, setRecordPriority] = useState('10')
+  const [recordWeight, setRecordWeight] = useState('0')
+  const [recordPort, setRecordPort] = useState('')
+  const [recordFlags, setRecordFlags] = useState('0')
+  const [recordTag, setRecordTag] = useState('issue')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const domainsQuery = useDomains(client)
@@ -174,24 +197,32 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       label: 'Add DNS record',
       target: { kind: 'domain', name: selectedDomain },
       severity: 'normal',
-      changes: [{ label: `${recordType} ${recordName.trim()}`, to: recordData.trim() }],
+      changes: [{ label: `${recordType} ${recordName.trim()}`, to: [...(recordType === 'MX' || recordType === 'SRV' ? [recordPriority] : []), ...(recordType === 'SRV' ? [recordWeight, recordPort] : []), ...(recordType === 'CAA' ? [recordFlags, recordTag] : []), recordData.trim()].join(' ') }],
       source: 'ui'
     })
     try {
-      const { error } = await client.POST('/v2/domains/{domain_name}/records', {
+      const { error, response } = await client.POST('/v2/domains/{domain_name}/records', {
         params: { path: { domain_name: selectedDomain } },
         // No ttl: the API reference gives 3600 as the default and only supported value.
         body: {
           type: recordType as any,
           name: recordName.trim(),
-          data: recordData.trim()
+          data: recordData.trim(),
+          ...(recordType === 'MX' || recordType === 'SRV' ? { priority: Number(recordPriority) } : {}),
+          ...(recordType === 'SRV' ? { weight: Number(recordWeight), port: Number(recordPort) } : {}),
+          ...(recordType === 'CAA' ? { flags: Number(recordFlags), tag: recordTag } : {})
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(changeId, { outcome: 'completed' })
       setIsAddingRecord(false)
       setRecordName('@')
       setRecordData('')
+      setRecordPriority('10')
+      setRecordWeight('0')
+      setRecordPort('')
+      setRecordFlags('0')
+      setRecordTag('issue')
       recordsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
         title: 'DNS Record Added',
@@ -219,7 +250,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!c.ok) return
 
     try {
-      const { error } = await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
+      const { error, response } = await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
         params: {
           path: {
             domain_name: selectedDomain,
@@ -227,7 +258,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           }
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(c.changeId, { outcome: 'completed' })
       recordsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
@@ -248,7 +279,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
    */
   const handleRemoveDnsHosting = async (domain: any) => {
     if (!client || !domain) return
-    const recordCount = selectedDomain === domain.name ? records.length : undefined
+    const recordCount = selectedDomain === domain.name && recordsQuery.data ? recordsQuery.data.length : undefined
     const c = await confirmAction({
       title: 'Remove DNS hosting',
       target: { kind: 'domain', name: domain.name },
@@ -262,10 +293,10 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!c.ok) return
     setRemoveBusy(true)
     try {
-      const { error } = await client.DELETE('/v2/domains/{domain_name}', {
+      const { error, response } = await client.DELETE('/v2/domains/{domain_name}', {
         params: { path: { domain_name: domain.name } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(c.changeId, { outcome: 'completed' })
 
       // Clear anything pointing at the zone that no longer exists, then wait for
@@ -351,7 +382,13 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
               <div className="p-4 text-center text-xs text-[#6c757d]">Loading domains...</div>
             )}
 
-            {!domainsQuery.isLoading && filteredDomains.length === 0 && (
+            {domainsQuery.isError && (
+              <div className="p-3">
+                <LoadError what="DNS zones" hasData={(domainsQuery.data?.length ?? 0) > 0} message={domainsQuery.error?.message} isFetching={domainsQuery.isFetching} onRetry={() => void domainsQuery.refetch()} />
+              </div>
+            )}
+
+            {!domainsQuery.isLoading && !domainsQuery.isError && filteredDomains.length === 0 && (
               <div className="p-6 text-center text-xs text-[#6c757d]">No DNS zones found</div>
             )}
 
@@ -423,7 +460,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                     {selectedDomain}
                   </h3>
                   <span className="text-[11px] text-[#6c757d] dark:text-slate-400">
-                    {records.length} {records.length === 1 ? 'record' : 'records'} configured
+                    {recordsQuery.data ? `${records.length} ${records.length === 1 ? 'record' : 'records'} configured` : recordsQuery.isError ? 'Records not read' : 'Reading records…'}
                   </span>
                 </div>
 
@@ -450,7 +487,13 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                   <div className="p-8 text-center text-xs text-[#6c757d]">Loading records...</div>
                 )}
 
-                {!recordsQuery.isLoading && records.length === 0 && (
+                {recordsQuery.isError && (
+                  <div className="p-3">
+                    <LoadError what="DNS records" hasData={(recordsQuery.data?.length ?? 0) > 0} message={recordsQuery.error?.message} isFetching={recordsQuery.isFetching} onRetry={() => void recordsQuery.refetch()} />
+                  </div>
+                )}
+
+                {!recordsQuery.isLoading && !recordsQuery.isError && records.length === 0 && (
                   <div className="p-8 text-center text-xs text-[#6c757d]">
                     No custom DNS records in this zone yet.
                   </div>
@@ -476,7 +519,9 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                             </span>
                           </td>
                           <td className="py-2 px-4 font-mono font-medium">{r.name}</td>
-                          <td className="py-2 px-4 font-mono text-[#6c757d] dark:text-slate-300 break-all">
+                          {/* A phone leaves this column about ten characters, and a long value then breaks letter by letter: give it room and let the table scroll. */}
+                          <td className="py-2 px-4 min-w-[14rem] font-mono text-[#6c757d] dark:text-slate-300 break-all">
+                            {recordExtras(r) && <div className="mb-0.5 text-[10px] text-[#017cb6]">{recordExtras(r)}</div>}
                             {r.data}
                           </td>
                           <td className="py-2 px-4 text-center font-mono text-[#6c757d]">{r.ttl}</td>
@@ -572,6 +617,31 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
               </div>
             </div>
 
+            {(recordType === 'MX' || recordType === 'SRV') && (
+              <div className={`grid gap-3 ${recordType === 'SRV' ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                <NumberField label="Priority" value={recordPriority} onChange={setRecordPriority} max={65535} hint={recordType === 'MX' ? 'Lower is tried first' : undefined} />
+                {recordType === 'SRV' && <NumberField label="Weight" value={recordWeight} onChange={setRecordWeight} max={65535} />}
+                {recordType === 'SRV' && <NumberField label="Port" value={recordPort} onChange={setRecordPort} max={65535} />}
+              </div>
+            )}
+            {recordType === 'CAA' && (
+              <div className="grid grid-cols-2 gap-3">
+                <NumberField label="Flags" value={recordFlags} onChange={setRecordFlags} max={255} />
+                <div>
+                  <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">Tag</label>
+                  <select
+                    value={recordTag}
+                    onChange={(e) => setRecordTag(e.target.value)}
+                    className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
+                  >
+                    <option value="issue">issue</option>
+                    <option value="issuewild">issuewild</option>
+                    <option value="iodef">iodef</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">
                 Target / Value
@@ -646,3 +716,22 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     </div>
   )
 }
+
+/** A whole-number field for a DNS record (priority, weight, port, flags), checked by the browser against the reference's range. */
+const NumberField: React.FC<{ label: string; value: string; onChange: (v: string) => void; max: number; hint?: string }> = ({ label, value, onChange, max, hint }) => (
+  <div>
+    <label className="block text-xs font-medium text-[#495057] dark:text-[#ced4da] mb-1">{label}</label>
+    <input
+      type="number"
+      required
+      min={0}
+      max={max}
+      step={1}
+      inputMode="numeric"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-white px-3 py-2 rounded font-mono focus:outline-none focus:border-[#017cb6]"
+    />
+    {hint && <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">{hint}</p>}
+  </div>
+)

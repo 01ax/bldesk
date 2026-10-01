@@ -4,6 +4,7 @@ import { Key, Plus, Trash2, Copy, Check, Loader2, Sparkles, Pencil, RefreshCw, K
 import { BinaryLaneClient } from '../../api/client'
 import { useSshKeys, useAddSshKeyMutation, useUpdateSshKeyMutation, useDeleteSshKeyMutation } from '../../api/queries'
 import { Modal } from '../ui/Modal'
+import { LoadError } from '../ui/LoadError'
 import { GenerateKeyPairDialog, canGenerateKeyPair } from './GenerateKeyPairDialog'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
@@ -28,6 +29,8 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
   const updateKeyMutation = useUpdateSshKeyMutation(client)
 
   const keys = sshKeysQuery.data || []
+  // Until the account's keys have been read, whether a local key is already on it is unknown: offering Import then would add a duplicate.
+  const keysKnown = sshKeysQuery.data !== undefined
 
   const scanLocalKeys = () => {
     // Scan local ~/.ssh directory
@@ -226,7 +229,9 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
                     <div className="text-xs font-semibold text-[#212529] dark:text-white truncate">{lk.name}</div>
                     <div className="text-[10px] text-[#6c757d] font-mono truncate">{lk.publicKey.substring(0, 24)}...</div>
                   </div>
-                  {alreadyImported ? (
+                  {!keysKnown ? (
+                    <span className="text-[10px] text-[#6c757d] px-2 py-0.5">{sshKeysQuery.isError ? 'Keys not read' : 'Checking…'}</span>
+                  ) : alreadyImported ? (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 bg-emerald-500/10 rounded">
                       Linked
                     </span>
@@ -249,14 +254,20 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       {/* Cloud SSH Keys Table */}
       <div className="bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e] shadow-sm overflow-hidden flex-shrink-0">
         <div className="p-3 bg-[#f1f1f1] dark:bg-[#262a2e] border-b border-[#ced4da] dark:border-[#373b3e] font-semibold text-xs text-[#495057] dark:text-[#ced4da]">
-          Account SSH Keys ({keys.length})
+          Account SSH Keys ({keysKnown ? keys.length : '…'})
         </div>
 
         {sshKeysQuery.isLoading && (
           <div className="p-8 text-center text-xs text-[#6c757d]">Loading keys...</div>
         )}
 
-        {!sshKeysQuery.isLoading && keys.length === 0 && (
+        {sshKeysQuery.isError && (
+          <div className="p-3.5">
+            <LoadError what="SSH keys" hasData={(sshKeysQuery.data?.length ?? 0) > 0} message={sshKeysQuery.error?.message} isFetching={sshKeysQuery.isFetching} onRetry={() => void sshKeysQuery.refetch()} />
+          </div>
+        )}
+
+        {!sshKeysQuery.isLoading && !sshKeysQuery.isError && keys.length === 0 && (
           <div className="p-8 text-center text-xs text-[#6c757d]">No SSH keys registered in BinaryLane.</div>
         )}
 

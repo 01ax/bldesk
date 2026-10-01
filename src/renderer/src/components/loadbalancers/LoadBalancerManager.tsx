@@ -1,5 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import { Modal } from '../ui/Modal'
+import { LoadError } from '../ui/LoadError'
 import React, { useState } from 'react'
 import {
   Layers,
@@ -249,8 +250,12 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
         </div>
       )}
 
+      {lbsQuery.isError && (
+        <LoadError what="load balancers" hasData={(lbsQuery.data?.length ?? 0) > 0} message={lbsQuery.error?.message} isFetching={lbsQuery.isFetching} onRetry={() => void lbsQuery.refetch()} />
+      )}
+
       {/* Empty State */}
-      {!lbsQuery.isLoading && loadBalancers.length === 0 && (
+      {!lbsQuery.isLoading && !lbsQuery.isError && loadBalancers.length === 0 && (
         <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
           <Layers className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
           <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No Load Balancers Deployed</h3>

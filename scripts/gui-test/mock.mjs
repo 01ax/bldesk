@@ -430,13 +430,13 @@ const helpJson = (u) => u.pathname.endsWith('/suggest') ? { suggestions: ['how d
 const create = process.env.HTTP ? (h) => http.createServer(h) : (h) => https.createServer({ cert: readFileSync(process.env.CERT), key: readFileSync(process.env.KEY) }, h)
 const server = create(async (req, res) => {
   const u = new URL(req.url, 'https://x'), host = (req.headers.host || '').split(':')[0], body = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) ? await readBody(req) : null
-  appendFileSync(LOG, `${new Date().toISOString()} ${req.method} ${host}${u.pathname}${u.search} ${body ? JSON.stringify(body).slice(0, 300) : ''}\n`)
+  appendFileSync(LOG, `${new Date().toISOString()} ${req.method} ${host}${u.pathname}${u.search} ${body ? JSON.stringify(body).slice(0, 20000) : ''}\n`)
   if (cfg.latencyMs) await new Promise((r) => setTimeout(r, cfg.latencyMs))
   // control plane
   if (u.pathname.startsWith('/__mock/')) {
     if (u.pathname === '/__mock/reset') { reset(); fwOverride.clear(); return json(res, 200, { ok: true }) }
     if (u.pathname === '/__mock/config') { Object.assign(cfg, body || {}); return json(res, 200, cfg) }
-    if (u.pathname === '/__mock/fail') { fails.push({ match: new RegExp(body.match), status: body.status || 500, count: body.count ?? 1 }); return json(res, 200, { ok: true }) }
+    if (u.pathname === '/__mock/fail') { fails.push({ match: new RegExp(body.match), status: body.status || 500, count: body.count ?? 1, method: body.method || null, empty: !!body.empty }); return json(res, 200, { ok: true }) }
     return json(res, 200, { requests: 'see log file' })
   }
   if (host === 'uai.adamhomenet.com') return u.pathname.endsWith('/feedback') ? json(res, 204) : json(res, 200, helpJson(u))
@@ -453,8 +453,8 @@ const server = create(async (req, res) => {
   const auth = req.headers.authorization || ''
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
   if (cfg.rejectAuth || auth !== `Bearer ${TOKEN}`) return json(res, 401, { id: 'unauthorized', message: 'Unauthorized (mock: token does not match).' })
-  const f = fails.find((x) => x.count > 0 && x.match.test(u.pathname))
-  if (f) { f.count--; return json(res, f.status, { id: f.status === 429 ? 'too_many_requests' : 'server_error', message: `Injected ${f.status}` }) }
+  const f = fails.find((x) => x.count > 0 && x.match.test(u.pathname) && (!x.method || x.method === req.method))
+  if (f) { f.count--; if (f.empty) { res.writeHead(f.status); return res.end() } return json(res, f.status, { id: f.status === 429 ? 'too_many_requests' : 'server_error', message: `Injected ${f.status}` }) }
   try { await handleApi(req, res, u, body) } catch (e) { appendFileSync(LOG, `ERROR ${req.method} ${u.pathname} ${e.stack}\n`); json(res, 500, { id: 'mock_error', message: String(e) }) }
 })
 server.listen(PORT, '127.0.0.1', () => console.log(`mock listening on ${server.address().port}`))

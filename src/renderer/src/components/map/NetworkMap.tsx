@@ -345,6 +345,10 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     lbs: model.mapLbs.length,
     exposedSsh: model.mapServers.filter((s) => exposes(rulesByServer.get(s.id) ?? null, 22) && rulesByServer.has(s.id)).length
   }
+  // A read that failed must not look like "none": say what the counts could not see.
+  const vpcsUnread = vpcsQuery.isError && vpcsQuery.data === undefined
+  const lbsUnread = lbsQuery.isError && lbsQuery.data === undefined
+  const firewallUnread = fleet.isError ? servers.length : servers.filter((s) => rulesByServer.has(s.id) && rulesByServer.get(s.id) === null).length
 
   return (
     <div className="h-full flex flex-col bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] overflow-hidden">
@@ -356,8 +360,11 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
             Network Map
           </h1>
           <p className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
-            {counts.servers} servers · {counts.vpcs} VPC{counts.vpcs === 1 ? '' : 's'} · {counts.lbs} load balancer{counts.lbs === 1 ? '' : 's'}
+            {counts.servers} servers · {vpcsUnread ? 'VPCs not read' : `${counts.vpcs} VPC${counts.vpcs === 1 ? '' : 's'}`} · {lbsUnread ? 'load balancers not read' : `${counts.lbs} load balancer${counts.lbs === 1 ? '' : 's'}`}
             {counts.exposedSsh > 0 && <span className="text-rose-600 dark:text-rose-400"> · SSH reachable from the internet on {counts.exposedSsh}</span>}
+            {firewallUnread > 0 && !fleet.isLoading && (
+              <span role="alert" className="text-amber-600 dark:text-amber-400"> · firewall rules not read on {firewallUnread}, so exposure is unknown there</span>
+            )}
             {(loading || fleet.isLoading) && (
               <span className="inline-flex items-center gap-1 ml-2">
                 <Loader2 className="w-3 h-3 animate-spin" /> reading…

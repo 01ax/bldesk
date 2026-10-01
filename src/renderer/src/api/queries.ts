@@ -628,46 +628,24 @@ export function useDeleteLoadBalancerMutation(client: BinaryLaneClient | null) {
 
 // --- DNS DOMAINS & RECORDS ---
 
-/** API maximum for /v2/domains. */
-const DOMAIN_PAGE_SIZE = 200
-/** Ceiling on paging: 2000 domains is far beyond any real account. */
-const MAX_DOMAIN_PAGES = 10
-
 /**
  * All domains on the account.
  *
  * `per_page` defaults to 20, so a bare call returned only the first 20 and
  * dropped `meta.total` — an account with a few hundred zones simply lost most of
- * them, with nothing in the UI to say so.
+ * them, with nothing in the UI to say so. A page that fails fails the read, like the other lists, rather than
+ * passing off part of the account as all of it.
  */
 export function useDomains(client: BinaryLaneClient | null) {
   return useQuery({
     queryKey: ['domains'],
     queryFn: async () => {
       if (!client) return []
-
-      const fetchPage = (page: number) =>
-        client.GET('/v2/domains', { params: { query: { page, per_page: DOMAIN_PAGE_SIZE } as any } })
-
-      const first = await fetchPage(1)
-      if (first.error) throw new Error(describeApiError(first.error))
-
-      const domains = [...(first.data?.domains || [])]
-      const total = first.data?.meta?.total ?? domains.length
-      const pages = Math.min(Math.ceil(total / DOMAIN_PAGE_SIZE), MAX_DOMAIN_PAGES)
-
-      if (pages > 1) {
-        const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(i + 2)))
-        for (const r of rest) {
-          if (r.error) {
-            // A partial list still beats an empty one; the count below shows the shortfall.
-            console.warn('[useDomains] Error loading a domain page:', r.error)
-            continue
-          }
-          domains.push(...(r.data?.domains || []))
-        }
-      }
-      return domains
+      return fetchAllPages<any>(
+        (page, per_page) => client.GET('/v2/domains', { params: { query: { page, per_page } as any } }),
+        'domains',
+        'useDomains'
+      )
     },
     enabled: !!client
   })

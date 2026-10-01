@@ -153,7 +153,7 @@ export function templateToYaml(t: ServerTemplate): string {
     kind: TEMPLATE_KIND,
     variables: t.variables?.map((v) => (v.secret ? { ...v, default: undefined } : v))
   }
-  return assertSize(stringify(safe, { lineWidth: 0 }))
+  return assertSize(stringify(safe, { lineWidth: 0, aliasDuplicateObjects: false }))
 }
 
 /** The SSH key names of a stored template: none named, or a list of names. A list with anything else in it is invalid, not "no keys". */
@@ -216,7 +216,7 @@ export function templateFromYaml(document: string): ServerTemplate {
 
 /** Export bundle: one or many templates in a single YAML file. */
 export function bundleToYaml(templates: ServerTemplate[]): string {
-  return stringify({ kind: 'bldesk/template-bundle@1', exported_at: new Date().toISOString(), templates: templates.map((t) => JSON.parse(JSON.stringify({ ...t, variables: t.variables?.map((v) => (v.secret ? { ...v, default: undefined } : v)) }))) }, { lineWidth: 0 })
+  return stringify({ kind: 'bldesk/template-bundle@1', exported_at: new Date().toISOString(), templates: templates.map((t) => JSON.parse(JSON.stringify({ ...t, variables: t.variables?.map((v) => (v.secret ? { ...v, default: undefined } : v)) }))) }, { lineWidth: 0, aliasDuplicateObjects: false })
 }
 
 /** Accepts a bundle, a single template document, or raw cloud-init (becomes a cloud-init-only template). */
