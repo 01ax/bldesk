@@ -176,7 +176,9 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!client) return
     try {
       // history: n/a — asks BinaryLane's nameservers to reload; no record changes
-      await client.POST('/v2/domains/refresh_nameserver_cache')
+      const { error, response } = await client.POST('/v2/domains/refresh_nameserver_cache')
+      // The typed client does not throw on an error answer: without this check a refusal reported "refreshed successfully".
+      if (error || !response.ok) throw apiFailure(error, response)
       window.bldeskApi?.sendNotification?.({
         title: 'DNS Cache Flushed',
         body: 'BinaryLane authoritative nameserver cache refreshed successfully.'

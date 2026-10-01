@@ -161,7 +161,7 @@ function reset() {
     mkServer({ id: 9009, name: 'multi-ip-v6-01', size_slug: 'std-4vcpu', region: 'mel', image: 'almalinux-9', vpc_id: 903, ip: '192.0.2.98', extra_ips: ['192.0.2.99', '192.0.2.100'], v6: true, failover: ['192.0.2.150'] }),
     mkServer({ id: 9010, name: 'cpanel-host-01', size_slug: 'std-6vcpu', region: 'syd', image: 'cpanel-whm-rocky-8', vpc_id: 901, ip: '203.0.113.101' })
   )
-  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null }
+  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null, extraToken: null, feedStatus: null }
   servers.forEach((s, index) => {
     const list = s.next_backup_window ? [
       ['temporary', 'Before database upgrade', 1], ['daily', 'Nightly production baseline', 2],
@@ -441,6 +441,7 @@ const server = create(async (req, res) => {
   }
   if (host === 'uai.adamhomenet.com') return u.pathname.endsWith('/feedback') ? json(res, 204) : json(res, 200, helpJson(u))
   if (host === 'github.com' || host === 'api.github.com') {
+    if (cfg.feedStatus) { res.writeHead(cfg.feedStatus); return res.end() }
     if (u.pathname.endsWith('.atom')) { res.writeHead(200, { 'content-type': 'application/atom+xml' }); return res.end(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>tag:github.com,2008:Repository/1/v${feedVersion()}</id><updated>2026-09-25T00:00:00Z</updated><link rel="alternate" type="text/html" href="https://github.com/termau/bldesk/releases/tag/v${feedVersion()}"/><title>${VERSION}</title></entry></feed>`) }
     if (u.pathname.endsWith('.deb')) { res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': DEB.length }); return res.end(DEB) }
     if (u.pathname.endsWith('.yml')) { res.writeHead(200, { 'content-type': 'text/yaml' }); return res.end(`version: ${feedVersion()}\nfiles:\n  - url: BLDesk-${feedVersion()}-linux-amd64.deb\n    sha512: ${DEB_SHA}\n    size: ${DEB.length}\npath: BLDesk-${feedVersion()}-linux-amd64.deb\nsha512: ${DEB_SHA}\nreleaseDate: '2026-09-25T00:00:00.000Z'\n`) }
@@ -452,7 +453,7 @@ const server = create(async (req, res) => {
   // BinaryLane API
   const auth = req.headers.authorization || ''
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
-  if (cfg.rejectAuth || auth !== `Bearer ${TOKEN}`) return json(res, 401, { id: 'unauthorized', message: 'Unauthorized (mock: token does not match).' })
+  if (cfg.rejectAuth || (auth !== `Bearer ${TOKEN}` && !(cfg.extraToken && auth === `Bearer ${cfg.extraToken}`))) return json(res, 401, { id: 'unauthorized', message: 'Unauthorized (mock: token does not match).' })
   const f = fails.find((x) => x.count > 0 && x.match.test(u.pathname) && (!x.method || x.method === req.method))
   if (f) { f.count--; if (f.empty) { res.writeHead(f.status); return res.end() } return json(res, f.status, { id: f.status === 429 ? 'too_many_requests' : 'server_error', message: `Injected ${f.status}` }) }
   try { await handleApi(req, res, u, body) } catch (e) { appendFileSync(LOG, `ERROR ${req.method} ${u.pathname} ${e.stack}\n`); json(res, 500, { id: 'mock_error', message: String(e) }) }

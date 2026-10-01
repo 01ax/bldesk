@@ -12,6 +12,8 @@ Links show resource relationships, not measured packet flows, throughput or proo
 
 When a read fails, the header says so instead of counting zero: “VPCs not read”, “load balancers not read”, or a note that firewall rules were not read on that many servers, so their exposure is unknown. Servers whose rules could not be read show a question mark rather than a colour, and are left out of the SSH-exposure count.
 
+Each server card shows its open ports at the left of its bottom line and its addresses at the right: the public address, and the private one when both fit beside the ports. A long port list is cut with an ellipsis, and hovering the label shows all of it. Select the server for its full details.
+
 ## Navigate and export
 Use the map's zoom and fit controls to inspect a dense fleet. To zoom the map itself, hold Cmd/Ctrl and scroll, use the zoom buttons, or pinch on a touch screen. Cmd/Ctrl+plus and minus zoom the whole app, not the map. Export SVG or PNG when you need a static inventory. An export can expose server names and addresses; review it before sharing or attaching it to a ticket.
 

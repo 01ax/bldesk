@@ -102,7 +102,17 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       (a.type === 'take_backup' || a.type === 'restore' || a.type?.includes('backup'))
   )
 
-  const isAutoBackupEnabled = (activeServer as any)?.backup_ids?.length > 0 || (activeServer as any)?.next_backup_window
+  // The schedule is the server's daily backups (what enabling and disabling automated backups add and remove), not the
+  // backups it holds: one on-demand backup does not make a manual-only server "Enabled". With no options to read, the
+  // API's next scheduled backup stands in.
+  const isAutoBackupEnabled = activeServer?.selected_size_options
+    ? (activeServer.selected_size_options.daily_backups ?? 0) > 0
+    : !!activeServer?.next_backup_window
+  // Weekly or monthly retention without a daily one is a schedule too, just not the nightly one this banner switches:
+  // "Disabled" would be untrue, and enabling two daily backups is for a server with no backups.
+  const weeklyOrMonthlyOnly =
+    !isAutoBackupEnabled &&
+    ((activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 || (activeServer?.selected_size_options?.monthly_backups ?? 0) > 0)
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
   // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
@@ -277,8 +287,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const handleAttach = async (imageId: number, name: string) => {
     if (!activeServerId) return
     setActionProcessingId(imageId)
+    let changeId: string | undefined
     try {
-      const changeId = await recordChange({
+      changeId = await recordChange({
         label: `Attach "${name}"`,
         target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
         severity: 'normal',
@@ -295,6 +306,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         body: `Mounting "${name}" as a secondary drive.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Attach failed: ${err.message}`)
     } finally {
       setActionProcessingId(null)
@@ -323,8 +335,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Detach secondary drive
   const handleDetach = async () => {
     if (!activeServerId) return
+    let changeId: string | undefined
     try {
-      const changeId = await recordChange({
+      changeId = await recordChange({
         label: 'Detach Secondary Drive',
         target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
         severity: 'normal',
@@ -337,6 +350,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
         body: `Unmounting the secondary backup drive.`
       })
     } catch (err: any) {
+      void updateChange(changeId, { outcome: 'failed', detail: err.message })
       alert(`Detach failed: ${err.message}`)
     }
   }
@@ -346,7 +360,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     if (!activeServerId) return
     const enable = !isAutoBackupEnabled
     const c = await confirmAction({
-      title: `${enable ? 'Enable' : 'Disable'} automated backups`,
+      title: enable ? 'Enable automated backups' : 'Remove daily backups',
       target: { kind: 'server', id: activeServerId, name: activeServer?.name || `#${activeServerId}` },
       summary: enable
         ? 'BinaryLane takes a nightly backup on the server\'s schedule.'
@@ -364,10 +378,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
     try {
       const queued = await toggleAutomatedBackups.mutateAsync(enable)
-      if (queued) track(queued, `${enable ? 'Enable' : 'Disable'} Automated Backups`, activeServer?.name, c.changeId)
+      if (queued) track(queued, enable ? 'Enable Automated Backups' : 'Remove Daily Backups', activeServer?.name, c.changeId)
       window.bldeskApi?.sendNotification?.({
         title: 'Schedule Change Requested',
-        body: `${enable ? 'Enabling' : 'Disabling'} automated backups for server #${activeServerId}.`
+        body: `${enable ? 'Enabling automated backups' : 'Removing the daily backups'} for server #${activeServerId}.`
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
@@ -421,9 +435,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
       {/* Automated Backup Schedule Banner */}
       {activeServer && (
-        <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded bg-[#017cb6]/10 flex items-center justify-center">
+        <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3 min-w-0 flex-1 basis-60">
+            <div className="w-9 h-9 flex-shrink-0 rounded bg-[#017cb6]/10 flex items-center justify-center">
               <Clock className="w-5 h-5 text-[#017cb6]" />
             </div>
             <div>
@@ -436,28 +450,30 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                       : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                   }`}
                 >
-                  {isAutoBackupEnabled ? 'Enabled' : 'Disabled'}
+                  {isAutoBackupEnabled ? 'Enabled' : weeklyOrMonthlyOnly ? 'No nightly' : 'Disabled'}
                 </span>
               </div>
               <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
                 {isAutoBackupEnabled
                   ? 'BinaryLane takes an automated nightly backup during your scheduled maintenance window.'
-                  : 'Automated backups are currently turned off for this server.'}
+                  : weeklyOrMonthlyOnly
+                    ? 'This server keeps weekly or monthly backups and no daily ones. Daily backups are set in Change Plan.'
+                    : 'Automated backups are currently turned off for this server.'}
               </p>
             </div>
           </div>
 
-          <button
+          {!weeklyOrMonthlyOnly && <button
             onClick={handleToggleAuto}
             disabled={toggleAutomatedBackups.isPending}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition border ${
+            className={`px-3 py-1.5 text-xs font-medium rounded transition border whitespace-nowrap ${
               isAutoBackupEnabled
                 ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
                 : 'text-[#017cb6] bg-[#017cb6]/10 border-[#017cb6]/30 hover:bg-[#017cb6]/20'
             }`}
           >
-            {isAutoBackupEnabled ? 'Disable Schedule' : 'Enable Nightly Backups'}
-          </button>
+            {isAutoBackupEnabled ? 'Remove Daily Backups' : 'Enable Nightly Backups'}
+          </button>}
         </div>
       )}
 

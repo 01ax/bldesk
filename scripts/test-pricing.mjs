@@ -2,7 +2,7 @@
 // TypeScript directly: node --test scripts/test-pricing.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { billingTotal, retentionOptionLabel, retentionWording, taxBasis } from '../src/renderer/src/lib/serverPricing.ts'
+import { billingTotal, currentMonthlyCost, retentionOptionLabel, retentionWording, taxBasis } from '../src/renderer/src/lib/serverPricing.ts'
 
 const gst = { name: 'GST', type: 'scalar', fixed_percent: 10 }
 const size = { slug: 'std-min', disk: 20, options: { daily_backups: 0, backups_cost_per_backup_per_gigabyte: 0.05 } }
@@ -30,4 +30,28 @@ test('the change in a total goes through the same tax step as the total', () => 
   const before = 8
   assert.equal(+(billingTotal(before + 2, gst).total - billingTotal(before, gst).total).toFixed(2), 2.2)
   assert.equal(billingTotal(before, null).total, before)
+})
+
+test('what a server bills now is its plan plus what it is set up with beyond the plan, and its licences', () => {
+  const plan = {
+    slug: 'std-2vcpu', price_monthly: 20, memory: 2048, disk: 40, vcpus: 2, transfer: 2,
+    options: { ipv4_addresses_cost_per_address: 2.5, backups_cost_per_backup_per_gigabyte: 0.05, daily_backups: 0, disk_cost_per_additional_gigabyte: 0.1, offsite_backups_cost_per_gigabyte: 0 }
+  }
+  const server = {
+    size: plan, image: undefined, memory: 2048, disk: 60,
+    selected_size_options: { ipv4_addresses: 3, daily_backups: 2, weekly_backups: 0, monthly_backups: 0, offsite_backups: false, transfer: 2 },
+    networks: { v4: [{ type: 'public' }, { type: 'public' }, { type: 'public' }] }
+  }
+  const cost = currentMonthlyCost(server, 7)
+  // 20 plan + 20 GB extra storage at 0.10 + 2 extra addresses at 2.50 + 2 daily backups of 60 GB at 0.05 + 7 of licences
+  assert.equal(cost.disk, 2)
+  assert.equal(cost.addresses, 5)
+  assert.equal(cost.backups, 6)
+  assert.equal(cost.licences, 7)
+  assert.equal(Math.round(cost.total * 100) / 100, 40)
+  // The plan's list price alone is what the cancel note used to quote.
+  assert.notEqual(cost.total, plan.price_monthly)
+  // With no plan there is nothing to price, and no options means the public addresses are counted.
+  assert.equal(currentMonthlyCost({ size: null }, 0), null)
+  assert.equal(currentMonthlyCost({ ...server, selected_size_options: null }, 0).addresses, 5)
 })

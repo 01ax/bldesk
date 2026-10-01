@@ -33,6 +33,7 @@ import {
   diskFloor,
   defaultDisk,
   billingTotal,
+  currentMonthlyCost,
   compareVersionNames
 } from '../../lib/serverPricing'
 import {
@@ -456,21 +457,7 @@ export const ChangePlanPanel: React.FC<{
    * plan is not in /v2/sizes, and comparing against nothing would report the
    * entire bill as an increase.
    */
-  const oldCost = server.size
-    ? configuredCost({
-        size: server.size as any,
-        image: currentImage,
-        memoryMb: server.memory ?? 0,
-        diskGb: server.disk ?? 0,
-        ipCount: currentIpCount || 1,
-        dailyBackups: (current.daily_backups as number) ?? 0,
-        weeklyBackups: (current.weekly_backups as number) ?? 0,
-        monthlyBackups: (current.monthly_backups as number) ?? 0,
-        offsiteBackups: !!current.offsite_backups,
-        transferTb: currentTransferTb,
-        licencesMonthly: currentLicenceCost(licensed as any)
-      })
-    : null
+  const oldCost = currentMonthlyCost(server as any, currentLicenceCost(licensed as any))
 
   /** Name of a licence by id, from either the offered list or what is held. */
   const licenceName = (id: number): string => {

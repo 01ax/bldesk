@@ -10,7 +10,7 @@ Use SSH Keys to register public keys in BinaryLane and inspect their fingerprint
 ## Keep private keys local
 Only paste a public key into the account form. Your SSH private key belongs on your device. The server header's local-key selector chooses a file for SSH, embedded or native; it does not upload that private key.
 
-Desktop connection selectors offer keys discovered from .pub files in ~/.ssh with a corresponding private-key file. BLDesk reads the public file and checks whether the private path exists; it never reads the private file's contents. OpenSSH reads the private key when connecting.
+Desktop connection selectors offer keys discovered from .pub files in ~/.ssh with a corresponding private-key file. A key is named after its file without the .pub ending, so my.pubkey.pub is my.pubkey. BLDesk reads the public file and checks whether the private path exists; it never reads the private file's contents. OpenSSH reads the private key when connecting.
 
 For a key stored elsewhere or under a nonstandard filename, open the server's Remote Access tab and choose Browse… beside Key for this server. Select the existing OpenSSH private-key file, not its public .pub file. No matching .pub file is required when browsing. BLDesk remembers the exact full path including the filename for this profile/server; it does not copy, import or read the selected file's contents. The filename appears in the selector and the full path under Key file. Cancelling the browser leaves the selection unchanged.
 

@@ -65,6 +65,13 @@ export const CHANGELOG_EVENT = 'bldesk:changelog'
 
 let currentProfileId: string | undefined
 
+/**
+ * The account each change was recorded in, by id. An outcome is written to that account, whatever is active when it
+ * arrives: an action can finish minutes after the account was switched.
+ */
+const changeProfile = new Map<string, string>()
+const CHANGE_PROFILE_MAX = 2000
+
 /** App tells the log which account is active; entries are stamped with it. */
 export function setChangeLogProfile(profileId: string | undefined): void {
   currentProfileId = profileId
@@ -72,6 +79,11 @@ export function setChangeLogProfile(profileId: string | undefined): void {
 
 export function getChangeLogProfile(): string | undefined {
   return currentProfileId
+}
+
+/** The account a recorded change belongs to, if this session recorded it. */
+export function getChangeProfile(id: string | undefined): string | undefined {
+  return id ? changeProfile.get(id) : undefined
 }
 
 function newId(): string {
@@ -118,6 +130,8 @@ export async function recordChange(change: NewChange, profileId = currentProfile
     profileId,
     outcome: change.outcome ?? 'submitted'
   }
+  changeProfile.set(entry.id, profileId)
+  if (changeProfile.size > CHANGE_PROFILE_MAX) changeProfile.delete(changeProfile.keys().next().value as string)
   const api = window.bldeskApi
   if (api?.changelogAppend) {
     await api.changelogAppend(entry).catch(() => localWrite(profileId, [...localRead(profileId), entry]))
@@ -128,7 +142,7 @@ export async function recordChange(change: NewChange, profileId = currentProfile
   return entry.id
 }
 
-export async function updateChange(id: string | undefined, patch: Partial<Pick<ChangeEntry, 'outcome' | 'detail' | 'actionId'>>, profileId = currentProfileId): Promise<void> {
+export async function updateChange(id: string | undefined, patch: Partial<Pick<ChangeEntry, 'outcome' | 'detail' | 'actionId'>>, profileId = (id ? changeProfile.get(id) : undefined) ?? currentProfileId): Promise<void> {
   if (!id) return
   if (!profileId) return
   const full = { ...patch, settledAt: patch.outcome ? new Date().toISOString() : undefined }

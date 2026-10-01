@@ -143,17 +143,18 @@ async function run(
     summary: `From template “${input.templateName}”${tags.length ? `; tagged ${tags.join(', ')}` : ''}`,
     diff: rules.map((r) => ({ kind: 'add' as const, text: ruleSignature(r) })),
     source: 'ui'
-  })
+    // Entered against the account the server was built in: this runs for minutes, and the active account may change meanwhile.
+  }, input.profileId)
   try {
     const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
       params: { path: { server_id: id } },
       body: { type: 'change_advanced_firewall_rules', firewall_rules: rules as never }
     })
     if (error || !response.ok) throw new Error(error ? errText(error) : `BinaryLane answered HTTP ${response.status} with no reason.`)
-    void updateChange(changeId, { outcome: 'completed', actionId: data?.action?.id, detail: `${rules.length} rule${rules.length === 1 ? '' : 's'} applied.` })
+    void updateChange(changeId, { outcome: 'completed', actionId: data?.action?.id, detail: `${rules.length} rule${rules.length === 1 ? '' : 's'} applied.` }, input.profileId)
     set(job, { status: 'done', detail: `${rules.length} firewall rule${rules.length === 1 ? '' : 's'} applied${tags.length ? ` and tagged ${tags.join(', ')}` : ''}.` })
   } catch (err: any) {
-    void updateChange(changeId, { outcome: 'failed', detail: err?.message || String(err) })
+    void updateChange(changeId, { outcome: 'failed', detail: err?.message || String(err) }, input.profileId)
     set(job, { status: 'failed', detail: `Firewall rules were not applied: ${err?.message || err}. Set them from the server’s Firewall tab.` })
   }
 }

@@ -388,6 +388,7 @@ function MainDashboard() {
                   activeSubTab={activeServerSubTab}
                   onSelectSubTab={setActiveServerSubTab}
                   onBack={() => setSelectedServer(null)}
+                  onCancelled={(id) => setSelectedServer((cur: any) => (cur?.id === id ? null : cur))}
                   onOpenTerminal={handleOpenTerminalForIp}
                   onSaveAsTemplate={openTemplateDraft}
                 />

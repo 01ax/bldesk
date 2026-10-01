@@ -158,6 +158,22 @@ export class UpdaterManager {
   }
   private static timer: NodeJS.Timeout | null = null
   private static initialised = false
+  /**
+   * The update that has been downloaded and is waiting for a restart. It stays until it is installed or a newer one has
+   * finished downloading: a later check (every few hours, or the Check button) that finds nothing, fails because the
+   * machine is offline, or sees the same version again must not take the Restart button away.
+   */
+  private static held: { version: string } | null = null
+
+  private static markReady(version: string): void {
+    this.held = { version }
+    this.setState({ status: 'ready', availableVersion: version, progress: 100 })
+  }
+
+  /** Back to the waiting update after a check that ended without replacing it. */
+  private static restoreHeld(): void {
+    if (this.held) this.setState({ status: 'ready', availableVersion: this.held.version, progress: 100, error: undefined })
+  }
 
   static init(): void {
     if (this.initialised) return
@@ -202,8 +218,18 @@ export class UpdaterManager {
     }
     this.applyChannel(settings.channel)
 
-    autoUpdater.on('checking-for-update', () => this.setState({ status: 'checking', error: undefined }))
+    autoUpdater.on('checking-for-update', () => {
+      if (!this.held) this.setState({ status: 'checking', error: undefined })
+    })
     autoUpdater.on('update-available', async (info: UpdateInfo) => {
+      if (this.held) {
+        // The version already downloaded again: nothing to do, and the Restart button stays.
+        if (info.version === this.held.version) return
+        // A different version. On Windows and Linux electron-updater deletes the downloaded installer when a download
+        // of another version starts, and again when it fails, so the waiting update cannot be installed any more and
+        // must not be offered. (On macOS the zip is BLDesk's own and stays.)
+        if (!isMac) this.held = null
+      }
       this.setState({ status: 'available', availableVersion: info.version, releaseNotes: notesToString(info) })
       if (isMac) {
         if (macDownloading) return
@@ -219,7 +245,7 @@ export class UpdaterManager {
 
           if (existsSync(destPath) && statSync(destPath).size > 1000000) {
             macPendingZipPath = destPath
-            this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
+            this.markReady(info.version)
             if (Notification.isSupported()) {
               new Notification({
                 title: `BLDesk ${info.version} is ready`,
@@ -235,7 +261,7 @@ export class UpdaterManager {
           })
 
           macPendingZipPath = destPath
-          this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
+          this.markReady(info.version)
           if (Notification.isSupported()) {
             new Notification({
               title: `BLDesk ${info.version} is ready`,
@@ -250,15 +276,21 @@ export class UpdaterManager {
         }
       }
     })
-    autoUpdater.on('update-not-available', () =>
+    autoUpdater.on('update-not-available', () => {
+      if (this.held) {
+        this.setState({ lastCheckedAt: new Date().toISOString() })
+        return
+      }
       this.setState({ status: 'up-to-date', availableVersion: undefined, lastCheckedAt: new Date().toISOString() })
-    )
+    })
     autoUpdater.on('download-progress', (p: ProgressInfo) =>
       this.setState({ status: 'downloading', progress: Math.round(p.percent) })
     )
     autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-      this.setState({ status: 'ready', availableVersion: info.version, progress: 100 })
-      if (Notification.isSupported()) {
+      // electron-updater reports a download it already holds again on every check: say "is ready" once.
+      const repeat = this.held?.version === info.version
+      this.markReady(info.version)
+      if (!repeat && Notification.isSupported()) {
         new Notification({
           title: `BLDesk ${info.version} is ready`,
           body: 'Restart BLDesk to finish installing the update.'
@@ -287,7 +319,7 @@ export class UpdaterManager {
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
     if (this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'installing') return this.getState()
-    this.setState({ status: 'checking', error: undefined })
+    if (!this.held) this.setState({ status: 'checking', error: undefined })
     try {
       await autoUpdater.checkForUpdates()
     } catch (err: any) {
@@ -307,6 +339,7 @@ export class UpdaterManager {
     // afterwards. electron-updater ignores that repeat call but clears its own
     // "already installing" flag when it does, so the quit handler then installed
     // again. Leaving 'ready' first removes the button and makes repeats no-ops.
+    this.held = null
     this.setState({ status: 'installing' })
     // isSilent=false shows the installer UI on Windows. The app restarts through
     // autoRunAppAfterInstall, or relaunchAfterExit for a Linux package.
@@ -315,7 +348,8 @@ export class UpdaterManager {
 
   static onAppQuit(): void {
     if (macInstalling) return
-    if (isMac && this.state.status === 'ready' && macPendingZipPath && existsSync(macPendingZipPath)) {
+    // `held` too: while a newer version downloads the status is not ready, and the waiting update is still installed.
+    if (isMac && (this.state.status === 'ready' || this.held) && macPendingZipPath && existsSync(macPendingZipPath)) {
       installMacUpdate(macPendingZipPath, false)
     }
   }
@@ -324,6 +358,7 @@ export class UpdaterManager {
     if (channel !== 'stable' && channel !== 'beta') return this.getState()
     writeSettings({ channel })
     this.applyChannel(channel)
+    this.held = null
     this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined })
     if (app.isPackaged) void this.check()
     return this.getState()
@@ -351,6 +386,12 @@ export class UpdaterManager {
       console.log('[Updater] Update check could not complete:', msg)
     } else {
       console.error('[Updater] Update check failed:', msg)
+    }
+    if (this.held) {
+      // A downloaded update is still waiting: a failed check does not take it away.
+      this.setState({ lastCheckedAt: new Date().toISOString() })
+      this.restoreHeld()
+      return
     }
     this.setState({
       status,

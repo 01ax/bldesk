@@ -23,7 +23,7 @@ On Ubuntu, an AppArmor user-namespace error can prevent an older AppImage from s
 macOS may warn about an unsigned build. Only open an installer you obtained from the project's trusted release channel. Use the OS's explicit approval flow if you choose to run it; do not disable Gatekeeper globally.
 
 ## Updates
-Open the title-bar update control and check the chosen stable or beta channel. Beta deliberately includes prereleases. A desktop update may need a restart; Android downloads an APK and relies on the OS installer. Check the release notes before updating.
+Open the title-bar update control and check the chosen stable or beta channel. Beta deliberately includes prereleases. A desktop update may need a restart; Android downloads an APK and relies on the OS installer. Once an update has downloaded, Restart to update stays until you install it, you change the update channel, or a newer one starts to download: a later check that finds nothing newer or fails, such as when the machine is offline, does not take the button away. Check the release notes before updating.
 
 ## What Ask BinaryLane can see
 No token, no profile id, no server ids, no History, no ticket text is attached by BLDesk. Only the text in the search box is sent for questions and suggestions. Do not type secrets, names, addresses or account details into that box.
