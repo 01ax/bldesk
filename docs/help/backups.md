@@ -57,7 +57,7 @@ The note says:
 Verify the server name and image in the change table. Type the target name, then choose “Restore”. Follow the action in History and check the guest once complete. Your dialog substitutes the actual image name and ID.
 
 ## Disabling automatic backups
-The banner at the top of the page reads Enabled when the server has daily backups in its options. Backups taken by hand do not count: a server with only temporary backups reads Disabled.
+The banner at the top of the page reads Enabled when the server has daily backups in its options. Backups taken by hand do not count: a server with only temporary backups reads Disabled. A server with weekly or monthly backups and no daily ones reads No nightly and has no button, because enabling nightly backups is for a server that has none; set its daily backups in Change Plan.
 
 “Remove Daily Backups” is not a pause, and it is the banner's button only while the server has daily backups. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. The dialog title is “Remove daily backups”. Its button is red but asks for no typed name, so read the summary before you confirm. The request is recorded in History.
 

@@ -108,6 +108,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const isAutoBackupEnabled = activeServer?.selected_size_options
     ? (activeServer.selected_size_options.daily_backups ?? 0) > 0
     : !!activeServer?.next_backup_window
+  // Weekly or monthly retention without a daily one is a schedule too, just not the nightly one this banner switches:
+  // "Disabled" would be untrue, and enabling two daily backups is for a server with no backups.
+  const weeklyOrMonthlyOnly =
+    !isAutoBackupEnabled &&
+    ((activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 || (activeServer?.selected_size_options?.monthly_backups ?? 0) > 0)
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
   // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
@@ -445,18 +450,20 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                       : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                   }`}
                 >
-                  {isAutoBackupEnabled ? 'Enabled' : 'Disabled'}
+                  {isAutoBackupEnabled ? 'Enabled' : weeklyOrMonthlyOnly ? 'No nightly' : 'Disabled'}
                 </span>
               </div>
               <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
                 {isAutoBackupEnabled
                   ? 'BinaryLane takes an automated nightly backup during your scheduled maintenance window.'
-                  : 'Automated backups are currently turned off for this server.'}
+                  : weeklyOrMonthlyOnly
+                    ? 'This server keeps weekly or monthly backups and no daily ones. Daily backups are set in Change Plan.'
+                    : 'Automated backups are currently turned off for this server.'}
               </p>
             </div>
           </div>
 
-          <button
+          {!weeklyOrMonthlyOnly && <button
             onClick={handleToggleAuto}
             disabled={toggleAutomatedBackups.isPending}
             className={`px-3 py-1.5 text-xs font-medium rounded transition border whitespace-nowrap ${
@@ -466,7 +473,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             }`}
           >
             {isAutoBackupEnabled ? 'Remove Daily Backups' : 'Enable Nightly Backups'}
-          </button>
+          </button>}
         </div>
       )}
 

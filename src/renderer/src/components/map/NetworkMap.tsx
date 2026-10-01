@@ -130,6 +130,12 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
       return estimateFooter
     }
   }, [])
+  // Measured once per layout, not on every pan and zoom render.
+  const footers = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof cardFooter>>()
+    for (const n of layout.nodes) if (n.kind === 'server') m.set(n.id, cardFooter(n.server!.exposure, n.server!.publicIp, n.server!.privateIp, n.w, measureFooter))
+    return m
+  }, [layout, measureFooter])
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, k: 1 })
@@ -579,7 +585,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
                   const isSel = selected === n.id
                   // Grey until the rules have been read; "?" means they could not be.
                   const portColour = s.exposure === '…' || s.exposure === '?' ? '#adb5bd' : levelColour(s.exposureLevel)
-                  const footer = cardFooter(s.exposure, s.publicIp, s.privateIp, n.w, measureFooter)
+                  const footer = footers.get(n.id)!
                   return (
                     <g
                       key={n.id}

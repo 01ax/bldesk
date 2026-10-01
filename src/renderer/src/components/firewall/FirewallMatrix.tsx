@@ -566,7 +566,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
             {rows.length === 0 && (
               <tr>
                 <td colSpan={matrix.columns.length + 2} className="px-3 py-8 text-center text-[#6c757d]">
-                  {onlyFlagged ? 'Nothing flagged.' : 'No servers in this group.'}
+                  {onlyFlagged ? (fleet.isLoading ? 'Reading rules…' : 'Nothing flagged.') : 'No servers in this group.'}
                 </td>
               </tr>
             )}

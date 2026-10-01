@@ -222,8 +222,14 @@ export class UpdaterManager {
       if (!this.held) this.setState({ status: 'checking', error: undefined })
     })
     autoUpdater.on('update-available', async (info: UpdateInfo) => {
-      // The version already downloaded again: nothing to do, and the Restart button stays.
-      if (this.held && info.version === this.held.version) return
+      if (this.held) {
+        // The version already downloaded again: nothing to do, and the Restart button stays.
+        if (info.version === this.held.version) return
+        // A different version. On Windows and Linux electron-updater deletes the downloaded installer when a download
+        // of another version starts, and again when it fails, so the waiting update cannot be installed any more and
+        // must not be offered. (On macOS the zip is BLDesk's own and stays.)
+        if (!isMac) this.held = null
+      }
       this.setState({ status: 'available', availableVersion: info.version, releaseNotes: notesToString(info) })
       if (isMac) {
         if (macDownloading) return
@@ -281,8 +287,10 @@ export class UpdaterManager {
       this.setState({ status: 'downloading', progress: Math.round(p.percent) })
     )
     autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+      // electron-updater reports a download it already holds again on every check: say "is ready" once.
+      const repeat = this.held?.version === info.version
       this.markReady(info.version)
-      if (Notification.isSupported()) {
+      if (!repeat && Notification.isSupported()) {
         new Notification({
           title: `BLDesk ${info.version} is ready`,
           body: 'Restart BLDesk to finish installing the update.'
@@ -340,7 +348,8 @@ export class UpdaterManager {
 
   static onAppQuit(): void {
     if (macInstalling) return
-    if (isMac && this.state.status === 'ready' && macPendingZipPath && existsSync(macPendingZipPath)) {
+    // `held` too: while a newer version downloads the status is not ready, and the waiting update is still installed.
+    if (isMac && (this.state.status === 'ready' || this.held) && macPendingZipPath && existsSync(macPendingZipPath)) {
       installMacUpdate(macPendingZipPath, false)
     }
   }

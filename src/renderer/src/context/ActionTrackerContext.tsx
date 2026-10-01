@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../api/client'
 import { describeActionFailure, pollActionToSettled } from '../api/queries'
-import { getChangeLogProfile, updateChange } from '../lib/changelog'
+import { getChangeLogProfile, getChangeProfile, updateChange } from '../lib/changelog'
 
 type ServerAction = components['schemas']['Action']
 
@@ -127,7 +127,8 @@ export function ActionTrackerProvider({
     (action: ServerAction, label: string, resourceName?: string, changeId?: string) => {
       if (!client || !action?.id) return
       if (controllers.current.has(action.id)) return
-      const profileId = getChangeLogProfile()
+      // The account the change was recorded in, which is not the active one if it was switched since the confirmation.
+      const profileId = getChangeProfile(changeId) ?? getChangeLogProfile()
       followed.current.set(action.id, { changeId, profileId })
       void updateChange(changeId, { actionId: action.id }, profileId)
 
@@ -348,7 +349,7 @@ export function ActionTrackerProvider({
       controllers.current.clear()
       // Their History entries would otherwise stay at "submitted" for ever: nothing follows them now.
       followed.current.forEach(({ changeId, profileId }) => {
-        void updateChange(changeId, { outcome: 'lost', detail: 'BLDesk stopped following this action when the account changed. Its result is on BinaryLane: check the account\'s actions there.' }, profileId)
+        void updateChange(changeId, { outcome: 'lost', detail: 'BLDesk stopped following this action when the account or its token changed. Its result is on BinaryLane: check the account\'s actions there.' }, profileId)
       })
       followed.current.clear()
       // The polls are gone, so their entries must go too: one left as "running" would never be updated again.
