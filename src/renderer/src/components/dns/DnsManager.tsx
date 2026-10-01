@@ -6,7 +6,7 @@ import { Globe, Plus, Trash2, Search, RefreshCw, Loader2, ChevronLeft, ChevronRi
 import { BinaryLaneClient } from '../../api/client'
 import { useDomains, useDomainRecords, useLocalNameservers } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { describeApiError } from '../../api/queries'
+import { apiFailure } from '../../api/queries'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeDnsRecord } from '../../lib/diff'
 
@@ -201,7 +201,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       source: 'ui'
     })
     try {
-      const { error } = await client.POST('/v2/domains/{domain_name}/records', {
+      const { error, response } = await client.POST('/v2/domains/{domain_name}/records', {
         params: { path: { domain_name: selectedDomain } },
         // No ttl: the API reference gives 3600 as the default and only supported value.
         body: {
@@ -213,7 +213,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           ...(recordType === 'CAA' ? { flags: Number(recordFlags), tag: recordTag } : {})
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(changeId, { outcome: 'completed' })
       setIsAddingRecord(false)
       setRecordName('@')
@@ -250,7 +250,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!c.ok) return
 
     try {
-      const { error } = await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
+      const { error, response } = await client.DELETE('/v2/domains/{domain_name}/records/{record_id}', {
         params: {
           path: {
             domain_name: selectedDomain,
@@ -258,7 +258,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
           }
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(c.changeId, { outcome: 'completed' })
       recordsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
@@ -279,7 +279,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
    */
   const handleRemoveDnsHosting = async (domain: any) => {
     if (!client || !domain) return
-    const recordCount = selectedDomain === domain.name ? records.length : undefined
+    const recordCount = selectedDomain === domain.name && recordsQuery.data ? recordsQuery.data.length : undefined
     const c = await confirmAction({
       title: 'Remove DNS hosting',
       target: { kind: 'domain', name: domain.name },
@@ -293,10 +293,10 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
     if (!c.ok) return
     setRemoveBusy(true)
     try {
-      const { error } = await client.DELETE('/v2/domains/{domain_name}', {
+      const { error, response } = await client.DELETE('/v2/domains/{domain_name}', {
         params: { path: { domain_name: domain.name } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(c.changeId, { outcome: 'completed' })
 
       // Clear anything pointing at the zone that no longer exists, then wait for
@@ -384,7 +384,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
 
             {domainsQuery.isError && (
               <div className="p-3">
-                <LoadError what="DNS zones" hasData={domainsQuery.data !== undefined} message={domainsQuery.error?.message} isFetching={domainsQuery.isFetching} onRetry={() => void domainsQuery.refetch()} />
+                <LoadError what="DNS zones" hasData={(domainsQuery.data?.length ?? 0) > 0} message={domainsQuery.error?.message} isFetching={domainsQuery.isFetching} onRetry={() => void domainsQuery.refetch()} />
               </div>
             )}
 
@@ -460,7 +460,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
                     {selectedDomain}
                   </h3>
                   <span className="text-[11px] text-[#6c757d] dark:text-slate-400">
-                    {records.length} {records.length === 1 ? 'record' : 'records'} configured
+                    {recordsQuery.data ? `${records.length} ${records.length === 1 ? 'record' : 'records'} configured` : recordsQuery.isError ? 'Records not read' : 'Reading records…'}
                   </span>
                 </div>
 
@@ -489,7 +489,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
 
                 {recordsQuery.isError && (
                   <div className="p-3">
-                    <LoadError what="DNS records" hasData={recordsQuery.data !== undefined} message={recordsQuery.error?.message} isFetching={recordsQuery.isFetching} onRetry={() => void recordsQuery.refetch()} />
+                    <LoadError what="DNS records" hasData={(recordsQuery.data?.length ?? 0) > 0} message={recordsQuery.error?.message} isFetching={recordsQuery.isFetching} onRetry={() => void recordsQuery.refetch()} />
                   </div>
                 )}
 

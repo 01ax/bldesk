@@ -30,7 +30,7 @@ import {
 import { components } from '@shared/api/schema'
 import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useServerActionMutation, describeApiError, fetchServerBackups, mapLimitNullable } from '../../api/queries'
+import { useDomains, useServerActionMutation, apiFailure, fetchServerBackups, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -258,10 +258,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     openServer(s, 'remote-access')
     close()
     try {
-      const { data, error } = await client.GET('/v2/servers/{server_id}/console', {
+      const { data, error, response } = await client.GET('/v2/servers/{server_id}/console', {
         params: { path: { server_id: s.id } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       const url = data?.console?.browser || data?.console?.iframe
       if (!url) throw new Error('BinaryLane returned no console URL.')
       await window.bldeskApi?.openRescueConsole?.({
@@ -494,17 +494,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               label: 'Add DNS record',
               target: { kind: 'domain', name: target.domain },
               severity: 'normal',
-              changes: [{ label: `${parsed.type} ${target.name}`, to: parsed.value }],
+              changes: [{ label: `${parsed.type} ${target.name}`, to: parsed.priority !== undefined ? `${parsed.priority} ${parsed.value}` : parsed.value }],
               summary: `Palette: ${query.trim()}`,
               source: 'palette'
             })
-            const { error } = await client.POST('/v2/domains/{domain_name}/records', {
+            const { error, response } = await client.POST('/v2/domains/{domain_name}/records', {
               params: { path: { domain_name: target.domain } },
               body: { type: parsed.type, name: target.name, data: parsed.value, priority: parsed.priority ?? null }
             })
-            if (error) {
-              void updateChange(changeId, { outcome: 'failed', detail: describeApiError(error) })
-              return [{ target: summary, ok: false, detail: describeApiError(error) }]
+            if (error || !response.ok) {
+              const detail = apiFailure(error, response).message
+              void updateChange(changeId, { outcome: 'failed', detail })
+              return [{ target: summary, ok: false, detail }]
             }
             void updateChange(changeId, { outcome: 'completed' })
             void queryClient.invalidateQueries({ queryKey: ['domainRecords', target.domain] })

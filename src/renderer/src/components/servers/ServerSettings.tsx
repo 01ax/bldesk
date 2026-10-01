@@ -266,11 +266,30 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
     )
   }
 
-  const handleSaveAdvanced = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // What the Advanced form would change. A row that reads the same either side is not a change, and features are
+  // compared as sets (ticking one off and on again gives the same set in another order).
+  const advancedChanges = (() => {
     const current = server.advanced_features
+    const before = current?.enabled_advanced_features ?? []
+    const sameFeatures = before.length === selectedFeatures.length && before.every((f) => selectedFeatures.includes(f))
     const processorLabel = (id: number) => (id === -1 ? 'Host Default (Auto)' : advancedQuery.data?.processor_models?.find((p) => p.id === id)?.name ?? `#${id}`)
     const videoLabel = (v: string) => VIDEO_DEVICES.find((d) => d.value === v)?.label ?? v
+    return [
+      ...(sameFeatures ? [] : [{ label: 'Features', from: before.join(', ') || undefined, to: selectedFeatures.join(', ') || undefined }]),
+      ...(machineType !== (current?.machine_type ?? '')
+        ? [{ label: 'Machine type', from: current?.machine_type ? formatMachineType(current.machine_type as string) : 'Default (Automatic)', to: machineType ? formatMachineType(machineType as string) : 'Default (Automatic)' }]
+        : []),
+      ...(processorModel !== (current?.processor_model ?? -1)
+        ? [{ label: 'Processor model', from: processorLabel(current?.processor_model ?? -1), to: processorLabel(processorModel) }]
+        : []),
+      ...(videoDevice !== (current?.video_device ?? 'cirrus-logic') ? [{ label: 'Video device', from: videoLabel(current?.video_device ?? 'cirrus-logic'), to: videoLabel(videoDevice) }] : [])
+    ]
+  })()
+
+  const handleSaveAdvanced = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (advancedChanges.length === 0) return
+    const current = server.advanced_features
     await executeAction(
       'Update Advanced Features',
       {
@@ -288,17 +307,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       },
       {
         summary: 'Updates the hypervisor-level features. Takes effect on the next reboot.',
-        changes: [
-          // Only what changes: a row that reads the same either side is not a change.
-          ...((current?.enabled_advanced_features ?? []).join(', ') !== selectedFeatures.join(', ')
-            ? [{ label: 'Features', from: (current?.enabled_advanced_features ?? []).join(', ') || undefined, to: selectedFeatures.join(', ') || undefined }]
-            : []),
-          ...(machineType !== (current?.machine_type ?? '') ? [{ label: 'Machine type', from: current?.machine_type ? formatMachineType(current.machine_type as string) : 'Default (Automatic)', to: machineType ? formatMachineType(machineType as string) : 'Default (Automatic)' }] : []),
-          ...(processorModel !== (current?.processor_model ?? -1)
-            ? [{ label: 'Processor model', from: processorLabel(current?.processor_model ?? -1), to: processorLabel(processorModel) }]
-            : []),
-          ...(videoDevice !== (current?.video_device ?? 'cirrus-logic') ? [{ label: 'Video device', from: videoLabel(current?.video_device ?? 'cirrus-logic'), to: videoLabel(videoDevice) }] : [])
-        ]
+        changes: advancedChanges
       }
     )
   }
@@ -805,7 +814,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
               </div>
             )}
 
-            <button type="submit" disabled={busy} className={primaryBtn}>
+            <button type="submit" disabled={busy || advancedChanges.length === 0} className={primaryBtn}>
               <Cpu className="w-3.5 h-3.5" />
               <span>Save Advanced Features</span>
             </button>

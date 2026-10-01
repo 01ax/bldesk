@@ -1,3 +1,4 @@
+import { LoadError } from '../ui/LoadError'
 import { HelpLink } from '../ui/HelpLink'
 import React, { useState } from 'react'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -46,6 +47,8 @@ interface ServerListProps {
   /** Called once a create is accepted (the Templates tab applies firewall rules and tags after this). */
   onCreated?: (created: { id?: number; name: string }) => void
   profileId?: string
+  /** The server-list read failed; `hasData` says the list on screen is a saved one. */
+  loadError?: { message?: string; hasData: boolean; isFetching: boolean; onRetry: () => void } | null
 }
 
 export const ServerList: React.FC<ServerListProps> = ({
@@ -56,7 +59,8 @@ export const ServerList: React.FC<ServerListProps> = ({
   onOpenTerminal: _onOpenTerminal,
   onOpenTemplates,
   onCreated,
-  profileId
+  profileId,
+  loadError
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
@@ -166,6 +170,8 @@ export const ServerList: React.FC<ServerListProps> = ({
 
   return (
     <div className="h-full flex flex-col p-6 space-y-4 overflow-y-auto bg-[#f8f9fa] dark:bg-[#212529] text-[#212529] dark:text-[#f8f9fa] pb-bottom-nav">
+      {loadError && <LoadError what="server list" hasData={loadError.hasData} message={loadError.message} isFetching={loadError.isFetching} onRetry={loadError.onRetry} />}
+
       {/* Header & Main Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -275,7 +281,7 @@ export const ServerList: React.FC<ServerListProps> = ({
       )}
 
       {/* Empty State */}
-      {!isLoading && filteredServers.length === 0 && (
+      {!isLoading && !loadError && filteredServers.length === 0 && (
         <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-[#2b3035] rounded-lg border border-[#ced4da] dark:border-[#373b3e]">
           <ServerIcon className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
           <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No servers found</h3>

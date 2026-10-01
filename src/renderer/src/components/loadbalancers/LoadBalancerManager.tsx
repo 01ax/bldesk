@@ -251,7 +251,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       )}
 
       {lbsQuery.isError && (
-        <LoadError what="load balancers" hasData={lbsQuery.data !== undefined} message={lbsQuery.error?.message} isFetching={lbsQuery.isFetching} onRetry={() => void lbsQuery.refetch()} />
+        <LoadError what="load balancers" hasData={(lbsQuery.data?.length ?? 0) > 0} message={lbsQuery.error?.message} isFetching={lbsQuery.isFetching} onRetry={() => void lbsQuery.refetch()} />
       )}
 
       {/* Empty State */}

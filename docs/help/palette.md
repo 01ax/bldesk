@@ -41,7 +41,7 @@ backup db "before upgrade"
 Aliases: backups, bak. Older snapshot/snap spellings remain accepted, but the product calls them backups.
 
 ## DNS
-Prepare a record in a hosted zone. MX needs a priority. SRV and CAA records need more fields (a priority, weight and port; flags and a tag), so the palette refuses them and points to Add Record on the DNS tab. Inspect the matched zone and record fields before writing.
+Prepare a record in a hosted zone. MX needs a priority, and no other type takes one. SRV and CAA records need more fields (a priority, weight and port; flags and a tag), so the palette refuses them and points to Add Record on the DNS tab. Inspect the matched zone and record fields before writing.
 
 ```
 dns add A www.example.com 192.0.2.25
@@ -56,7 +56,7 @@ tag add staging wp-*
 tag remove staging #12345
 ```
 
-A tag name keeps lower-case letters, numbers, dots, dashes and underscores; anything else, such as a space or a slash, is dropped, and the preview shows the name that will be stored. A name with nothing left is refused.
+A tag name is lower-cased and keeps letters, numbers, dots, dashes and underscores; anything else, such as a space or a slash, is dropped, and the preview shows the name that will be stored. A name with nothing left is refused.
 
 Aliases: tags, group; rm also means remove.
 

@@ -145,11 +145,11 @@ async function run(
     source: 'ui'
   })
   try {
-    const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+    const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
       params: { path: { server_id: id } },
       body: { type: 'change_advanced_firewall_rules', firewall_rules: rules as never }
     })
-    if (error) throw new Error(errText(error))
+    if (error || !response.ok) throw new Error(error ? errText(error) : `BinaryLane answered HTTP ${response.status} with no reason.`)
     void updateChange(changeId, { outcome: 'completed', actionId: data?.action?.id, detail: `${rules.length} rule${rules.length === 1 ? '' : 's'} applied.` })
     set(job, { status: 'done', detail: `${rules.length} firewall rule${rules.length === 1 ? '' : 's'} applied${tags.length ? ` and tagged ${tags.join(', ')}` : ''}.` })
   } catch (err: any) {

@@ -20,7 +20,7 @@ import { useVpcs } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
-import { describeApiError } from '../../api/queries'
+import { apiFailure } from '../../api/queries'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -72,13 +72,13 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       source: 'ui'
     })
     try {
-      const { error } = await client.POST('/v2/vpcs', {
+      const { error, response } = await client.POST('/v2/vpcs', {
         body: {
           name: vpcName.trim(),
           ip_range: ipRange.trim()
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(changeId, { outcome: 'completed' })
       setIsCreating(false)
       setVpcName('')
@@ -110,14 +110,14 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       source: 'ui'
     })
     try {
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: selectedServerToAttach } },
         body: {
           type: 'change_network',
           vpc_id: attachModalVpc.id
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       if (data?.action) track(data.action, 'Attach to VPC', String(targetServerName), changeId)
       else void updateChange(changeId, { outcome: 'completed' })
 
@@ -154,14 +154,14 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
 
     setActionServerId(serverId)
     try {
-      const { data, error } = await client.POST('/v2/servers/{server_id}/actions', {
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
         body: {
           type: 'change_network',
           vpc_id: null as any
         }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       if (data?.action) track(data.action, 'Detach from VPC', serverName, c.changeId)
 
       window.bldeskApi?.sendNotification?.({
@@ -193,10 +193,10 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
     if (!c.ok) return
 
     try {
-      const { error } = await client.DELETE('/v2/vpcs/{vpc_id}', {
+      const { error, response } = await client.DELETE('/v2/vpcs/{vpc_id}', {
         params: { path: { vpc_id: vpcId } }
       })
-      if (error) throw new Error(describeApiError(error))
+      if (error || !response.ok) throw apiFailure(error, response)
       void updateChange(c.changeId, { outcome: 'completed' })
       vpcsQuery.refetch()
       window.bldeskApi?.sendNotification?.({
@@ -249,7 +249,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       )}
 
       {vpcsQuery.isError && (
-        <LoadError what="VPC networks" hasData={vpcsQuery.data !== undefined} message={vpcsQuery.error?.message} isFetching={vpcsQuery.isFetching} onRetry={() => void vpcsQuery.refetch()} />
+        <LoadError what="VPC networks" hasData={(vpcsQuery.data?.length ?? 0) > 0} message={vpcsQuery.error?.message} isFetching={vpcsQuery.isFetching} onRetry={() => void vpcsQuery.refetch()} />
       )}
 
       {/* Empty State */}

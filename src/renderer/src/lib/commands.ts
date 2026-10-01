@@ -260,14 +260,16 @@ export function parseCommand(input: string): ParsedCommand | null {
       if (!rawType || !fqdn || !value) return incomplete()
       const type = rawType.toUpperCase() as DomainRecordType
       if (!DNS_TYPES.includes(type)) return incomplete(`Unknown record type "${rawType}". One of: ${DNS_TYPES.filter((t) => t !== 'SRV' && t !== 'CAA').join(', ')} (SRV and CAA are added from the DNS tab)`)
-      let priority: number | undefined
-      if (rawPriority !== undefined) {
-        priority = Number(rawPriority)
-        if (!Number.isInteger(priority) || priority < 0) return incomplete(`Priority must be a whole number, got "${rawPriority}"`)
-      }
       // SRV needs a weight and a port as well, and CAA flags and a tag: more than one line of palette can carry honestly.
+      // Refused before anything else is read, so the usual word order (`dns add CAA example.com 0 issue ca.example`) gets this answer.
       if (type === 'SRV' || type === 'CAA') {
         return incomplete(`${type} records need ${type === 'SRV' ? 'a priority, weight and port' : 'flags and a tag'}: add it from Add Record on the DNS tab`)
+      }
+      let priority: number | undefined
+      if (rawPriority !== undefined) {
+        if (type !== 'MX') return incomplete(`${type} records take no priority: dns add ${type} ${fqdn} ${value}`)
+        priority = Number(rawPriority)
+        if (!Number.isInteger(priority) || priority < 0 || priority > 65535) return incomplete(`Priority must be a whole number from 0 to 65535, got "${rawPriority}"`)
       }
       if (type === 'MX' && priority === undefined) {
         return incomplete(`MX records need a priority: dns add MX ${fqdn} ${value} 10`)

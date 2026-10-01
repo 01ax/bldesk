@@ -129,9 +129,9 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   // Unticking a key, adding one, or a template that names keys (even none at all) is a decision, and a reload of the
   // list never overrides it.
   const keysTouchedRef = useRef(false)
-  // Back to a blank form, as a new one is: the form stays mounted with the server list, so what was typed or chosen for
-  // the last server would otherwise be what the next one starts with (its hostname, its extra addresses and paid
-  // backups, its agreement to the terms), and one more press of Add Server would build it again.
+  // Back to a blank form for what was typed or paid for: the form stays mounted with the server list, so the last
+  // server's hostname, extra addresses, paid backups and agreement to the terms would otherwise be what the next one
+  // starts with, and one more press of Add Server would build it again. Region, image and plan are left as they are.
   const resetForm = () => {
     setHostname('')
     setVpcId(undefined)
@@ -154,8 +154,17 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
     // The terms are agreed to for each server, not once for the session.
     setAgreed(false)
     setErrorMsg(null)
-    // A template starts from a blank form too, so nothing of the last server's choices rides along with it.
-    if (initial) resetForm()
+    // A template starts from a blank form too, so nothing of the last server's choices rides along with it. Region, image
+    // and plan are what the form starts with, so a template that does not name them gets those, not the last server's.
+    // (After a create they stay: the next server is often the same kind.)
+    if (initial) {
+      resetForm()
+      setRegion('syd')
+      setDistro('Ubuntu')
+      setImageSlug(null)
+      setPlanType('vps')
+      setSizeSlug(null)
+    }
     keysTouchedRef.current = initial?.sshKeyNames !== undefined
     setTemplateKeyNames([])
     if (initial?.sshKeyNames !== undefined) setSelectedKeys([])
