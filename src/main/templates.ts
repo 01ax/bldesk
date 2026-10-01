@@ -38,7 +38,8 @@ function pathFor(slug: string): string {
 }
 
 function syncFile(path: string): void {
-  const fd = openSync(path, 'r')
+  // Write access is needed for the flush: Windows refuses fsync on a read-only handle (EPERM).
+  const fd = openSync(path, 'r+')
   try { fsyncSync(fd) } finally { closeSync(fd) }
 }
 
