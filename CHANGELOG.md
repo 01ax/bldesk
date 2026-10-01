@@ -5,6 +5,24 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.13] - 2026-10-01
+
+**Create Server sends what it shows, and template firewall rules are IPv4 only**
+
+### Fixed
+- **The SSH keys ticked are the keys deployed** (#175, #176, #177). Unticking every key sends no keys, and a background reload of your key list no longer ticks the defaults again afterwards. A template can say "no keys", and Save as template records it when none are ticked; before, a template with an empty key list still deployed the account's default key. A template that names keys now decides the selection: the keys the account has are ticked, the ones it lacks are listed in the form, and the form opens in View All so you can see them. A template that says nothing about keys ticks the defaults, as a new form does. History now records which keys were requested.
+- **Offsite backups are not sent without on-site backups** (#197). Ticking Offsite Backups and then setting every retention back to none left it ticked, and sent it.
+- **Storage follows the image back down** (#132). An image that needs more storage raised it, and it stayed raised, and billed, after you chose the previous image again. A size you picked yourself is kept.
+- **Prices on the Create Server form use one basis** (#251). Every "+$" amount, in the simple view, in View All and on the extra IP addresses, is what choosing it adds to the Monthly Total, with the account's tax added and marked, for example "+$2.20 incl. GST". Before, the simple view's backup options included GST and the others did not, and none said which.
+- **Change Plan's Monthly Change says what it includes** (#252). It already included GST, beside a before-tax summary, without saying so.
+- **Setting weekly backups to 0 warns** (#122). BinaryLane removes all of a server's weekly backups when they are reduced to 0. The confirmation now says so, and is a destructive one, instead of only showing "2 → 0".
+- **A template with malformed firewall rules no longer crashes the Templates tab** (#140). It is listed as invalid with the reason, and the rest of the tab works. A template whose key list is not a list of names is invalid too, and importing a bundle with an invalid template tells you which one.
+- **`create <host> from <template>` works on first use** (#178). From the palette, before the Templates tab had been opened, it answered "No template called …". It no longer does.
+- **Template firewall rules are IPv4 only** (#260). BinaryLane's external firewall covers IPv4, not IPv6, but the starter templates and every new rule in the template editor used `::/0` as "anywhere", and applying a template wrote it to the server. They now use `0.0.0.0/0`. When a template is applied, IPv6 addresses in its rules (older templates carry `::/0`) are left out, and a rule that was about IPv6 alone is not written. The editor says so when a rule has an IPv6 address.
+
+### Changed
+- The GUI test harness has a Linux image that needs 30 GB, to reproduce the storage fix (#259). Nothing else in the app changes.
+
 ## [1.0.62-beta.12] - 2026-10-01
 
 **Firewall changes use the current list, and dialogs keep the keyboard**
