@@ -179,7 +179,7 @@ Based on the 94 endpoints, 206 schemas, and 42 server actions in the BinaryLane 
 * **DNS Record CRUD**:
   * `GET /v2/domains/{domain_name}/records`: Interactive DNS table with record type badges.
   * `POST /v2/domains/{domain_name}/records`: Add record (`A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`, `NS`, `CAA`).
-  * `PUT /v2/domains/{domain_name}/records/{id}`: In-line record editor.
+  * `PUT /v2/domains/{domain_name}/records/{id}`: Not exposed in BLDesk. The API can update a record in place, but the DNS page only adds and deletes records.
   * `DELETE /v2/domains/{domain_name}/records/{id}`: Delete with confirmation.
   * **Quick DNS Health Check**: In-app dig/DNS propagation verification.
 
