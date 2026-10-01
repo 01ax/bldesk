@@ -5,6 +5,23 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.16] - 2026-10-02
+
+**Links, passwords and the terminal behave as described**
+
+### Fixed
+- **A deep link that names an account opens its server on that account** (#138). `bldesk://server/42?account=Work` switched profile but looked the server up in the account still in use, said it was not found there and left you on the server list. It now waits for the switch and opens the server. It also waits for the saved profiles to load when it is what started the app, and a newer link replaces one that is waiting.
+- **Password reset says what it does** (#141). The card and the confirmation said a new password is emailed, for every server. Where BinaryLane cannot change the password (`password_change_supported` is false) the action only clears it, a new one is set at the server's web console, and nothing is emailed. The text now follows the server.
+- **Plain Ctrl+F belongs to the terminal session** (#152). It was taken for scrollback search, so a shell's forward-char and vim's page down never arrived. Search is Cmd+F, or Ctrl+Shift+F.
+- **A rescue console that cannot load says so** (#153). The window stayed blank. It now closes and reports the error, without the console address, which carries a token.
+- **The iTerm2 launcher works** (#156). Its command had quotes that ended the string, so every launch with iTerm2 failed. It is fixed and tested; it could not be run on a Mac here.
+- **Restarting after a Linux update no longer replays the link that started BLDesk** (#157).
+- **Android tells you when no SSH app opened** (#158). "Open native terminal" reported success whatever happened. It now says BLDesk could not tell that an app opened the link, and copies the command. **The update channel is saved on Android** (#159); Beta was forgotten on every launch.
+- **uuid is updated to 11.1.1 in the build tools** (Dependabot alert 3). It was a development-only dependency of the iOS tooling, and does not ship in the app.
+
+### Changed
+- `docs/AUTO_UPDATE.md` is rewritten to match the code (#163): the release workflow, the `.deb`, AppImage and macOS update paths, Android's own check, and that betas are full releases, so the Stable channel is offered them (decision #166 is still open). The GUI test mock gained `links.pages` on list responses (#237), a second account with its own server, and switches for the rescue console address. Nothing else in the app changes.
+
 ## [1.0.62-beta.15] - 2026-10-02
 
 **Backups, updates and Cancel Server say what is true**
