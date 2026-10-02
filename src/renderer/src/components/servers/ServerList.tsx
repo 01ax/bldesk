@@ -96,7 +96,7 @@ export const ServerList: React.FC<ServerListProps> = ({
   }
 
   const confirmAction = useConfirm()
-  const handleAction = async (serverId: number, actionType: string, e: React.MouseEvent) => {
+  const handleAction = async (serverId: number, actionType: 'power_on' | 'power_off' | 'power_cycle' | 'reboot' | 'shutdown', e: React.MouseEvent) => {
     e.stopPropagation()
     if (actionInProgressServerId !== null) return
     const target = servers.find((s) => s.id === serverId)

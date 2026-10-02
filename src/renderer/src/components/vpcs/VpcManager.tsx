@@ -158,7 +158,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
         params: { path: { server_id: serverId } },
         body: {
           type: 'change_network',
-          vpc_id: null as any
+          vpc_id: null
         }
       })
       if (error || !response.ok) throw apiFailure(error, response)

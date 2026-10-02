@@ -34,7 +34,9 @@ import {
   useServerSoftware,
   useServerActionMutation,
   useServerDiagnosticMutation,
-  useCancelServerMutation
+  useCancelServerMutation,
+  type ServerActionBody,
+  type SubmittableActionBody
 } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { billingTotal, currentMonthlyCost } from '../../lib/serverPricing'
@@ -105,6 +107,11 @@ const DIAGNOSTIC_LABELS: Record<string, string> = {
 }
 
 const isDiagnostic = (actionType: string): boolean => actionType in DIAGNOSTIC_LABELS
+
+type DiagnosticBody = Extract<ServerActionBody, { type: 'ping' | 'uptime' | 'is_running' }>
+
+/** Narrows an action body to the diagnostics, which are awaited and read back rather than tracked. */
+const isDiagnosticBody = (body: SubmittableActionBody): body is DiagnosticBody => isDiagnostic(body.type)
 
 /** A diagnostic trigger that shows a spinner and a verb while its action runs. */
 const DiagnosticButton: React.FC<{
@@ -302,10 +309,10 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
    * silently dropped, quietly losing the change table added in #20.
    */
   const handleAction = async (
-    actionType: string,
-    customPayload: any = {},
+    body: SubmittableActionBody,
     confirm: Partial<Pick<ConfirmRequest, 'summary' | 'changes' | 'notes' | 'severity' | 'typeToConfirm'>> = {}
   ) => {
+    const actionType = body.type
     // Diagnostics change nothing; asking "are you sure?" before a ping is noise.
     let changeId: string | undefined
     if (!isDiagnostic(actionType)) {
@@ -327,16 +334,16 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       // Diagnostics are awaited, because their answer only exists once the
       // action completes. Everything else is handed to the tracker, so the
       // panel is not held while a rebuild runs.
-      if (isDiagnostic(actionType)) {
+      if (isDiagnosticBody(body)) {
         setDiagnosticResult(null)
-        const completed = await diagnosticAction.mutateAsync({ type: actionType, ...customPayload })
+        const completed = await diagnosticAction.mutateAsync(body)
         setDiagnosticResult({ text: describeDiagnostic(actionType, completed), ok: true })
         return
       }
 
       const res = await serverAction.mutateAsync({
         serverId: server.id,
-        actionPayload: { type: actionType, ...customPayload }
+        actionPayload: body
       })
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${describeActionType(actionType)}`,
@@ -566,7 +573,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
             ) : isRunning ? (
               <>
                 <button
-                  onClick={() => handleAction('reboot')}
+                  onClick={() => handleAction({ type: 'reboot' })}
                   disabled={!!actionInProgress}
                   className="p-1.5 text-[#6c757d] hover:text-amber-500 hover:bg-[#e9ecef] dark:hover:bg-[#343a40] rounded transition border border-[#ced4da] dark:border-[#373b3e]"
                   title="Reboot"
@@ -574,7 +581,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                   <RotateCw className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => handleAction('shutdown')}
+                  onClick={() => handleAction({ type: 'shutdown' })}
                   disabled={!!actionInProgress}
                   className="p-1.5 text-[#6c757d] hover:text-rose-500 hover:bg-[#e9ecef] dark:hover:bg-[#343a40] rounded transition border border-[#ced4da] dark:border-[#373b3e]"
                   title="Graceful Shutdown"
@@ -584,7 +591,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
               </>
             ) : (
               <button
-                onClick={() => handleAction('power_on')}
+                onClick={() => handleAction({ type: 'power_on' })}
                 disabled={!!actionInProgress}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700/60 rounded transition hover:bg-emerald-100"
               >
@@ -945,7 +952,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 server={server}
                 busy={actionInProgress !== null}
                 onApply={(payload, summary, changes, confirm) =>
-                  void handleAction('resize', payload, {
+                  void handleAction(payload, {
                     // A resize restarts the server; releasing addresses escalates it further (see ChangePlanPanel).
                     summary: `${summary}. The server restarts to apply it.`,
                     severity: 'destructive',
@@ -1016,17 +1023,17 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
                 busyLabel="Pinging..."
                 active={actionInProgress === 'ping'}
                 disabled={!!actionInProgress}
-                onClick={() => handleAction('ping')}
+                onClick={() => handleAction({ type: 'ping' })}
               />
               <DiagnosticButton
                 label="VPS Uptime"
                 busyLabel="Checking..."
                 active={actionInProgress === 'uptime'}
                 disabled={!!actionInProgress}
-                onClick={() => handleAction('uptime')}
+                onClick={() => handleAction({ type: 'uptime' })}
               />
               <button
-                onClick={() => handleAction('enable_rescue_mode')}
+                onClick={() => handleAction({ type: 'enable_rescue_mode' })}
                 title="This action is not in BinaryLane's public API reference"
                 disabled={!!actionInProgress}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-400 text-xs font-medium rounded hover:bg-amber-500/20 transition disabled:opacity-50"

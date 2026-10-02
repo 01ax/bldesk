@@ -206,7 +206,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
       try {
         const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: t.id } },
-          body: { type: 'change_advanced_firewall_rules', firewall_rules: outgoing as never }
+          body: { type: 'change_advanced_firewall_rules', firewall_rules: outgoing }
         })
         if (error || !response.ok) throw apiFailure(error, response)
         if (data?.action) track(data.action, 'Copy firewall rules', t.name, changeId)
