@@ -2,7 +2,8 @@
 // packaging are wired to produce and require it. Runs on its own (no build needed): node --test scripts/test-notices.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -103,4 +104,23 @@ test('the build records what it bundles, writes the notices, and packaging requi
   const afterPack = read('scripts/after-pack.cjs')
   assert.ok(afterPack.includes('THIRD_PARTY_NOTICES.txt') && afterPack.includes("'LICENSE'"), 'afterPack refuses a package without the notices and the licence')
   assert.match(read('LICENSE'), /^MIT License\n\nCopyright \(c\) 2026 /, 'the repository has its own licence file')
+})
+
+test('a renderer build that recorded no packages stops the notices being written', () => {
+  // A node_modules that is a symlink makes the build name every bundled file by a path outside the repository, so the
+  // record comes out empty. Writing the notices from it would quietly leave out React's licence and the rest.
+  const dir = mkdtempSync(join(tmpdir(), 'notices-empty-'))
+  try {
+    mkdirSync(join(dir, 'scripts'))
+    mkdirSync(join(dir, 'out'))
+    for (const file of ['write-notices.mjs', 'notices.ts']) copyFileSync(join(repo, 'scripts', file), join(dir, 'scripts', file))
+    writeFileSync(join(dir, 'out', 'bundled-modules.json'), JSON.stringify({ main: [], preload: [], renderer: [] }))
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: {} }))
+    writeFileSync(join(dir, 'LICENSE'), 'MIT License\n')
+    const run = spawnSync(process.execPath, ['--experimental-strip-types', '--no-warnings', join(dir, 'scripts', 'write-notices.mjs')], { encoding: 'utf8' })
+    assert.equal(run.status, 1, run.stdout + run.stderr)
+    assert.match(run.stderr, /renderer build recorded no packages/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
