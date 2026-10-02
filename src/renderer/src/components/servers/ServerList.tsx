@@ -34,6 +34,14 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
 import { notifyFailure } from '../../lib/failures'
+import { colorOf, tagsOf } from '../../lib/serverGroups'
+import { completeTagToken, liveTagCounts, matchesTagFilter, matchesTagPrefixes, parseTagSearch, tagSuggestions } from '../../lib/tags'
+import { TagChip, TagDot, TagOverflowChip } from '../tags/TagChip'
+import { TagFilter } from './TagFilter'
+import { FILTER_CONTROL, FilterShell } from './FilterControl'
+import { usePhoneLayout } from '../../lib/usePhoneLayout'
+import { useTagEditor } from '../tags/TagEditor'
+import { useTagState } from '../tags/useTagState'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -66,6 +74,12 @@ export const ServerList: React.FC<ServerListProps> = ({
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  /** Tags ticked in the tag filter, and whether a server needs any or all of them. */
+  const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [tagMode, setTagMode] = useState<'any' | 'all'>('any')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const [activeSuggestion, setActiveSuggestion] = useState(0)
+  const [suggestionsHidden, setSuggestionsHidden] = useState(false)
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
   const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -88,6 +102,11 @@ export const ServerList: React.FC<ServerListProps> = ({
 
   const serverAction = useServerActionMutation(client)
   const { track } = useTrackedActions()
+  const { tags, colors } = useTagState(profileId)
+  const tagEditor = useTagEditor(profileId, servers)
+  // On a phone (the narrow layout, or the Android app) the chips here are only labels: a double-click is not something
+  // a finger does, so tags are edited in the server's own Settings > Tags.
+  const phone = usePhoneLayout()
 
   const handleCopyIp = (ip: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -138,17 +157,68 @@ export const ServerList: React.FC<ServerListProps> = ({
     void openServerSsh(server)
   }
 
+  /*
+   * Tags are local to this device and profile (the API has none), so they come from the tag store. Only tags on
+   * servers still in the list are offered, with the count of those servers.
+   */
+  const tagOptions = React.useMemo(() => liveTagCounts(tags, new Set(servers.map((s) => s.id))), [tags, servers])
+  // Ticked tags that were renamed, removed or lost their last server drop out of the selection: a filter on a tag nobody
+  // has would show nothing and the tag is no longer in the list to untick.
+  React.useEffect(() => {
+    if (isLoading || servers.length === 0) return
+    const still = tagFilter.filter((t) => tagOptions.some((o) => o.tag === t))
+    if (still.length !== tagFilter.length) setTagFilter(still)
+  }, [tagFilter, tagOptions, isLoading, servers.length])
+
+  /*
+   * Two namespaces, always explicit. Plain text in the search is for servers: name, address or #id, never a tag. A word
+   * starting with @ is for tags: @word matches tags that start with word, several @ words must all match, and none of
+   * it is compared with a server name. Plain text and @ words are ANDed (wp @wordpress).
+   */
+  const { plain: plainSearch, tagPrefixes } = parseTagSearch(searchTerm)
   const filteredServers = [...servers].sort(compareServersForList).filter((s) => {
+    const query = plainSearch.toLowerCase()
+    const own = tagsOf(tags, s.id)
     const matchesSearch =
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.networks?.v4 || []).some((net) => net.ip_address.includes(searchTerm)) ||
-      (((s as any).tags || []) as string[]).some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+      !query ||
+      s.name.toLowerCase().includes(query) ||
+      (s.networks?.v4 || []).some((net) => net.ip_address.includes(plainSearch)) ||
+      (/^#\d+$/.test(query) && s.id === Number(query.slice(1)))
 
     const matchesRegion = regionFilter === 'all' || s.region?.slug === regionFilter
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter
+    const matchesTag = matchesTagFilter(own, tagFilter, tagMode)
 
-    return matchesSearch && matchesRegion && matchesStatus
+    return matchesSearch && matchesTagPrefixes(own, tagPrefixes) && matchesRegion && matchesStatus && matchesTag
   })
+
+  // While the last word is an @ word, offer the tags in use that start with it.
+  const suggestions = searchFocused && !suggestionsHidden ? tagSuggestions(searchTerm, tagOptions) : []
+  const completeSuggestion = (tag: string) => {
+    setSearchTerm(completeTagToken(searchTerm, tag))
+    setActiveSuggestion(0)
+  }
+
+  const MAX_LIST_TAGS = 3
+  /** A server's tags as chips, the first few and a "+N" for the rest; null when it has none. */
+  const renderTags = (serverId: number) => {
+    const own = tagsOf(tags, serverId)
+    if (own.length === 0) return null
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1 min-w-0 font-normal">
+        {own.slice(0, MAX_LIST_TAGS).map((t) => (
+          <TagChip
+            key={t}
+            tag={t}
+            color={colorOf(colors, t)}
+            className="max-w-[9rem]"
+            onEdit={profileId && !phone ? (el) => tagEditor.open(t, el, serverId) : undefined}
+          />
+        ))}
+        {own.length > MAX_LIST_TAGS && <TagOverflowChip tags={own.slice(MAX_LIST_TAGS)} />}
+      </span>
+    )
+  }
 
   /*
    * Regions offered by the account, not merely the ones already in use.
@@ -236,40 +306,103 @@ export const ServerList: React.FC<ServerListProps> = ({
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6c757d] dark:text-slate-400" />
             <input
               type="text"
-              placeholder="Filter servers by name, IP, or tag..."
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls="server-search-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={suggestions.length > 0 ? `server-search-suggestion-${activeSuggestion}` : undefined}
+              placeholder="Filter by name or IP, or @tag..."
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+              enterKeyHint="search"
+              aria-label="Filter servers by name or IP, or by @tag"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setActiveSuggestion(0)
+                setSuggestionsHidden(false)
+              }}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(e) => {
+                if (suggestions.length === 0) return
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setActiveSuggestion((i) => (i + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length)
+                } else if (e.key === 'Enter') {
+                  e.preventDefault()
+                  completeSuggestion(suggestions[Math.min(activeSuggestion, suggestions.length - 1)].tag)
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setSuggestionsHidden(true)
+                }
+              }}
               className="w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] pl-9 pr-4 py-2 rounded focus:outline-none focus:border-[#017cb6]"
             />
+            {suggestions.length > 0 && (
+              <ul
+                id="server-search-suggestions"
+                role="listbox"
+                aria-label="Tags"
+                className="absolute z-30 left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto rounded border border-[#ced4da] dark:border-[#495057] bg-white dark:bg-[#2b3035] shadow-lg py-1 text-xs"
+              >
+                {suggestions.map((t, i) => (
+                  <li
+                    key={t.tag}
+                    id={`server-search-suggestion-${i}`}
+                    role="option"
+                    aria-selected={i === activeSuggestion}
+                    // mousedown, not click: the box keeps focus, so the list is still there to take the click
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      completeSuggestion(t.tag)
+                    }}
+                    onMouseEnter={() => setActiveSuggestion(i)}
+                    className={`flex items-center gap-2 px-3 ${phone ? 'min-h-[44px]' : 'py-1.5'} cursor-pointer ${i === activeSuggestion ? 'bg-[#017cb6]/10' : ''}`}
+                  >
+                    <TagDot color={colorOf(colors, t.tag)} />
+                    <span className="truncate flex-1 min-w-0">@{t.tag}</span>
+                    <span className="text-[#6c757d] dark:text-slate-400 shrink-0">{t.count}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Region Filter */}
-          <select
-            value={regionFilter}
-            onChange={(e) => setRegionFilter(e.target.value)}
-            className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-          >
-            <option value="all">All Regions</option>
-            {availableRegions.map((r) => (
-              <option key={r} value={r!}>
-                {r?.toUpperCase()}
-              </option>
-            ))}
-          </select>
+          <FilterShell>
+            <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`appearance-none ${FILTER_CONTROL}`}>
+              <option value="all">All Regions</option>
+              {availableRegions.map((r) => (
+                <option key={r} value={r!}>
+                  {r?.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </FilterShell>
 
           {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs text-[#212529] dark:text-[#f8f9fa] px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active / Running</option>
-            <option value="off">Off / Stopped</option>
-            <option value="archive" title={ARCHIVE_HINT}>Archive</option>
-          </select>
+          <FilterShell>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`appearance-none ${FILTER_CONTROL}`}>
+              <option value="all">All Status</option>
+              <option value="active">Active / Running</option>
+              <option value="off">Off / Stopped</option>
+              <option value="archive" title={ARCHIVE_HINT}>Archive</option>
+            </select>
+          </FilterShell>
+
+          {/* Tag Filter (local tags): tick boxes in a list, with Any | All */}
+          <TagFilter
+            options={tagOptions.map((t) => ({ ...t, color: colorOf(colors, t.tag) }))}
+            selected={tagFilter}
+            onChange={setTagFilter}
+            mode={tagMode}
+            onModeChange={setTagMode}
+          />
         </div>
       </div>
 
@@ -287,7 +420,7 @@ export const ServerList: React.FC<ServerListProps> = ({
           <ServerIcon className="w-10 h-10 text-[#6c757d] dark:text-slate-500 mb-3" />
           <h3 className="text-sm font-semibold text-[#212529] dark:text-white">No servers found</h3>
           <p className="text-xs text-[#6c757d] dark:text-slate-400 max-w-sm mt-1 mb-4">
-            {searchTerm || regionFilter !== 'all' || statusFilter !== 'all'
+            {searchTerm || regionFilter !== 'all' || statusFilter !== 'all' || tagFilter.length > 0
               ? 'Try adjusting your search criteria or filter options.'
               : 'You do not have any virtual servers configured yet in this account.'}
           </p>
@@ -330,12 +463,15 @@ export const ServerList: React.FC<ServerListProps> = ({
                   >
                     {/* Server Name & Distro */}
                     <td className="py-3 px-4">
-                      <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
-                        <span
-                          title={state.hint ? `${state.label}: ${state.hint}` : state.label}
-                          className={`w-2 h-2 shrink-0 rounded-full ${state.dot} ${state.busy ? 'animate-pulse' : ''}`}
-                        />
-                        <span>{server.name}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <div className="font-bold text-sm text-[#017cb6] hover:underline flex items-center gap-1.5">
+                          <span
+                            title={state.hint ? `${state.label}: ${state.hint}` : state.label}
+                            className={`w-2 h-2 shrink-0 rounded-full ${state.dot} ${state.busy ? 'animate-pulse' : ''}`}
+                          />
+                          <span>{server.name}</span>
+                        </div>
+                        {renderTags(server.id)}
                       </div>
                       <div className="flex items-center gap-1.5 text-[11px] text-[#6c757d] dark:text-slate-400 mt-1">
                         <img src={distroIcon} alt="" className="w-4 h-4 shrink-0 object-contain" />
@@ -514,6 +650,8 @@ export const ServerList: React.FC<ServerListProps> = ({
                     </span>
                   </div>
 
+                  {tagsOf(tags, server.id).length > 0 && <div className="mt-2">{renderTags(server.id)}</div>}
+
                   {/* Specs */}
                   <div className="mt-3 py-2 border-t border-b border-[#ced4da]/60 dark:border-[#373b3e] grid grid-cols-3 gap-2 text-center text-xs">
                     <div>
@@ -575,6 +713,9 @@ export const ServerList: React.FC<ServerListProps> = ({
           actionInProgress={actionInProgressServerId !== null}
         />
       )}
+
+      {/* The editor a tag chip opens: placed by the chip, so it is drawn here, outside the scrolling table */}
+      {tagEditor.element}
 
       {/* Create Server Modal */}
       <CreateServerModal

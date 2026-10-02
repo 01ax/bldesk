@@ -60,6 +60,7 @@ for (const tab of tabs) {
 const detail = 'src/renderer/src/components/servers/ServerDetails.tsx'
 const manifest = 'android/app/src/main/AndroidManifest.xml'
 if (!read(manifest).includes('android.permission.ACCESS_NETWORK_STATE')) fail(manifest, 'WebView needs ACCESS_NETWORK_STATE for offline help detection')
+if (!read(manifest).includes('android.permission.VIBRATE')) fail(manifest, 'the hold-to-remove buzz on a saved tag colour needs VIBRATE')
 if (!read(detail).includes('server-${activeSubTab}')) fail(detail, 'missing contextual help for active server sub-tab')
 const commandFile = 'src/renderer/src/lib/commands.ts'
 const commandSource = read(commandFile)

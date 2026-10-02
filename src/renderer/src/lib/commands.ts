@@ -21,6 +21,7 @@
 
 import type { components } from '@shared/api/schema'
 import { SERVER_SUB_TABS, TOP_TABS, type DeepLinkServerSubTab, type DeepLinkTab } from '@shared/deeplink'
+import { globToRegExp, matchServers as matchServersOf, type TargetMatchOf } from './tags'
 
 type Server = components['schemas']['Server']
 type DomainRecordType = components['schemas']['DomainRecordType']
@@ -354,73 +355,15 @@ function normaliseTab(raw: string): DeepLinkTab | undefined {
 // Target matching
 // ---------------------------------------------------------------------------
 
-export interface TargetMatch {
-  server: Server
-  /** Which pattern in the list matched it, for the preview. */
-  pattern: string
-}
+/** A target and the pattern that found it. The matching itself is pure and lives in tags.ts, with the group and tag expansion. */
+export type TargetMatch = TargetMatchOf<Server>
 
-/**
- * Resolve a target expression to servers.
- *
- * Each comma-separated pattern is tried as, in order:
- *   `#123` / `123`   — server id
- *   `43.224.183.192` / `43.224` — a public IPv4 or a prefix of one (digits and dots only)
- *   `wp-*` / `web?`  — glob on the name, case-insensitive
- *   `jumpbox`        — exact name if one exists, otherwise a name prefix
- *
- * Returns matches in server-list order, de-duplicated, plus the patterns that
- * matched nothing so the UI can say so instead of quietly running on fewer
- * machines than the user meant.
- */
+/** Resolve a target expression to servers by name, id or IP (see tags.ts); tags are expanded to ids before this is called. */
 export function matchServers(servers: Server[], expression: string): { matches: TargetMatch[]; unmatched: string[] } {
-  const seen = new Set<number>()
-  const matches: TargetMatch[] = []
-  const unmatched: string[] = []
-
-  for (const raw of expression.split(',')) {
-    const pattern = raw.trim()
-    if (!pattern) continue
-    const hits = matchOne(servers, pattern)
-    if (hits.length === 0) unmatched.push(pattern)
-    for (const s of hits) {
-      if (seen.has(s.id)) continue
-      seen.add(s.id)
-      matches.push({ server: s, pattern })
-    }
-  }
-  // Keep server-list order regardless of pattern order so a preview reads like the list.
-  const order = new Map(servers.map((s, i) => [s.id, i]))
-  matches.sort((a, b) => (order.get(a.server.id) ?? 0) - (order.get(b.server.id) ?? 0))
-  return { matches, unmatched }
+  return matchServersOf(servers, expression)
 }
 
-function matchOne(servers: Server[], pattern: string): Server[] {
-  const p = pattern.toLowerCase()
-
-  if (/^#?\d+$/.test(p)) {
-    const id = Number(p.replace(/^#/, ''))
-    return servers.filter((s) => s.id === id)
-  }
-
-  if (/^[\d.]+$/.test(p) && p.includes('.')) {
-    return servers.filter((s) => (s.networks?.v4 ?? []).some((v) => v.ip_address?.startsWith(p)))
-  }
-
-  if (/[*?]/.test(p)) {
-    const re = globToRegExp(p)
-    return servers.filter((s) => re.test(s.name.toLowerCase()))
-  }
-
-  const exact = servers.filter((s) => s.name.toLowerCase() === p)
-  if (exact.length > 0) return exact
-  return servers.filter((s) => s.name.toLowerCase().startsWith(p))
-}
-
-export function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
-  return new RegExp(`^${escaped}$`, 'i')
-}
+export { globToRegExp }
 
 /**
  * Servers a power verb can act on, and the ones it must skip, with the reason.

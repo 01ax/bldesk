@@ -10,7 +10,7 @@ Open the palette with Cmd/Ctrl+K. Search by name, IP or tab, or start with a ver
 ## Targets
 Targets: a name (or prefix), a glob like wp-*, #id, an IPv4 or its prefix, @group or @tag, or several separated by commas.
 
-The active profile defines the fleet being searched. A prefix or glob may match several servers. @name can refer to a local group or tag; it is not a BinaryLane permission boundary. Quote values containing spaces. The names and addresses below are examples, not your resources.
+The active profile defines the fleet being searched. A prefix or glob may match several servers. @name can refer to a local group or tag; it is not a BinaryLane permission boundary. Plain text in a target is always a server (name, glob, #id or address) and @name is always a tag or group, never the other way round: with a server called web and a tag called web, restart web acts on the server and restart @web on the tagged servers. A server whose name starts with @ is addressed by its #id or address. Quote values containing spaces. The names and addresses below are examples, not your resources.
 
 ## Power
 Reboot requests a clean restart; shutdown delivers an ACPI signal, which the guest may ignore. Poweroff cuts power and cycle cuts power before restarting: unsaved data can be lost. Start powers on a stopped VM.
@@ -56,7 +56,9 @@ tag add staging wp-*
 tag remove staging #12345
 ```
 
-A tag name is lower-cased and keeps letters, numbers, dots, dashes and underscores; anything else, such as a space or a slash, is dropped, and the preview shows the name that will be stored. A name with nothing left is refused.
+A tag name is lower-cased and keeps letters, numbers, dots, dashes and underscores; anything else, such as a space or a slash, is dropped, and the preview shows the name that will be stored. A name with nothing left is refused. A tag that no server had is given a colour of its own (see [tag colours](help:server-settings#tag-colours)).
+
+To list the servers that carry a tag, type @ and part of its name, such as @word, without a verb. The tags in use that start with word come first, as rows with the tag's colour and how many servers have it: choose one with Up, Down and Enter or a click and the box reads @name, which lists that tag's servers, and nothing is run. A tag typed in full has no row of its own, because there is nothing left to complete. Below those, the results are the servers with a tag that starts with word, several @ words must all match, and each result opens like any other server. Plain text lists servers by name or address only, never by tag; when plain text is also exactly a tag's name, one extra Tags row offers to list that tag's servers.
 
 Aliases: tags, group; rm also means remove.
 
