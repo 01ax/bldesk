@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Notification } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net, Notification } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
 import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
@@ -72,37 +72,74 @@ const isMac = process.platform === 'darwin'
 const isLinuxPackage = process.platform === 'linux' && !process.env.APPIMAGE
 let macPendingZipPath: string | null = null
 let macDownloading = false
+/** A download that receives nothing for this long fails. electron-updater's own downloads time out after 60 s too. */
+const DOWNLOAD_IDLE_MS = 60 * 1000
 
 async function downloadMacZip(
   url: string,
   destPath: string,
   onProgress: (percent: number) => void
 ): Promise<void> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
-  const total = Number(res.headers.get('content-length')) || 0
-  let received = 0
-
-  if (!res.body) throw new Error('Response body is empty')
-  const reader = res.body.getReader()
-  const out = createWriteStream(destPath)
-
+  // net.fetch has no timeout of its own: without one, a download that stops sending never ends, and the status stays
+  // "downloading", so no later check starts another.
+  const stalled = new Error(`The update download stopped: nothing arrived for ${DOWNLOAD_IDLE_MS / 1000} seconds.`)
+  const abort = new AbortController()
+  let idle: ReturnType<typeof setTimeout> | undefined
+  const expectData = () => {
+    clearTimeout(idle)
+    idle = setTimeout(() => abort.abort(stalled), DOWNLOAD_IDLE_MS)
+  }
+  expectData()
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value) {
-        received += value.length
-        out.write(Buffer.from(value))
-        if (total > 0) {
-          onProgress(Math.min(100, Math.round((received / total) * 100)))
+    // Electron's net, not Node's fetch, which ignores proxies. net.fetch uses the default session and electron-updater's
+    // update check its own "electron-updater" session; BLDesk sets no proxy on either, so both follow the system's.
+    const res = await net.fetch(url, { signal: abort.signal })
+    if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
+    const total = Number(res.headers.get('content-length')) || 0
+    let received = 0
+
+    if (!res.body) throw new Error('Response body is empty')
+    const reader = res.body.getReader()
+    const out = createWriteStream(destPath)
+    // Without a listener a failed write (a full disk, say) is an uncaught exception in the main process.
+    let writeError: Error | null = null
+    out.on('error', (err) => (writeError ??= err))
+
+    try {
+      while (!writeError) {
+        const { done, value } = await reader.read()
+        if (done) break
+        expectData()
+        if (value) {
+          received += value.length
+          out.write(Buffer.from(value))
+          if (total > 0) {
+            onProgress(Math.min(100, Math.round((received / total) * 100)))
+          }
         }
       }
+      await new Promise<void>((resolve, reject) => {
+        out.end((err: any) => (err ? reject(err) : resolve()))
+      })
+    } catch (err) {
+      // The first failure, taken before the clean-up below adds its own ("write after a stream was destroyed").
+      const cause = writeError ?? (abort.signal.aborted ? stalled : err)
+      // A download that failed part-way is not left behind.
+      reader.cancel().catch(() => {})
+      await new Promise<void>((resolve) => {
+        if (out.closed) return resolve()
+        out.once('close', () => resolve())
+        out.destroy()
+      })
+      try {
+        rmSync(destPath, { force: true })
+      } catch {
+        /* nothing to remove */
+      }
+      throw cause
     }
   } finally {
-    await new Promise<void>((resolve, reject) => {
-      out.end((err: any) => (err ? reject(err) : resolve()))
-    })
+    clearTimeout(idle)
   }
 }
 

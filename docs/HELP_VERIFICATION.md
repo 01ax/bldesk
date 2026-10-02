@@ -417,6 +417,27 @@ Feed fact, from the published 1.0.62-beta.17 release: `latest-mac.yml` lists the
 - The message in the running app (Windows, this branch's build, isolated user data, no network): the error state was sent on the app's own `updater:state` channel from the main process and the update menu opened. With the checksum reason, the size reason and the “was not downloaded” message, in windows of about 1280×840 and 1024×680 at 80, 100, 125 and 150% (zoom keys sent with `webContents.sendInputEvent`), each message took three lines, needed no scrolling, did not overflow sideways, and the menu stayed inside the window (24 DOM measurements).
 - Not verified: a packaged macOS build, a real download on a Mac, and the install step after a matching download.
 
+## macOS updater: download errors, stalls and the system proxy (2 October 2026, after 1.0.62-beta.17)
+
+Branch: `fix/updater-download-errors-and-proxy`. No new dependencies. No help page changes: `troubleshooting.md` does not describe the macOS download. The source is `downloadMacZip` in `src/main/updater.ts`; the message is shown by `UpdateMenu.tsx`.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “The update download stopped: nothing arrived for 60 seconds.” | The `Error` from `downloadMacZip`, stored by `handleCheckError` in the macOS part of the `update-available` handler and shown under the Error pill in `UpdateMenu.tsx` | New. Thrown when no data arrives for `DOWNLOAD_IDLE_MS` (60 s), counted from the request and restarted by every chunk. The partial file is deleted and the status leaves “downloading”, so the next check starts a new download. 60 s is also the default timeout of electron-updater's own downloads. |
+| Other download failures | Same | Not new app text. The text now comes from Electron's network stack (for example “net::ERR_CONNECTION_RESET” where Node's fetch said “terminated”), and a failed write shows the file system's error instead of raising an uncaught exception. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guards and the unit tests), `npm run test:terminal` and `npm run build`.
+- NOT RUN ON A MAC. `downloadMacZip` from `origin/main` and from this branch, run inside real Electron 44 on Windows (no window) against a local HTTP server:
+  - Through a local logging proxy given with `--proxy-server`: base sent nothing to the proxy (two made-up hosts failed with “fetch failed” and the GitHub download went direct); fixed sent the HTTP request and the HTTPS `CONNECT`s to `github.com` and `release-assets.githubusercontent.com` through it.
+  - TCP reset while data was still arriving, 130 runs at a random point: fixed reported “net::ERR_CONNECTION_RESET” every time and left no file; base reported “terminated” or “fetch failed” and left the partial file. A plain close part-way, with fewer bytes than promised, reports “net::ERR_CONTENT_LENGTH_MISMATCH” instead (checked in a second round of 10 runs); the first error is kept either way.
+  - A file that cannot be written (the destination is a folder): base raised an uncaught exception, which Electron shows as an error box; fixed reports the file system's error, with nothing uncaught.
+  - A server that sends 10% and then nothing: base was still waiting after 20 s; fixed failed with the message above after 60.1 s and left no file, and the next download completed.
+- The updater path with `process.platform` set to `darwin` (the module bundled with stand-ins for `electron` and `electron-updater`, run in Node, the idle limit shortened to 3 s in a scratch copy only): the stalled download ended in Error after 3 s with the file deleted, and the next check downloaded the update and offered it.
+- The message in the running app (Windows, this branch's build, isolated user data, no network), sent on the app's own `updater:state` channel: two lines, no scrolling or sideways overflow, the menu inside the window, in windows of about 1280×840 and 1024×680 at 80, 100, 125 and 150% (8 DOM measurements).
+- Not verified: macOS, the macOS system proxy setting itself (only `--proxy-server`), a proxy that asks for a login, and a real full disk.
+
 ## Server order, Archived, map zoom keys (23 September 2026, after 1.0.61-beta.10)
 
 Branch: `fix/issues-66-71`. No new runtime dependencies.
