@@ -36,8 +36,9 @@ const listeners = new Set<() => void>()
 
 /**
  * The dialogs that are open, oldest first. A dialog owns the failures raised after it opened (ids from its `floor` up)
- * for as long as it is the one on top; the rest go to the corner of the window. When it closes they fall back to the
- * dialog beneath, or to the corner.
+ * for as long as it is the one on top. While any dialog is open the corner of the window shows none: they would only sit
+ * dimmed behind the dialog, where a tap on one lands on the backdrop and closes the dialog. When the dialog closes its
+ * failures fall back to the dialog beneath, or to the corner, and so do the ones raised before it opened.
  */
 interface DialogScope {
   token: symbol
@@ -53,7 +54,7 @@ let inDialog: readonly Failure[] = NONE
 const split = () => {
   const top = scopes[scopes.length - 1]
   inDialog = top ? failures.filter((f) => f.id >= top.floor) : NONE
-  floating = top ? failures.filter((f) => f.id < top.floor) : failures
+  floating = top ? NONE : failures
 }
 const emit = () => {
   split()
@@ -116,7 +117,7 @@ export function getFailures(): readonly Failure[] {
   return failures
 }
 
-/** The failures for the corner of the window: those raised outside any dialog, or before the dialog now on top opened. */
+/** The failures for the corner of the window: all of them while no dialog is open, none while one is. */
 export function getFloatingFailures(): readonly Failure[] {
   return floating
 }

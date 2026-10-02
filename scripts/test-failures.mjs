@@ -147,13 +147,16 @@ test('a failure raised while a dialog is open shows in that dialog, not at the c
   assert.equal(getFloatingFailures().length, 0)
 })
 
-test('a failure from before the dialog opened stays at the corner', () => {
+test('a failure from before the dialog opened is kept, not shown while it is open, and comes back at the corner when it closes', () => {
   notifyFailure('Earlier', 'x')
   const dialog = Symbol('dialog')
   enterDialog(dialog)
   notifyFailure('During', 'x')
-  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Earlier'])
-  assert.deepEqual(getDialogFailures(dialog).map((f) => f.title), ['During'])
+  assert.equal(getFloatingFailures().length, 0, 'behind a dialog a card could only be dimmed, and a tap on it would close the dialog')
+  assert.deepEqual(getDialogFailures(dialog).map((f) => f.title), ['During'], 'and it is not repeated inside the dialog')
+  assert.equal(getFailures().length, 2)
+  leaveDialog(dialog)
+  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Earlier', 'During'])
 })
 
 test('a failure repeated while a dialog is open moves into that dialog', () => {
@@ -174,7 +177,7 @@ test('only the dialog on top shows failures; the one beneath gets them back when
   notifyFailure('Raised over', 'x')
   assert.deepEqual(getDialogFailures(over).map((f) => f.title), ['Raised over'])
   assert.equal(getDialogFailures(under).length, 0, 'a dialog that is not on top shows nothing')
-  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Raised under'], 'what was raised before the top dialog opened is not in it')
+  assert.equal(getFloatingFailures().length, 0, 'what was raised before the top dialog opened is not in it, and not at the corner either')
   leaveDialog(over)
   assert.deepEqual(getDialogFailures(under).map((f) => f.title), ['Raised under', 'Raised over'])
   assert.equal(getFloatingFailures().length, 0)

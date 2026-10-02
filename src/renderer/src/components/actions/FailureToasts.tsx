@@ -12,7 +12,7 @@ function FailureCard({ failure: f, inline }: { failure: Failure; inline?: boolea
   return (
     <div
       role="alert"
-      className={`pointer-events-auto bg-white dark:bg-[#2b3035] border border-rose-300 dark:border-rose-900 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${inline ? '' : 'shadow-2xl slide-in-from-bottom-2'}`}
+      className={`pointer-events-auto bg-white dark:bg-[#2b3035] border border-rose-300 dark:border-rose-900 rounded-lg text-xs flex items-start gap-2.5 animate-in fade-in duration-150 ${inline ? 'p-3 [@media(max-height:560px)]:p-2' : 'p-3 shadow-2xl slide-in-from-bottom-2'}`}
     >
       <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-500" />
       <div className="flex-1 min-w-0 space-y-1 select-text">
@@ -61,9 +61,10 @@ export function FailureToastItems() {
 
 /**
  * The failures raised while a dialog is open, shown inside that dialog between its header and its body: in the flow
- * of the dialog, so they never cover its buttons or the field being typed in, whatever the window size, zoom,
- * orientation or on-screen keyboard; reachable with Tab; and announced as part of the dialog. Only the dialog on top shows
- * them. `Modal` renders this.
+ * of the dialog, so they never cover its buttons, whatever the window size, zoom, orientation or on-screen keyboard;
+ * reachable with Tab; and announced as part of the dialog. Only the dialog on top shows them. The newest is first, so
+ * it is the one in view when several are showing. In a short window (a phone in landscape, or with the keyboard up) the
+ * strip is one compact card high and scrolls, so the form keeps its room. `Modal` renders this.
  */
 export function DialogFailures({ token }: { token: symbol }) {
   const failures = useSyncExternalStore(
@@ -73,8 +74,8 @@ export function DialogFailures({ token }: { token: symbol }) {
   )
   if (failures.length === 0) return null
   return (
-    <div className="flex-shrink-0 max-h-[28vh] overflow-y-auto p-2 space-y-1.5 bg-rose-50 dark:bg-rose-950/20 border-b border-rose-200 dark:border-rose-900/50">
-      {failures.map((f) => (
+    <div className="flex-shrink-0 max-h-[28vh] [@media(max-height:560px)]:max-h-16 overflow-y-auto p-2 [@media(max-height:560px)]:p-1.5 space-y-1.5 bg-rose-50 dark:bg-rose-950/20 border-b border-rose-200 dark:border-rose-900/50">
+      {[...failures].reverse().map((f) => (
         <FailureCard key={f.id} failure={f} inline />
       ))}
     </div>
