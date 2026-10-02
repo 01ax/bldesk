@@ -75,6 +75,12 @@ exports.default = async function afterPack(context) {
   )
   if (resourcesDir && existsSync(resourcesDir)) {
     require('./verify-pty-package.cjs')(resourcesDir, context.electronPlatformName)
+    // The licence texts of what the app bundles travel with it (scripts/notices.ts); a package without them is not shipped.
+    for (const file of ['THIRD_PARTY_NOTICES.txt', 'LICENSE']) {
+      if (!existsSync(join(resourcesDir, file))) {
+        throw new Error(`afterPack: ${file} is missing from ${resourcesDir}. Build with "npm run build", which writes the notices.`)
+      }
+    }
     const updateYml = join(resourcesDir, 'app-update.yml')
     if (!existsSync(updateYml)) {
       writeFileSync(updateYml, 'owner: termau\nrepo: bldesk\nprovider: github\nupdaterCacheDirName: bldesk-updater\n')

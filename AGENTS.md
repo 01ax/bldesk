@@ -67,9 +67,11 @@ Fictional prices in isolated test fixtures and clearly dated examples in documen
 # then run the mutation and UI guard checks:
 npm run typecheck
 
-# Full bundle build:
+# Full bundle build (also writes out/renderer/THIRD_PARTY_NOTICES.txt):
 npm run build
 ```
+
+**Third-party licences.** The build strips licence comments from the code it bundles, so `npm run build` collects the licence text of every package that ends up in a bundle, and of every production dependency packaged as a loose module, into `THIRD_PARTY_NOTICES.txt` (`scripts/notices.ts`, `scripts/write-notices.mjs`). It ships in the desktop app's resources folder and in the Android app's web assets, beside the repository's own `LICENSE`, and packaging fails without them. You add nothing by hand when you add a dependency. The build fails for a package that states no licence at all, and warns for one that declares a licence but ships no licence file; check those terms before keeping the package.
 
 ### 2. Local Testing
 ```bash

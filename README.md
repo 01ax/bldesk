@@ -150,4 +150,4 @@ For more in-depth architectural and agent instructions, see [AGENTS.md](AGENTS.m
 ---
 
 ## 📄 License
-MIT © [termau](https://github.com/termau)
+MIT © [termau](https://github.com/termau). See [LICENSE](LICENSE). The licences of the third-party packages BLDesk bundles are in `THIRD_PARTY_NOTICES.txt`, which the build generates and ships with the app.
