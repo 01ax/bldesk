@@ -1,7 +1,8 @@
-import { resolve } from 'path'
-import { readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { packageFolderOf } from './scripts/notices'
 
 const { version: APP_VERSION } = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
 
@@ -53,9 +54,40 @@ function contentSecurityPolicyPlugin() {
   }
 }
 
+/*
+ * The build strips licence comments from the code it bundles, so the packages' own licence text is collected separately
+ * (scripts/notices.ts, scripts/write-notices.mjs). Each build records which packages it bundled; `npm run build` then
+ * writes THIRD_PARTY_NOTICES.txt from the three records.
+ */
+const BUNDLED_RECORD = resolve('out/bundled-modules.json')
+function recordBundledModules(build: 'main' | 'preload' | 'renderer') {
+  return {
+    name: 'record-bundled-modules',
+    apply: 'build' as const,
+    generateBundle(_options: unknown, bundle: Record<string, { type: string; moduleIds?: string[] }>) {
+      const folders = new Set<string>()
+      for (const item of Object.values(bundle)) {
+        for (const id of item.type === 'chunk' ? (item.moduleIds ?? []) : []) {
+          const folder = packageFolderOf(id, process.cwd())
+          if (folder) folders.add(folder)
+        }
+      }
+      let record: Record<string, string[]> = {}
+      try {
+        record = JSON.parse(readFileSync(BUNDLED_RECORD, 'utf8'))
+      } catch {
+        /* the first build to run starts a new record */
+      }
+      record[build] = [...folders].sort()
+      mkdirSync(dirname(BUNDLED_RECORD), { recursive: true })
+      writeFileSync(BUNDLED_RECORD, JSON.stringify(record, null, 2))
+    }
+  }
+}
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), recordBundledModules('main')],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
@@ -63,7 +95,7 @@ export default defineConfig({
     }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), recordBundledModules('preload')],
     // CommonJS, as index.cjs: the renderer is sandboxed, and a sandboxed
     // preload cannot be an ES module (package.json "type": "module" would
     // otherwise make electron-vite emit index.mjs).
@@ -101,6 +133,6 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [react(), removeCrossoriginPlugin(), contentSecurityPolicyPlugin()]
+    plugins: [react(), removeCrossoriginPlugin(), contentSecurityPolicyPlugin(), recordBundledModules('renderer')]
   }
 })
