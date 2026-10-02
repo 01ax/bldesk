@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { installAndroidBackButton } from './lib/androidBack'
+import { handleBack } from './lib/backStack'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TitleBar } from './components/layout/TitleBar'
 import { Sidebar, ActiveTab, ServerSubTab } from './components/layout/Sidebar'
@@ -127,6 +128,8 @@ function MainDashboard() {
   const backRef = React.useRef<() => boolean>(() => false)
   backRef.current = () => {
     if (isPaletteOpen) { setIsPaletteOpen(false); return true }
+    // A tag popover, editor or colour picker that is open closes first, topmost one first (lib/backStack.ts).
+    if (handleBack()) return true
     // Not a dialog that has to be answered (no Escape closes it), and not the vault while there is no account to go back to.
     if (document.querySelector('[role="dialog"][data-dismissible="true"]') && !(isAuthOpen && profiles.length === 0)) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -561,7 +564,7 @@ function ResetCacheButton() {
       summary: "Deletes the data BLDesk has saved in this app's local storage on this device, then reloads. Nothing in your BinaryLane account changes.",
       severity: 'destructive',
       notes: [
-        'Deleted: server groups and tags, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.',
+        'Deleted: server groups, tags, tag colours and saved custom colours, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.',
         alsoLost.length
           ? `Also deleted on this device: ${alsoLost.join(' and ')}.`
           : 'History and cloud-init templates are kept: the desktop app stores them as files.'

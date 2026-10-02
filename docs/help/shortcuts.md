@@ -32,7 +32,7 @@ Escape closes the dialog on top when it is idle and has a close button; busy dia
 
 In Help, Up and Down choose a suggestion; Enter accepts it into the search box. Press Enter to submit a query explicitly. Escape dismisses suggestions.
 
-In a firewall-matrix tag editor, Enter adds the typed tag and Escape closes the editor. In a Network inline field, Enter commits and Escape cancels editing. Escape also dismisses the server context menu and update popover.
+In a firewall-matrix tag editor, Enter adds the typed tag and Escape closes the editor (on a phone the matrix only shows tags). On a tag chip, Enter or F2 opens the tag editor, where Enter saves and Escape cancels. In the tag filter on the Servers page, Space ticks the focused tag and Escape closes the list. Typing @ in the Servers search lists tags: Up and Down choose, Enter completes the tag and Escape hides the list. On the colour wheel in the tag editor, the arrow keys change the hue and the saturation, and Shift makes the steps smaller. In a Network inline field, Enter commits and Escape cancels editing. Escape also dismisses the server context menu and update popover.
 
 ## Desktop tools
 F5 reloads the desktop renderer; Cmd+R also reloads on macOS. F12 opens developer tools; Cmd+Option+I does the same on macOS. Native menus display the platform's standard editing, reload and window shortcuts.

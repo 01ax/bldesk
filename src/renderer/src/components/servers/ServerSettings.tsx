@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Tag,
+  Tags,
   HardDrive,
   Cpu,
   Bell,
@@ -33,6 +34,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useIsMutating } from '@tanstack/react-query'
 import { useConfirm, type ConfirmRequest } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
+import { ServerTagsTab } from './ServerTagsTab'
 
 type Server = components['schemas']['Server']
 type Disk = components['schemas']['Disk']
@@ -56,11 +58,13 @@ interface ServerSettingsProps {
   servers: any[]
   client: BinaryLaneClient | null
   server: Server
+  /** Tags are kept per account profile, on this device. */
+  profileId?: string
 }
 
-type SettingsTab = 'hostname' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
+type SettingsTab = 'hostname' | 'tags' | 'disks' | 'advanced' | 'alerts' | 'region' | 'partner' | 'danger'
 
-export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, servers: allServers }) => {
+export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: initialServer, servers: allServers, profileId }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('hostname')
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -423,6 +427,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
 
   const navTabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'hostname', label: 'Hostname', icon: <Tag className="w-3.5 h-3.5" /> },
+    { id: 'tags', label: 'Tags', icon: <Tags className="w-3.5 h-3.5" /> },
     { id: 'disks', label: 'Disks', icon: <HardDrive className="w-3.5 h-3.5" /> },
     { id: 'advanced', label: 'Advanced', icon: <Cpu className="w-3.5 h-3.5" /> },
     { id: 'alerts', label: 'Alerts', icon: <Bell className="w-3.5 h-3.5" /> },
@@ -568,6 +573,9 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
           </form>
         </div>
       )}
+
+      {/* TAGS TAB: local labels, no request */}
+      {activeTab === 'tags' && <ServerTagsTab profileId={profileId} server={server} servers={allServers} />}
 
       {/* 2. DISKS TAB */}
       {activeTab === 'disks' && (
