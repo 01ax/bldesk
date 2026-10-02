@@ -423,7 +423,7 @@ Branch: `fix/updater-download-errors-and-proxy`. No new dependencies. No help pa
 
 | String | Rendered by | Result |
 | --- | --- | --- |
-| “The update download stopped: nothing arrived for 60 seconds.” | The `Error` from `downloadMacZip`, stored by `handleCheckError` in the macOS part of the `update-available` handler and shown under the Error pill in `UpdateMenu.tsx` | New. Thrown when no data arrives for `DOWNLOAD_IDLE_MS` (60 s), counted from the request and restarted by every chunk. The partial file is deleted and the status leaves “downloading”, so the next check starts a new download. 60 s is also the default timeout of electron-updater's own downloads. |
+| “The update download stopped: nothing arrived for 60 seconds.” | The `Error` from `downloadMacZip`, stored by `handleCheckError` in the macOS part of the `update-available` handler and shown under the Error pill in `UpdateMenu.tsx` | New. Thrown when no data arrives for `DOWNLOAD_IDLE_MS` (60 s), counted from the request and restarted by every chunk. The partial file is deleted and the status leaves “downloading”, so the next check starts a new download. |
 | Other download failures | Same | Not new app text. The text now comes from Electron's network stack (for example “net::ERR_CONNECTION_RESET” where Node's fetch said “terminated”), and a failed write shows the file system's error instead of raising an uncaught exception. |
 
 ### Checks performed

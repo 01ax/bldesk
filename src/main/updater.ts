@@ -72,7 +72,7 @@ const isMac = process.platform === 'darwin'
 const isLinuxPackage = process.platform === 'linux' && !process.env.APPIMAGE
 let macPendingZipPath: string | null = null
 let macDownloading = false
-/** A download that receives nothing for this long fails. electron-updater's own downloads time out after 60 s too. */
+/** A download that receives nothing for this long fails. */
 const DOWNLOAD_IDLE_MS = 60 * 1000
 
 async function downloadMacZip(
@@ -122,8 +122,9 @@ async function downloadMacZip(
         out.end((err: any) => (err ? reject(err) : resolve()))
       })
     } catch (err) {
-      // The first failure, taken before the clean-up below adds its own ("write after a stream was destroyed").
-      const cause = writeError ?? (abort.signal.aborted ? stalled : err)
+      // The first failure, taken before the clean-up below adds its own ("write after a stream was destroyed"). A failed
+      // write destroys the stream before its 'error' event fires, so end() can reject first: out.errored has the cause.
+      const cause = writeError ?? out.errored ?? (abort.signal.aborted ? stalled : err)
       // A download that failed part-way is not left behind.
       reader.cancel().catch(() => {})
       await new Promise<void>((resolve) => {
@@ -178,22 +179,26 @@ done
 
 NEW="${targetApp}.new"
 OLD="${targetApp}.old"
-rm -rf "$NEW" "$OLD"
 STATUS=1
 LEFT=""
+# Leftovers of an earlier attempt are cleared only while the installed app is in place. With no app at that path they
+# may be the only copies of one, and nothing here touches them.
+if [ -d "${targetApp}" ]; then rm -rf "$NEW" "$OLD"; fi
 unzip -q -o "${zipPath}" -d "${stagingDir}"
 UNZIP=$?
 # unzip exits 1 for warnings and carries on; 2 and above are errors. Only that the app folder exists is checked after.
-if [ $UNZIP -le 1 ] && [ -d "${stagedApp}" ] && [ ! -e "$NEW" ] && cp -R "${stagedApp}" "$NEW" && mv "${targetApp}" "$OLD"; then
-  if mv "$NEW" "${targetApp}"; then
+# mv would move a bundle into a folder that already exists, so each rename first checks that its destination is free.
+if [ $UNZIP -le 1 ] && [ -d "${stagedApp}" ] && [ -d "${targetApp}" ] && [ ! -e "$NEW" ] && [ ! -e "$OLD" ] && cp -R "${stagedApp}" "$NEW" && mv "${targetApp}" "$OLD"; then
+  if [ ! -e "${targetApp}" ] && mv "$NEW" "${targetApp}"; then
     rm -rf "$OLD"
     xattr -cr "${targetApp}" 2>/dev/null || true
     STATUS=0
-  elif ! mv "$OLD" "${targetApp}"; then
+  elif [ -e "${targetApp}" ] || ! mv "$OLD" "${targetApp}"; then
     LEFT=" (the new version is in $NEW and the previous one in $OLD)"
   fi
 fi
-[ -n "$LEFT" ] || rm -rf "$NEW"
+# $NEW is removed only when an app is at the installed path, and so is not the only copy of one.
+if [ -z "$LEFT" ] && [ -d "${targetApp}" ]; then rm -rf "$NEW"; fi
 rm -rf "${stagingDir}"
 rm -f "${zipPath}"
 [ $STATUS -eq 0 ] || logger -t BLDesk "Update not installed: the new version could not be unzipped and put in place$LEFT"
