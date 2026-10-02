@@ -5,6 +5,21 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.18] - 2026-10-02
+
+**The macOS updater checks its download and keeps your app when an update fails**
+
+### Fixed
+- **A macOS update is installed only if it is the file that was published** (#134). Any zip over 1 MB in the updates folder counted as a finished download, so one cut off part-way could be offered and installed, and a finished download was never compared with the checksum the release publishes. The zip is now offered only when its size and SHA-512 match what the release's `latest-mac.yml` lists for it. One that does not match is deleted and reported, and the next check downloads it again. A release feed that lists no size or checksum for the zip is refused before anything is downloaded.
+- **A failed macOS install keeps the installed app** (#133). The install script ignored `unzip`'s exit status and removed the installed app before copying the new one, so a damaged archive, a full disk or a failed copy could leave a broken app or none at all. It now copies the new app next to the old one and swaps the two by renaming, so if anything fails the installed app stays and the reason is written to the system log (tag `BLDesk`). The script is written by the version that is running when you quit, so this protects updates from this version onward.
+- **The macOS update download reports its failures and follows the system proxy** (#135). A failed write (a full disk, say) was an uncaught error, a download that broke off left its partial file, and the download ignored the proxy settings the update check uses. It now goes through Electron's network stack, stops at the first write error, deletes what it wrote, gives up with "The update download stopped: nothing arrived for 60 seconds." when nothing arrives for a minute, and reports the first error.
+- **The Billing data transfer card no longer says pooled or unlimited** (#95). It was titled "Pooled Bandwidth", and read "Unlimited" with the bar at 5% whenever the allowance added up to 0, including an account with no servers. It is now "Data Transfer": a total of 0 reads `0 GB` with an empty bar, and a line says how many servers were added up, each for its own current period. BinaryLane's API reference does not say when pooling applies, so the card does not claim it is or is not happening, and the pooling indicator that #95 proposes is not built. The Billing help page has a new section about the card.
+- **Boot into Rescue Mode says it is not in the public reference** (#129). Its confirmation notes that BinaryLane's public API reference does not list the action, so its behaviour is not documented there and it could change or stop working. The action stays, as a recorded exception.
+
+### Changed
+- **The packaged app is smaller** (#161, #272). React, the icon library, the query library, the API client and the terminal were in the install twice, once in the bundle the window loads and once as loose modules nothing opened. The app archive is about 6 MB instead of 37 MB (measured on Linux), and what the app does is unchanged. `clsx` and `tailwind-merge` are still packaged although nothing uses them (#266).
+- `docs/AUTO_UPDATE.md` describes the new macOS download and install steps.
+
 ## [1.0.62-beta.17] - 2026-10-02
 
 **Links, passwords and the terminal behave as described**
