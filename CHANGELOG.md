@@ -5,6 +5,19 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.19] - 2026-10-02
+
+**Failures show inside the app instead of in system pop-ups, and the licences ship with it**
+
+### Fixed
+- **A failed save, delete or launch is reported inside BLDesk** (#188). Thirty-six places showed the operating system's own `alert()` box, which froze the window and looked different on Windows, macOS and Linux. They now say what failed and why, in the words they used before, and the message stays until you close it, and can be selected and copied. If a dialog is open, it shows inside that dialog, above the form, so it never covers Save or Cancel on a small window, in landscape or with the on-screen keyboard up, and it can be reached with Tab. Otherwise it is a card at the bottom right, below any dialog, like the progress cards for background actions. The same failure raised again counts up (×2) instead of stacking, a failure from one account is cleared when you switch to another, and a failed Add Record leaves its form open as before. A build check now fails if a native `alert()` is added again.
+
+### Added
+- **BLDesk ships its licence and the licences of what it bundles** (#275). The repository has a `LICENSE` (MIT, Mammoth Media Pty Ltd), and the build writes `THIRD_PARTY_NOTICES.txt` with the licence text of every package that ends up in the app or its bundle. It is in the desktop app's resources folder and in the Android app, and packaging stops if it is missing. The build fails if a package states no licence, and now also if the renderer build recorded no packages (a `node_modules` that is a symlink would otherwise leave their licences out).
+
+### Changed
+- **Server action requests are checked against the API's published types** (#170). A body sent to `POST /v2/servers/{server_id}/actions` is now compiled against the reference's own types, so a misspelled or unknown field, like the `partner_id` and `size` mistakes in #123 and #124, fails the typecheck instead of being sent. What BLDesk sends does not change. The rules inside the firewall actions are not covered yet, and Boot into Rescue Mode, which the reference does not list, is named as the one exception.
+
 ## [1.0.62-beta.18] - 2026-10-02
 
 **The macOS updater checks its download and keeps your app when an update fails**
