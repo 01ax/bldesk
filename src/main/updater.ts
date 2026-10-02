@@ -1,7 +1,8 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Notification } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net, Notification } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
-import { createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { ensureOwnerDir, writeOwnerFileAtomic } from './ownerFiles'
 import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
@@ -71,37 +72,75 @@ const isMac = process.platform === 'darwin'
 const isLinuxPackage = process.platform === 'linux' && !process.env.APPIMAGE
 let macPendingZipPath: string | null = null
 let macDownloading = false
+/** A download that receives nothing for this long fails. */
+const DOWNLOAD_IDLE_MS = 60 * 1000
 
 async function downloadMacZip(
   url: string,
   destPath: string,
   onProgress: (percent: number) => void
 ): Promise<void> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
-  const total = Number(res.headers.get('content-length')) || 0
-  let received = 0
-
-  if (!res.body) throw new Error('Response body is empty')
-  const reader = res.body.getReader()
-  const out = createWriteStream(destPath)
-
+  // net.fetch has no timeout of its own: without one, a download that stops sending never ends, and the status stays
+  // "downloading", so no later check starts another.
+  const stalled = new Error(`The update download stopped: nothing arrived for ${DOWNLOAD_IDLE_MS / 1000} seconds.`)
+  const abort = new AbortController()
+  let idle: ReturnType<typeof setTimeout> | undefined
+  const expectData = () => {
+    clearTimeout(idle)
+    idle = setTimeout(() => abort.abort(stalled), DOWNLOAD_IDLE_MS)
+  }
+  expectData()
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value) {
-        received += value.length
-        out.write(Buffer.from(value))
-        if (total > 0) {
-          onProgress(Math.min(100, Math.round((received / total) * 100)))
+    // Electron's net, not Node's fetch, which ignores proxies. net.fetch uses the default session and electron-updater's
+    // update check its own "electron-updater" session; BLDesk sets no proxy on either, so both follow the system's.
+    const res = await net.fetch(url, { signal: abort.signal })
+    if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
+    const total = Number(res.headers.get('content-length')) || 0
+    let received = 0
+
+    if (!res.body) throw new Error('Response body is empty')
+    const reader = res.body.getReader()
+    const out = createWriteStream(destPath)
+    // Without a listener a failed write (a full disk, say) is an uncaught exception in the main process.
+    let writeError: Error | null = null
+    out.on('error', (err) => (writeError ??= err))
+
+    try {
+      while (!writeError) {
+        const { done, value } = await reader.read()
+        if (done) break
+        expectData()
+        if (value) {
+          received += value.length
+          out.write(Buffer.from(value))
+          if (total > 0) {
+            onProgress(Math.min(100, Math.round((received / total) * 100)))
+          }
         }
       }
+      await new Promise<void>((resolve, reject) => {
+        out.end((err: any) => (err ? reject(err) : resolve()))
+      })
+    } catch (err) {
+      // The first failure, taken before the clean-up below adds its own ("write after a stream was destroyed"). A failed
+      // write destroys the stream before its 'error' event fires, so end() can reject first: out.errored has the cause.
+      const cause = writeError ?? out.errored ?? (abort.signal.aborted ? stalled : err)
+      // A download that failed part-way is not left behind.
+      reader.cancel().catch(() => {})
+      await new Promise<void>((resolve) => {
+        if (out.closed) return resolve()
+        out.once('close', () => resolve())
+        out.destroy()
+      })
+      try {
+        rmSync(destPath, { force: true })
+      } catch {
+        /* nothing to remove */
+      }
+      throw cause
     }
   } finally {
-    await new Promise<void>((resolve, reject) => {
-      out.end((err: any) => (err ? reject(err) : resolve()))
-    })
+    clearTimeout(idle)
   }
 }
 
@@ -123,6 +162,9 @@ function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
 
   const stagedApp = join(stagingDir, 'BLDesk.app')
   const scriptPath = join(stagingDir, 'install-update.sh')
+  // The installed app is replaced only once the new one has unzipped (exit 0, or 1 for warnings only) and been copied
+  // next to it, by two renames in the same folder. A failure logs to the system log, exits non-zero and leaves a
+  // complete app on disk: the installed one, or if putting it back fails too, both bundles, named in the log line.
   const scriptContent = `#!/bin/bash
 PID=${process.pid}
 COUNT=0
@@ -135,15 +177,33 @@ while kill -0 $PID 2>/dev/null; do
   fi
 done
 
+NEW="${targetApp}.new"
+OLD="${targetApp}.old"
+STATUS=1
+LEFT=""
+# Leftovers of an earlier attempt are cleared only while the installed app is in place. With no app at that path they
+# may be the only copies of one, and nothing here touches them.
+if [ -d "${targetApp}" ]; then rm -rf "$NEW" "$OLD"; fi
 unzip -q -o "${zipPath}" -d "${stagingDir}"
-if [ -d "${stagedApp}" ]; then
-  rm -rf "${targetApp}"
-  cp -R "${stagedApp}" "${targetApp}"
-  xattr -cr "${targetApp}" 2>/dev/null || true
+UNZIP=$?
+# unzip exits 1 for warnings and carries on; 2 and above are errors. Only that the app folder exists is checked after.
+# mv would move a bundle into a folder that already exists, so each rename first checks that its destination is free.
+if [ $UNZIP -le 1 ] && [ -d "${stagedApp}" ] && [ -d "${targetApp}" ] && [ ! -e "$NEW" ] && [ ! -e "$OLD" ] && cp -R "${stagedApp}" "$NEW" && mv "${targetApp}" "$OLD"; then
+  if [ ! -e "${targetApp}" ] && mv "$NEW" "${targetApp}"; then
+    rm -rf "$OLD"
+    xattr -cr "${targetApp}" 2>/dev/null || true
+    STATUS=0
+  elif [ -e "${targetApp}" ] || ! mv "$OLD" "${targetApp}"; then
+    LEFT=" (the new version is in $NEW and the previous one in $OLD)"
+  fi
 fi
+# $NEW is removed only when an app is at the installed path, and so is not the only copy of one.
+if [ -z "$LEFT" ] && [ -d "${targetApp}" ]; then rm -rf "$NEW"; fi
 rm -rf "${stagingDir}"
 rm -f "${zipPath}"
+[ $STATUS -eq 0 ] || logger -t BLDesk "Update not installed: the new version could not be unzipped and put in place$LEFT"
 ${forceRunAfter ? `open "${targetApp}"` : ''}
+exit $STATUS
 `
   writeFileSync(scriptPath, scriptContent, { mode: 0o755 })
   const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' })
@@ -244,8 +304,16 @@ export class UpdaterManager {
           const destDir = join(app.getPath('userData'), 'updates')
           ensureOwnerDir(destDir)
           const destPath = join(destDir, zipFilename)
+          // electron-updater refuses a file its feed gives no checksum for; this also needs the size. Every release's
+          // latest-mac.yml lists both.
+          const listed = zipEntry?.sha512 && zipEntry.size != null ? { sha512: zipEntry.sha512, size: zipEntry.size } : null
+          if (!listed) {
+            rmSync(destPath, { force: true })
+            throw new Error(`BLDesk ${info.version} was not downloaded: the update feed does not list the size and SHA-512 checksum of its macOS download, so it cannot be checked.`)
+          }
 
-          if (existsSync(destPath) && statSync(destPath).size > 1000000) {
+          // A zip already here may be an interrupted download: reuse it only if it matches the release's checksum.
+          if (existsSync(destPath) && !(await zipMismatch(destPath, listed))) {
             macPendingZipPath = destPath
             this.markReady(info.version)
             if (Notification.isSupported()) {
@@ -261,6 +329,11 @@ export class UpdaterManager {
           await downloadMacZip(downloadUrl, destPath, (progress) => {
             this.setState({ status: 'downloading', progress })
           })
+          const mismatch = await zipMismatch(destPath, listed)
+          if (mismatch) {
+            rmSync(destPath, { force: true })
+            throw new Error(`The download of BLDesk ${info.version} was deleted, not installed: ${mismatch}. The next check downloads it again.`)
+          }
 
           macPendingZipPath = destPath
           this.markReady(info.version)
@@ -463,6 +536,19 @@ function hasNoNewPrivs(): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Why a downloaded macOS update zip is not the file the release's `latest-mac.yml` lists, or null when it is: its size
+ * and SHA-512 must be the ones listed there, so a partial or damaged download is never installed.
+ */
+async function zipMismatch(path: string, listed: { size: number; sha512: string }): Promise<string | null> {
+  if (!existsSync(path)) return 'the file is missing'
+  const size = statSync(path).size
+  if (size !== listed.size) return `it is ${size} bytes, not the ${listed.size} the release lists`
+  const hash = createHash('sha512')
+  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  return hash.digest('base64') === listed.sha512 ? null : 'its SHA-512 checksum is not the one the release lists'
 }
 
 function notesToString(info: UpdateInfo): string | undefined {
