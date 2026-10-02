@@ -56,6 +56,7 @@ import {
 } from '../../lib/commands'
 import type { ActiveTab, ServerSubTab } from '../layout/Sidebar'
 import { isModalOpen } from '../ui/Modal'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -273,7 +274,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       })
       if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
     } catch (err: any) {
-      alert(`Couldn't open a rescue console for ${s.name}: ${err?.message || err}`)
+      notifyFailure(`Couldn't open a rescue console for ${s.name}`, err)
     }
   }
 

@@ -58,6 +58,7 @@ import { powerActionSummary, unpublishedActionNotes } from '../../lib/actionLabe
 import { imageSupportsUserData, templateFromServer, type ServerTemplate } from '../../lib/serverTemplates'
 import { describeApiError } from '../../api/queries'
 import { loadKeyAssociations, keyAssociationSource, setKeyAssociation, availableSshKeys, SSH_KEYS_EVENT } from '../../lib/sshKeyAssociations'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -358,7 +359,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
           ok: false
         })
       } else {
-        alert(`Action failed: ${err.message || 'Unknown error'}`)
+        notifyFailure('Action failed', err)
       }
     } finally {
       setActionInProgress(null)
@@ -420,7 +421,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       onCancelled ? onCancelled(server.id) : onBack()
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err?.message })
-      alert(`Failed to cancel the server: ${err?.message || 'unknown error'}`)
+      notifyFailure('Failed to cancel the server', err)
     }
   }
 
@@ -436,9 +437,9 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         height: consoleQuery.data.height || 768
       })
       .then((opened) => {
-        if (opened && !opened.success) alert(`Couldn't open the rescue console for ${server.name}: ${opened.error || 'the window did not open.'}`)
+        if (opened && !opened.success) notifyFailure(`Couldn't open the rescue console for ${server.name}`, opened.error || 'The window did not open.')
       })
-      .catch((err: any) => alert(`Couldn't open the rescue console for ${server.name}: ${err?.message || err}`))
+      .catch((err: any) => notifyFailure(`Couldn't open the rescue console for ${server.name}`, err))
   }
 
   const sample = metricsQuery.data?.average

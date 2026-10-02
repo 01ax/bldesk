@@ -111,8 +111,12 @@ lands in the **History** tab. This is enforced by `scripts/check-mutation-guards
 which runs inside `npm run typecheck` and fails CI. The rules, and what to do
 instead:
 
-1. **Never call `window.confirm()` / `confirm()` / `alert()` as a guard.** Use
+1. **Never call `window.confirm()` / `confirm()` as a guard.** Use
    `const c = await useConfirm()({...})` from `src/renderer/src/context/ConfirmContext.tsx`.
+   **Never call `alert()` at all.** Report a failure with
+   `notifyFailure(title, error)` from `src/renderer/src/lib/failures.ts`: it shows
+   as a toast inside the app (above dialogs, until dismissed) and works from
+   library code as well as components.
 2. **One dialog shell, no exceptions.** Every dialog is `<Modal>` from
    `src/renderer/src/components/ui/Modal.tsx` (title, icon, footer, size,
    `as="form"`, `busy`); the guard fails any `createPortal` outside that file.

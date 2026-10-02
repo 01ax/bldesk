@@ -1,9 +1,10 @@
 import { TerminalLaunchOptions, TerminalLaunchResult } from '@shared/ipc-types'
 import { formatSshCommand, validateSshTarget } from '@shared/ssh'
+import { notifyFailure } from './failures'
 
 const shellFlavour = (): 'posix' | 'win32' => (/Windows/i.test(navigator.userAgent) ? 'win32' : 'posix')
 
-// One launch at a time: a double-click must not open two terminals or stack two alerts.
+// One launch at a time: a double-click must not open two terminals or stack two failure messages.
 let inFlight = false
 
 /**
@@ -49,12 +50,12 @@ async function reportFailure(host: string, result: TerminalLaunchResult): Promis
       await navigator.clipboard.writeText(command)
       copied = true
     } catch {
-      // clipboard may be unavailable; the alert still shows the command
+      // clipboard may be unavailable; the message still shows the command
     }
   }
-  const lines = [`Couldn't open a terminal for ${host}.`, '', result.error || 'Unknown error']
-  if (command) {
-    lines.push('', copied ? 'The SSH command has been copied to your clipboard:' : 'Run this yourself:', command)
-  }
-  alert(lines.join('\n'))
+  notifyFailure(
+    `Couldn't open a terminal for ${host}`,
+    result.error || 'Unknown error',
+    command ? { note: copied ? 'The SSH command has been copied to your clipboard:' : 'Run this yourself:', code: command } : {}
+  )
 }

@@ -21,6 +21,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { apiFailure } from '../../api/queries'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -89,7 +90,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to create VPC: ${err.message}`)
+      notifyFailure('Failed to create VPC', err)
     } finally {
       setIsSubmitting(false)
     }
@@ -132,7 +133,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to attach server: ${err.message}`)
+      notifyFailure('Failed to attach server', err)
     } finally {
       setIsAttaching(false)
     }
@@ -173,7 +174,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       queryClient.invalidateQueries({ queryKey: ['vpcs'] })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to detach server: ${err.message}`)
+      notifyFailure('Failed to detach server', err)
     } finally {
       setActionServerId(null)
     }
@@ -205,7 +206,7 @@ export const VpcManager: React.FC<VpcManagerProps> = ({ client, onSelectServer, 
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to delete VPC: ${err.message}`)
+      notifyFailure('Failed to delete VPC', err)
     }
   }
 

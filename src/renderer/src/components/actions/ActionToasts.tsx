@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, Receipt, X } from 'lucide-react'
 import { TrackedAction, TrackedActionState, useTrackedActions } from '../../context/ActionTrackerContext'
+import { FailureToastItems, useFailures } from './FailureToasts'
 
 /**
  * Toast host for actions being tracked to completion. Deliberately in-house:
@@ -45,7 +46,8 @@ function statusLine(action: TrackedAction): string {
 export function ActionToasts() {
   const { tracked: all, dismiss } = useTrackedActions()
   const tracked = all.filter((a) => !a.dismissed)
-  if (tracked.length === 0) return null
+  const failures = useFailures()
+  if (tracked.length === 0 && failures.length === 0) return null
 
   return (
     /*
@@ -57,8 +59,14 @@ export function ActionToasts() {
      * bottom of the screen as well - the close button with it. The offset
      * matches the bar's own height expression so the two cannot drift apart,
      * and it applies only where the bar exists.
+     *
+     * Above the dialogs (`Modal` is 70, and 80 when nested), because a failed
+     * save leaves its form open and the reason has to show over it. The column
+     * sits at the bottom right, where it covers the page's own controls least:
+     * the header actions at the top right are what people reach for next.
      */
-    <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4 right-4 z-[55] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
+    <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4 right-4 z-[100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
+      <FailureToastItems />
       {tracked.map((action) => {
         const tone = TONE[action.state]
         const Icon = tone.icon
