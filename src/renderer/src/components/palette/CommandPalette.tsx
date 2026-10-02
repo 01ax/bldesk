@@ -30,7 +30,7 @@ import {
 import { components } from '@shared/api/schema'
 import type { DeepLinkServerSubTab } from '@shared/deeplink'
 import { BinaryLaneClient } from '../../api/client'
-import { useDomains, useServerActionMutation, apiFailure, fetchServerBackups, mapLimitNullable } from '../../api/queries'
+import { useDomains, useServerActionMutation, type ServerActionBody, apiFailure, fetchServerBackups, mapLimitNullable } from '../../api/queries'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { copyDeepLink, primaryIpv4 } from '../../lib/deeplinks'
 import { openServerSsh } from '../../lib/openServerSsh'
@@ -56,6 +56,7 @@ import {
 } from '../../lib/commands'
 import type { ActiveTab, ServerSubTab } from '../layout/Sidebar'
 import { isModalOpen } from '../ui/Modal'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -273,7 +274,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       })
       if (opened && !opened.success) throw new Error(opened.error || 'The console window did not open.')
     } catch (err: any) {
-      alert(`Couldn't open a rescue console for ${s.name}: ${err?.message || err}`)
+      notifyFailure(`Couldn't open a rescue console for ${s.name}`, err)
     }
   }
 
@@ -635,7 +636,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
 
       if (eligible.length > 0) {
-        const body: Record<string, unknown> =
+        const body: ServerActionBody =
           parsed.kind === 'power'
             ? { type: spec!.type }
             : { type: 'take_backup', replacement_strategy: 'oldest', backup_type: 'temporary', label: parsed.label || undefined }

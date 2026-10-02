@@ -22,6 +22,12 @@ const record = JSON.parse(readFileSync(recordPath, 'utf8'))
 for (const build of ['main', 'preload', 'renderer']) {
   if (!Array.isArray(record[build])) fail(`the ${build} build recorded nothing in out/bundled-modules.json; rebuild with \`npm run build\`.`)
 }
+// The renderer always bundles React and more. An empty list means the build named those files by a path outside this
+// folder, which is what a node_modules that is a symlink (or sits above the repository) does: the notices would then
+// quietly leave out the licence of everything the app bundles.
+if (record.renderer.length === 0) {
+  fail('the renderer build recorded no packages, so their licence texts would be missing. node_modules must be a real folder inside the repository, not a symlink to one elsewhere.')
+}
 
 const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'))
 const folders = [...Object.values(record).flat(), ...productionFolders(lock)]

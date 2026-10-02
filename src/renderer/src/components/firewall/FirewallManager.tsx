@@ -26,6 +26,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
+import { notifyFailure } from '../../lib/failures'
 
 interface FirewallManagerProps {
   client: BinaryLaneClient | null
@@ -241,7 +242,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     try {
       await finishFirewall(changeId, updateFirewall.mutateAsync(reordered))
     } catch (err: any) {
-      alert(`Reorder failed: ${err.message}`)
+      notifyFailure('Reorder failed', err)
     } finally {
       setMoving(false)
     }
@@ -275,7 +276,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         body: `Rule #${index + 1} removed.`
       })
     } catch (err: any) {
-      alert(`Failed to delete rule: ${err.message}`)
+      notifyFailure('Failed to delete rule', err)
     }
   }
 
@@ -301,7 +302,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         body: `Flushed all firewall rules on #${activeServerId}.`
       })
     } catch (err: any) {
-      alert(`Flush failed: ${err.message}`)
+      notifyFailure('Flush failed', err)
     }
   }
 
@@ -417,7 +418,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       closeClone()
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Clone failed: ${err.message}`)
+      notifyFailure('Clone failed', err)
     } finally {
       setIsCloning(false)
     }

@@ -9,7 +9,9 @@
  * or agent) from reinventing a dialog, not to be clever.
  *
  * Rules:
- *  1. No window.confirm / confirm( / alert-as-confirm outside ConfirmContext.
+ *  1. No window.confirm / confirm( outside ConfirmContext, and no native alert(
+ *     at all: a failure is reported with notifyFailure() (lib/failures.ts),
+ *     which shows it inside the app.
  *  2. One dialog shell: `createPortal(` only inside components/ui/Modal.tsx.
  *     Every dialog is a <Modal>; confirmations are useConfirm() on top. A
  *     hand-built `fixed inset-0` dimmed overlay is the same mistake and fails too.
@@ -86,6 +88,13 @@ for (const file of walk(SRC)) {
       }
     })
   }
+
+  // 1b. Native alert boxes. They block the window and look different on each OS; failures go through notifyFailure().
+  codeOnly.forEach((l, i) => {
+    if (/(^|[^A-Za-z0-9_.$])(window\.)?alert\s*\(/.test(l)) {
+      failures.push(`${rel}:${i + 1}: native alert() — report a failure with notifyFailure(title, error) from lib/failures.ts so it shows inside the app.`)
+    }
+  })
 
   // 2. One dialog shell. Every dialog is a <Modal> (components/ui/Modal.tsx),
   //    so they all look and behave the same; anything that changes something

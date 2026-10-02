@@ -28,6 +28,7 @@ import {
 } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -156,7 +157,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       setSelectedServerToAttach(null)
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add server: ${err.message}`)
+      notifyFailure('Failed to add server', err)
     }
   }
 
@@ -186,7 +187,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to remove server: ${err.message}`)
+      notifyFailure('Failed to remove server', err)
     } finally {
       setActionServerId(null)
     }
@@ -212,7 +213,7 @@ export const LoadBalancerManager: React.FC<LoadBalancerManagerProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Delete failed: ${err.message}`)
+      notifyFailure('Delete failed', err)
     }
   }
 

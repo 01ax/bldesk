@@ -24,6 +24,7 @@ import {
   useServerThresholdAlerts,
   useAvailableAdvancedFeatures,
   useServerActionWithHandoff,
+  type ServerActionBody,
   networkActionMutationKey,
   actionFailureMessage,
   ACCEPTED_WITHOUT_ACTION
@@ -40,6 +41,7 @@ type ThresholdAlertType = components['schemas']['ThresholdAlertType']
 type VmMachineType = components['schemas']['VmMachineType']
 import { visibleFeatures, mergeHiddenFeatures, formatMachineType } from '../../lib/advancedFeatures'
 type VideoDevice = components['schemas']['VideoDevice']
+type AdvancedFeature = components['schemas']['AdvancedFeature']
 
 /** The video devices the API reference defines, with its own descriptions of them. */
 const VIDEO_DEVICES: Array<{ value: VideoDevice; label: string }> = [
@@ -161,7 +163,7 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
    * the dialog should show beyond the title and the server: a summary, a
    * before → after table, warnings, and how bad getting it wrong is.
    */
-  const executeAction = async (label: string, payload: any, req: Omit<ConfirmRequest, 'title' | 'target'>): Promise<boolean> => {
+  const executeAction = async (label: string, payload: ServerActionBody, req: Omit<ConfirmRequest, 'title' | 'target'>): Promise<boolean> => {
     const c = await confirmAction({ title: label, helpSlug: 'server-settings#worked-example', target: { kind: 'server', id: server.id, name: server.name }, ...req })
     if (!c.ok) return false
     setErrorMsg(null)
@@ -294,11 +296,13 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       'Update Advanced Features',
       {
         type: 'change_advanced_features',
+        // The slugs are typed as plain strings (FeatureDescriptor.slug, and the server's own enabled list), not as the spec's
+        // AdvancedFeature enum, so this is the one place a cast is needed.
         enabled_advanced_features: mergeHiddenFeatures(
           selectedFeatures,
           (server.advanced_features?.enabled_advanced_features ?? []) as string[],
           shownFeatures
-        ),
+        ) as AdvancedFeature[],
         // Choosing "Default (Automatic)" or "Host Default (Auto)" when the server has a setting is a change, and the
         // reference has a field for it. Leaving the field out keeps what is there, so it would report success and do nothing.
         ...(machineType === '' && current?.machine_type ? { automatic_machine_type: true } : machineType ? { machine_type: machineType } : {}),

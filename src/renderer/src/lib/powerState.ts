@@ -176,7 +176,7 @@ export function usePowerState(client: BinaryLaneClient | null, servers: ServerRe
       try {
         const submitted = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: serverId } },
-          body: { type: 'is_running' } as never,
+          body: { type: 'is_running' },
           signal: AbortSignal.timeout(15_000)
         })
         if (submitted.error) throw new Error(describeApiError(submitted.error))

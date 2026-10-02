@@ -94,7 +94,7 @@ export const ChangePlanPanel: React.FC<{
   server: Server
   busy?: boolean
   onApply: (
-    payload: Record<string, unknown>,
+    payload: components['schemas']['Resize'],
     summary: string,
     changes: Array<{ label: string; from?: string; to?: string }>,
     /** Extra confirm settings for the dangerous shapes of a resize (releasing addresses, reinstalling). */

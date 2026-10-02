@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { BinaryLaneClient } from './client'
-import { components } from '@shared/api/schema'
+import { components, paths } from '@shared/api/schema'
 import type { FleetMetricResult } from '../lib/heatmap'
 import { toRuleRequest } from '../lib/firewallRules'
 import { ApiError, apiFailure, describeApiError, fetchAllPages, isFinalFailure } from './errors'
@@ -175,17 +175,38 @@ export function useServerConsole(client: BinaryLaneClient | null, serverId: numb
 
 // --- SERVER ACTIONS MUTATION ---
 
+/**
+ * Any body `POST /v2/servers/{id}/actions` accepts, taken straight from the
+ * generated schema: a union keyed on `type`, so a wrong or unknown field name
+ * is a compile error instead of a request the API rejects (or ignores).
+ */
+export type ServerActionBody = NonNullable<
+  paths['/v2/servers/{server_id}/actions']['post']['requestBody']
+>['content']['application/json']
+
+/**
+ * The one action BLDesk sends that the public reference does not list. It is a
+ * recorded exception (AGENTS.md, "Accepted exceptions", #129), so it is named
+ * here rather than loosening `ServerActionBody` for everything else.
+ */
+export type UnpublishedActionBody = { type: 'enable_rescue_mode' }
+
+/** What the action mutations accept: the spec's bodies plus the recorded exception. */
+export type SubmittableActionBody = ServerActionBody | UnpublishedActionBody
+
 export function useServerActionMutation(client: BinaryLaneClient | null) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ serverId, actionPayload }: { serverId: number; actionPayload: any }) => {
+    mutationFn: async ({ serverId, actionPayload }: { serverId: number; actionPayload: SubmittableActionBody }) => {
       if (!client) throw new Error('No client available')
       const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
-        body: actionPayload
+        // The generated body type leaves out the one unlisted action above, so the union is narrowed to it here, once.
+        // Every other body is checked against the spec by SubmittableActionBody.
+        body: actionPayload as ServerActionBody
       })
       // describeApiError rather than JSON.stringify: the raw body was being shown
-      // to users verbatim in an alert().
+      // to users verbatim in a failure message.
       if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
@@ -1071,7 +1092,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null) {
       // A specified replacement is refused unless backup_type is the replaced backup's own type, so the caller passes it.
       const backupType = replacementStrategy === 'specified' ? p.backupType : (p.backupType || 'temporary')
 
-      const body: any = {
+      const body: components['schemas']['TakeBackup'] = {
         type: 'take_backup',
         replacement_strategy: replacementStrategy,
         label: p.label || undefined
@@ -1610,7 +1631,7 @@ export type ServerActionOutcome =
  */
 export function useServerActionWithHandoff(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
-  return useMutation<ServerActionOutcome, Error, Record<string, unknown> & { type: string }>({
+  return useMutation<ServerActionOutcome, Error, ServerActionBody>({
     mutationKey: networkActionMutationKey(serverId),
     mutationFn: async (actionPayload) => {
       if (!client || !serverId) throw new Error('No client available')
@@ -1619,7 +1640,7 @@ export function useServerActionWithHandoff(client: BinaryLaneClient | null, serv
       try {
         submitted = await client.POST('/v2/servers/{server_id}/actions', {
           params: { path: { server_id: serverId } },
-          body: actionPayload as never,
+          body: actionPayload,
           parseAs: 'text',
           signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
         })
@@ -1677,13 +1698,13 @@ const DIAGNOSTIC_POLL_TIMEOUT_MS = 30_000
  * that asked for it.
  */
 export function useServerDiagnosticMutation(client: BinaryLaneClient | null, serverId: number | null) {
-  return useMutation<ServerAction, Error, Record<string, unknown> & { type: string }>({
+  return useMutation<ServerAction, Error, ServerActionBody>({
     mutationFn: async (actionPayload) => {
       if (!client || !serverId) throw new Error('No client available')
 
       const submitted = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },
-        body: actionPayload as never,
+        body: actionPayload,
         signal: AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS)
       })
       if (submitted.error) throw new Error(describeApiError(submitted.error))
