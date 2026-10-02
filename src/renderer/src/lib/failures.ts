@@ -20,6 +20,8 @@ export interface Failure {
   note?: string
   /** Something to copy and run, shown verbatim. */
   code?: string
+  /** How many times this same failure was raised while it was on screen; a retry that fails again shows as a higher count. */
+  count: number
 }
 
 /** Few enough that a burst of failures cannot cover the window; the oldest go first. */
@@ -47,13 +49,17 @@ export function reasonOf(reason: unknown): string | undefined {
 
 /**
  * Show a failure. The same failure raised again while it is still on screen is
- * not stacked a second time (a double-click must not pile up two of them).
+ * not stacked a second time (a double-click must not pile up two of them); its
+ * count goes up instead, so a retry that fails again is not mistaken for nothing happening.
  */
 export function notifyFailure(title: string, reason?: unknown, extra: Pick<Failure, 'note' | 'code'> = {}): void {
   const detail = reasonOf(reason)
-  const same = failures.some((f) => f.title === title && f.detail === detail && f.note === extra.note && f.code === extra.code)
-  if (same) return
-  failures = [...failures, { id: nextId++, title, detail, ...extra }].slice(-MAX_FAILURES)
+  const same = failures.find((f) => f.title === title && f.detail === detail && f.note === extra.note && f.code === extra.code)
+  if (same) {
+    failures = failures.map((f) => (f === same ? { ...f, count: f.count + 1 } : f))
+  } else {
+    failures = [...failures, { id: nextId++, title, detail, ...extra, count: 1 }].slice(-MAX_FAILURES)
+  }
   emit()
 }
 
@@ -68,6 +74,13 @@ export function subscribeFailures(listener: () => void): () => void {
   return () => {
     listeners.delete(listener)
   }
+}
+
+/** Drop every failure on screen. For a change of account: a failure from one account must not sit over another's screens. */
+export function clearFailures(): void {
+  if (failures.length === 0) return
+  failures = []
+  emit()
 }
 
 /** A stable reference between changes, as `useSyncExternalStore` requires. */

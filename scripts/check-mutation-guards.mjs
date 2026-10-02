@@ -9,9 +9,9 @@
  * or agent) from reinventing a dialog, not to be clever.
  *
  * Rules:
- *  1. No window.confirm / confirm( / alert-as-confirm outside ConfirmContext.
- *     And no native alert( at all: a failure is reported with notifyFailure()
- *     (lib/failures.ts), which shows it inside the app.
+ *  1. No window.confirm / confirm( outside ConfirmContext, and no native alert(
+ *     at all: a failure is reported with notifyFailure() (lib/failures.ts),
+ *     which shows it inside the app.
  *  2. One dialog shell: `createPortal(` only inside components/ui/Modal.tsx.
  *     Every dialog is a <Modal>; confirmations are useConfirm() on top. A
  *     hand-built `fixed inset-0` dimmed overlay is the same mistake and fails too.

@@ -8,8 +8,9 @@ export function useFailures() {
 }
 
 /**
- * Rendered by `ActionToasts` in its own column, so a failure and a tracked action stack instead of covering each
- * other. Failures stay until dismissed, like a failed action.
+ * Rendered by `ActionToasts` in the same column, ahead of the tracked actions, so a failure and an action stack
+ * instead of covering each other. Failures stay until dismissed, like a failed action. The text can be selected: the
+ * reason is what someone pastes into a support request.
  */
 export function FailureToastItems() {
   const failures = useFailures()
@@ -22,8 +23,11 @@ export function FailureToastItems() {
           className="pointer-events-auto bg-white dark:bg-[#2b3035] border border-rose-300 dark:border-rose-900 rounded-lg shadow-2xl p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-bottom-2 fade-in duration-150"
         >
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-500" />
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="font-semibold text-[#212529] dark:text-white break-words">{f.title}</div>
+          <div className="flex-1 min-w-0 space-y-1 select-text">
+            <div className="font-semibold text-[#212529] dark:text-white break-words">
+              {f.title}
+              {f.count > 1 && <span className="ml-1.5 font-normal text-[#6c757d] dark:text-[#adb5bd]">×{f.count}</span>}
+            </div>
             {f.detail && <div className="text-[11px] text-[#495057] dark:text-[#adb5bd] break-words">{f.detail}</div>}
             {f.note && <div className="text-[11px] text-[#495057] dark:text-[#adb5bd] break-words">{f.note}</div>}
             {f.code && (
@@ -33,6 +37,9 @@ export function FailureToastItems() {
             )}
           </div>
           <button
+            // A click must not take focus from what the user was in (the command palette's search box, a dialog's field):
+            // the palette closes on Escape through its input, which would stop hearing it.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => dismissFailure(f.id)}
             aria-label={`Dismiss: ${f.title}`}
             className="p-0.5 text-[#6c757d] hover:text-[#212529] dark:hover:text-white rounded flex-shrink-0"

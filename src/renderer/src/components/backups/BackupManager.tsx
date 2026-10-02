@@ -116,7 +116,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     ((activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 || (activeServer?.selected_size_options?.monthly_backups ?? 0) > 0)
 
   // One take at a time, from the submit until the request is sent or the dialog is cancelled. A second submit would send
-  // the same request again, which the client refuses, leaving a failed History entry and an alert. Meanwhile the form
+  // the same request again, which the client refuses, leaving a failed History entry and a failure message. Meanwhile the form
   // cannot be closed, like every form while its request runs: closing it would not stop the take.
   const [taking, setTaking] = useState(false)
   const takingRef = useRef(false)

@@ -4,6 +4,7 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../api/client'
 import { describeActionFailure, pollActionToSettled } from '../api/queries'
 import { getChangeLogProfile, getChangeProfile, updateChange } from '../lib/changelog'
+import { clearFailures } from '../lib/failures'
 
 type ServerAction = components['schemas']['Action']
 
@@ -354,6 +355,8 @@ export function ActionTrackerProvider({
       followed.current.clear()
       // The polls are gone, so their entries must go too: one left as "running" would never be updated again.
       setTracked([])
+      // A failure shown for one account must not sit over another's screens with nothing to say which it was.
+      clearFailures()
     }
   }, [client])
 

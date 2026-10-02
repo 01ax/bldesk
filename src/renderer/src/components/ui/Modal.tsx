@@ -61,7 +61,7 @@ export interface ModalProps {
   headerRight?: React.ReactNode
   /** Disable text selection on the shell (confirm dialogs). Body keeps select-text. */
   noSelect?: boolean
-  /** Stacking order; the default sits above the palette. Toasts (`ActionToasts`) sit above every dialog, so a failure shows over its form. */
+  /** Stacking order; the default sits above the palette and the action toasts. A failure toast (`ActionToasts`) sits above every dialog, so a failure shows over its form. */
   z?: number
   labelledBy?: string
   children: React.ReactNode
