@@ -1,7 +1,7 @@
 // Tests for the in-app failure store that replaced native alert(): node --test scripts/test-failures.mjs
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { notifyFailure, dismissFailure, clearFailures, getFailures, subscribeFailures, resetFailures, reasonOf, MAX_FAILURES } from '../src/renderer/src/lib/failures.ts'
+import { notifyFailure, dismissFailure, clearFailures, enterDialog, leaveDialog, getFailures, getFloatingFailures, getDialogFailures, subscribeFailures, resetFailures, reasonOf, MAX_FAILURES } from '../src/renderer/src/lib/failures.ts'
 
 beforeEach(() => resetFailures())
 
@@ -45,11 +45,13 @@ test('the same failure raised again while it is on screen is not stacked but cou
   assert.deepEqual(getFailures().map((f) => f.count), [2, 1])
 })
 
-test('a repeat is counted on the failure it repeats, not on a newer one, and the order is kept', () => {
+test('a repeat is counted on the failure it repeats and raised afresh, as the newest', () => {
   notifyFailure('One', 'x')
   notifyFailure('Two', 'x')
+  const before = getFailures()[0].id
   notifyFailure('One', 'x')
-  assert.deepEqual(getFailures().map((f) => [f.title, f.count]), [['One', 2], ['Two', 1]])
+  assert.deepEqual(getFailures().map((f) => [f.title, f.count]), [['Two', 1], ['One', 2]])
+  assert.ok(getFailures()[1].id > before, 'a repeat gets a new id, so it belongs to whatever dialog is open now')
 })
 
 test('once dismissed, a failure starts again from a count of one', () => {
@@ -128,4 +130,95 @@ test('the list is the same object until something changes, which the React store
   const second = getFailures()
   notifyFailure('Two', 'x')
   assert.notEqual(getFailures(), second)
+})
+
+test('with no dialog open every failure is for the corner of the window', () => {
+  notifyFailure('One', 'x')
+  notifyFailure('Two', 'x')
+  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['One', 'Two'])
+  assert.equal(getDialogFailures(Symbol('nobody')).length, 0)
+})
+
+test('a failure raised while a dialog is open shows in that dialog, not at the corner', () => {
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('Failed to add record', 'x')
+  assert.deepEqual(getDialogFailures(dialog).map((f) => f.title), ['Failed to add record'])
+  assert.equal(getFloatingFailures().length, 0)
+})
+
+test('a failure from before the dialog opened stays at the corner', () => {
+  notifyFailure('Earlier', 'x')
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('During', 'x')
+  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Earlier'])
+  assert.deepEqual(getDialogFailures(dialog).map((f) => f.title), ['During'])
+})
+
+test('a failure repeated while a dialog is open moves into that dialog', () => {
+  notifyFailure('Backup failed', 'locked')
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('Backup failed', 'locked')
+  assert.equal(getFloatingFailures().length, 0)
+  assert.deepEqual(getDialogFailures(dialog).map((f) => [f.title, f.count]), [['Backup failed', 2]])
+})
+
+test('only the dialog on top shows failures; the one beneath gets them back when it closes', () => {
+  const under = Symbol('under')
+  const over = Symbol('over')
+  enterDialog(under)
+  notifyFailure('Raised under', 'x')
+  enterDialog(over)
+  notifyFailure('Raised over', 'x')
+  assert.deepEqual(getDialogFailures(over).map((f) => f.title), ['Raised over'])
+  assert.equal(getDialogFailures(under).length, 0, 'a dialog that is not on top shows nothing')
+  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Raised under'], 'what was raised before the top dialog opened is not in it')
+  leaveDialog(over)
+  assert.deepEqual(getDialogFailures(under).map((f) => f.title), ['Raised under', 'Raised over'])
+  assert.equal(getFloatingFailures().length, 0)
+})
+
+test('when the last dialog closes its failures go to the corner and are not lost', () => {
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('Raised in the dialog', 'x')
+  leaveDialog(dialog)
+  assert.deepEqual(getFloatingFailures().map((f) => f.title), ['Raised in the dialog'])
+  assert.equal(getDialogFailures(dialog).length, 0)
+})
+
+test('dismissing a failure in a dialog removes it everywhere, and leaving a dialog twice is harmless', () => {
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('One', 'x')
+  dismissFailure(getDialogFailures(dialog)[0].id)
+  assert.equal(getFailures().length, 0)
+  leaveDialog(dialog)
+  leaveDialog(dialog)
+  assert.equal(getFloatingFailures().length, 0)
+})
+
+test('the dialog and corner lists are the same object until something changes, which the React store needs', () => {
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  notifyFailure('One', 'x')
+  const inside = getDialogFailures(dialog)
+  const corner = getFloatingFailures()
+  assert.equal(getDialogFailures(dialog), inside)
+  assert.equal(getFloatingFailures(), corner)
+  assert.equal(getDialogFailures(Symbol('other')), getDialogFailures(Symbol('another')), 'a dialog with nothing to show always gets the same empty list')
+  notifyFailure('Two', 'x')
+  assert.notEqual(getDialogFailures(dialog), inside)
+})
+
+test('listeners hear a dialog opening and closing, since what shows where changes', () => {
+  let heard = 0
+  const stop = subscribeFailures(() => heard++)
+  const dialog = Symbol('dialog')
+  enterDialog(dialog)
+  leaveDialog(dialog)
+  assert.equal(heard, 2)
+  stop()
 })

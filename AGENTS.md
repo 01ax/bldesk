@@ -115,8 +115,9 @@ instead:
    `const c = await useConfirm()({...})` from `src/renderer/src/context/ConfirmContext.tsx`.
    **Never call `alert()` at all.** Report a failure with
    `notifyFailure(title, error)` from `src/renderer/src/lib/failures.ts`: it shows
-   as a toast inside the app (above dialogs, until dismissed) and works from
-   library code as well as components.
+   inside the app until dismissed, in the dialog that is open (above its body, so
+   it never covers its buttons) or else as a card at the bottom right, and works
+   from library code as well as components.
 2. **One dialog shell, no exceptions.** Every dialog is `<Modal>` from
    `src/renderer/src/components/ui/Modal.tsx` (title, icon, footer, size,
    `as="form"`, `busy`); the guard fails any `createPortal` outside that file.

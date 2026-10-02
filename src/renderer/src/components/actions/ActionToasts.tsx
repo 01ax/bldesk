@@ -61,16 +61,13 @@ export function ActionToasts() {
      * matches the bar's own height expression so the two cannot drift apart,
      * and it applies only where the bar exists.
      *
-     * Above the dialogs (`Modal` is 70, and 80 when nested) only while a failure
-     * is showing, because a failed save leaves its form open and the reason has
-     * to show over it. Otherwise the column stays below them, as action toasts
-     * always have: on a small window or at high zoom a card over a dialog covers
-     * its Confirm and Cancel buttons. A failure stays until it is dismissed (its X;
-     * Enter and Escape still work in the dialog meanwhile). The column sits at the
+     * Below the dialogs (`Modal` is 70, and 80 when nested), so the column never
+     * covers a dialog's buttons. A failure raised while a dialog is open shows
+     * inside that dialog (`DialogFailures`), not here. The column sits at the
      * bottom right, where it covers the page's own controls least: the header
      * actions at the top right are what people reach for next.
      */
-    <div className={`fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4 right-4 ${failures.length > 0 ? 'z-[100]' : 'z-[55]'} flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none`}>
+    <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-4 right-4 z-[55] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] pointer-events-none">
       <FailureToastItems />
       {tracked.map((action) => {
         const tone = TONE[action.state]

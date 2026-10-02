@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, type LucideIcon } from 'lucide-react'
+import { enterDialog, leaveDialog } from '../../lib/failures'
+import { DialogFailures } from '../actions/FailureToasts'
 
 /**
  * The one modal shell. Every dialog in the app — the confirm dialog, the
@@ -17,6 +19,9 @@ import { X, type LucideIcon } from 'lucide-react'
  * dialog, Tab and Shift+Tab stay inside it, a held Enter key does not repeat,
  * and focus goes back to what opened it. Where dialogs are stacked, only the
  * top one does this.
+ *
+ * A failure reported while a dialog is open (`notifyFailure`) shows inside it,
+ * between the header and the body, so it never covers the dialog's buttons.
  */
 
 /** The dialogs that are open, oldest first. */
@@ -61,7 +66,7 @@ export interface ModalProps {
   headerRight?: React.ReactNode
   /** Disable text selection on the shell (confirm dialogs). Body keeps select-text. */
   noSelect?: boolean
-  /** Stacking order; the default sits above the palette and the action toasts. A failure toast (`ActionToasts`) sits above every dialog, so a failure shows over its form. */
+  /** Stacking order; the default sits above the palette and the toasts (`ActionToasts`), which stay below every dialog. */
   z?: number
   labelledBy?: string
   children: React.ReactNode
@@ -105,6 +110,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   useEffect(() => {
     openModals.push(id)
+    enterDialog(id)
     const panel = panelRef.current
 
     // Take focus into the dialog, unless something in it has already asked for it (a field with autoFocus, the confirm
@@ -163,6 +169,7 @@ export const Modal: React.FC<ModalProps> = ({
       document.removeEventListener('keydown', onKeyCapture, true)
       document.removeEventListener('keydown', onEscape)
       openModals.splice(openModals.indexOf(id), 1)
+      leaveDialog(id)
       // Give focus back to what opened the dialog, unless it has gone or focus has since been put somewhere on purpose.
       const back = opener.current
       const now = document.activeElement
@@ -218,6 +225,8 @@ export const Modal: React.FC<ModalProps> = ({
             )}
           </div>
         </div>
+
+        <DialogFailures token={id} />
 
         <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto select-text">
           {children}
