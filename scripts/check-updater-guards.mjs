@@ -78,6 +78,57 @@ if (!scriptTemplate) {
       failures.push(`installMacUpdate script (forceRunAfter=${forceRunAfter}) failed the bash syntax check, or could not be built (a new variable in its template needs a stand-in value in this guard): ${err.message}`)
     }
   }
+  failures.push(...installOrderProblems(scriptTemplate))
+}
+
+// 7. The installed app may only be swapped out by renaming, once the new bundle has unzipped and been copied next to
+// it: unzip's exit status must be acted on, and no recursive rm may name the installed app, directly or through a
+// variable set to it. Plain-text checks on the script template, with its bash comments removed. They cannot follow
+// the script's logic, so these still pass: an exit status that is captured and tested wrongly, a removal through a
+// path built another way (a subfolder of the app, `$(...)`, `find -delete`), a rename of the app to a folder that is
+// deleted later, or a copy over the installed app.
+function installOrderProblems(template) {
+  const problems = []
+  const lines = template.split('\n').map((l) => l.replace(/(^|\s)#.*$/, ''))
+  const appRefs = new Set(['${targetApp}'])
+  for (const l of lines) {
+    const alias = l.match(/^\s*([A-Za-z_]\w*)=(["']?)\$\{targetApp\}\2\s*$/)
+    if (alias) appRefs.add('$' + alias[1])
+  }
+  const lead = new Set(['if', 'elif', 'then', 'else', 'do', 'while', 'until', '!', '{', '(', 'command', 'exec'])
+  const commands = (line) =>
+    line.split(/&&|\|\||[;|]/).map((seg) => {
+      const words = seg.trim().split(/\s+/).filter(Boolean)
+      const tested = []
+      while (words.length && lead.has(words[0])) tested.push(words.shift())
+      return { words, tested }
+    })
+  let unzipChecked = false
+  lines.forEach((line, i) => {
+    for (const { words, tested } of commands(line)) {
+      const name = (words[0] || '').split('/').pop()
+      if (name === 'rm') {
+        const opts = []
+        const operands = []
+        for (const w of words.slice(1)) (w.startsWith('-') && !operands.length ? opts : operands).push(w)
+        const recursive = opts.some((o) => o === '--recursive' || (/^-[^-]/.test(o) && /[rR]/.test(o)))
+        const names = operands.map((o) => o.replace(/^(["'])(.*)\1$/, '$2').replace(/\/+$/, ''))
+        if (recursive && names.some((n) => appRefs.has(n))) {
+          problems.push(`updater.ts: the installMacUpdate script removes the installed app ("${line.trim()}"); copy the new bundle next to it and swap the two by renaming instead`)
+        }
+      }
+      if (name === 'unzip') {
+        const next = lines.slice(i + 1).find((l) => l.trim())
+        const captured = next && next.match(/^\s*([A-Za-z_]\w*)=\$\?\s*$/)
+        const usedLater = captured && lines.slice(i + 2).some((l) => new RegExp(`\\$${captured[1]}\\b`).test(l))
+        if (tested.some((t) => ['if', 'elif', 'while', 'until', '!'].includes(t)) || /&&|\|\|/.test(line) || usedLater) unzipChecked = true
+      }
+    }
+  })
+  if (!unzipChecked) {
+    problems.push('updater.ts: the installMacUpdate script must act on unzip\'s exit status (in an if, with && or ||, or saved with VAR=$? on the next line and tested) before it replaces the installed app')
+  }
+  return problems
 }
 
 if (failures.length > 0) {
