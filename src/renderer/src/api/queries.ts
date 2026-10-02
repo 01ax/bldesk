@@ -206,7 +206,7 @@ export function useServerActionMutation(client: BinaryLaneClient | null) {
         body: actionPayload as ServerActionBody
       })
       // describeApiError rather than JSON.stringify: the raw body was being shown
-      // to users verbatim in an alert().
+      // to users verbatim in a failure message.
       if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },

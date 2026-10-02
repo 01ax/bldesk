@@ -306,7 +306,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
   /**
    * `confirm` lets a caller enrich the shared dialog - Change Plan passes a
    * before/after table, which is the whole point of reviewing a resize. Without
-   * it the third argument from ChangePlanPanel.onApply would be accepted and
+   * it the confirm argument from ChangePlanPanel.onApply would be accepted and
    * silently dropped, quietly losing the change table added in #20.
    */
   const handleAction = async (

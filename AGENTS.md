@@ -23,7 +23,7 @@ BLDesk uses the BinaryLane API as its public reference documents it (https://api
 
 **Accepted exceptions.** A call the public reference does not list stays only where the maintainer has decided to keep it, and it is recorded here. The confirmation for such an action says it is not in BinaryLane's public API reference, and its behaviour is not described anywhere else as fact. Revisit an exception when BinaryLane publishes the action or removes it.
 
-- `enable_rescue_mode` (the Recovery tab's "Boot into Rescue Mode"): not in the reference. Kept by the maintainer's decision on 2 October 2026 (#129). It is listed in `src/renderer/src/lib/actionLabels.ts` (`UNPUBLISHED_ACTIONS`, which adds the note to its confirmation) and in `scripts/gui-test/check-requests.mjs`.
+- `enable_rescue_mode` (the Recovery tab's "Boot into Rescue Mode"): not in the reference. Kept by the maintainer's decision on 2 October 2026 (#129). It is listed in `src/renderer/src/lib/actionLabels.ts` (`UNPUBLISHED_ACTIONS`, which adds the note to its confirmation) in `scripts/gui-test/check-requests.mjs`, and as `UnpublishedActionBody` in `src/renderer/src/api/queries.ts` (the one body the typed action mutations accept beyond the spec's).
 
 Internal BinaryLane material is never the basis for a feature and is never cited in this repository, which is public: no internal source code, file paths, project or system names, issue-tracker numbers or internal URLs, in code, comments, docs, commit messages, pull requests, issues or release notes. Explain behaviour from the public API reference or from what mPanel shows customers. `scripts/check-security-guards.mjs` fails the build on known internal markers.
 

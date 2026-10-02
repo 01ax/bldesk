@@ -296,7 +296,8 @@ export const ServerSettings: React.FC<ServerSettingsProps> = ({ client, server: 
       'Update Advanced Features',
       {
         type: 'change_advanced_features',
-        // The slugs come from the account's available-features list, not a fixed set, so this is the one place a cast is needed.
+        // The slugs are typed as plain strings (FeatureDescriptor.slug, and the server's own enabled list), not as the spec's
+        // AdvancedFeature enum, so this is the one place a cast is needed.
         enabled_advanced_features: mergeHiddenFeatures(
           selectedFeatures,
           (server.advanced_features?.enabled_advanced_features ?? []) as string[],
