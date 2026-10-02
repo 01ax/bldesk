@@ -91,7 +91,8 @@ test('a package that states no licence is reported, not shipped', () => {
 })
 
 test('the build records what it bundles, writes the notices, and packaging requires them', () => {
-  const read = (path) => readFileSync(join(repo, path), 'utf8')
+  // Git on Windows may check files out with CRLF line endings.
+  const read = (path) => readFileSync(join(repo, path), 'utf8').replace(/\r\n/g, '\n')
   const pkg = JSON.parse(read('package.json'))
   assert.match(pkg.scripts.build, /electron-vite build && node .*scripts\/write-notices\.mjs/, 'npm run build writes the notices after the build')
   const resources = pkg.build.extraResources.map((r) => `${r.from} -> ${r.to}`)
