@@ -540,7 +540,7 @@ function MainDashboard() {
             view that started it. */}
         <ActionInteractionPrompt client={client} profileId={activeProfile?.id} servers={servers} />
 
-        {/* Outcomes of actions still running in the background, for the same reason. */}
+        {/* Outcomes of actions still running in the background, for the same reason, and failures that were native alert() dialogs. */}
         <ActionToasts />
       </div>
     </ActionTrackerProvider>

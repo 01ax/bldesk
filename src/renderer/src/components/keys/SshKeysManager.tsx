@@ -8,6 +8,7 @@ import { LoadError } from '../ui/LoadError'
 import { GenerateKeyPairDialog, canGenerateKeyPair } from './GenerateKeyPairDialog'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
+import { notifyFailure } from '../../lib/failures'
 
 interface SshKeysManagerProps {
   client: BinaryLaneClient | null
@@ -67,7 +68,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Import failed: ${err.message}`)
+      notifyFailure('Import failed', err)
     }
   }
 
@@ -102,7 +103,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add key: ${err.message}`)
+      notifyFailure('Failed to add key', err)
     }
   }
 
@@ -139,7 +140,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       void updateChange(c.changeId, { outcome: 'completed' })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Update failed: ${err.message}`)
+      notifyFailure('Update failed', err)
     }
   }
   const handleDeleteKey = async (keyId: number, name: string) => {
@@ -160,7 +161,7 @@ export const SshKeysManager: React.FC<SshKeysManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Delete failed: ${err.message}`)
+      notifyFailure('Delete failed', err)
     }
   }
 

@@ -9,6 +9,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { apiFailure } from '../../api/queries'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeDnsRecord } from '../../lib/diff'
+import { notifyFailure } from '../../lib/failures'
 
 interface DnsManagerProps {
   client: BinaryLaneClient | null
@@ -184,7 +185,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
         body: 'BinaryLane authoritative nameserver cache refreshed successfully.'
       })
     } catch (err: any) {
-      alert(`Flush failed: ${err.message}`)
+      notifyFailure('Flush failed', err)
     }
   }
 
@@ -232,7 +233,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to add record: ${err.message}`)
+      notifyFailure('Failed to add record', err)
     } finally {
       setIsSubmitting(false)
     }
@@ -269,7 +270,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to delete record: ${err.message}`)
+      notifyFailure('Failed to delete record', err)
     }
   }
 
@@ -317,7 +318,7 @@ export const DnsManager: React.FC<DnsManagerProps> = ({ client }) => {
       setDomainPage((p) => Math.min(p, lastPage))
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Failed to remove DNS hosting: ${err.message || 'Unknown error'}`)
+      notifyFailure('Failed to remove DNS hosting', err)
     } finally {
       setRemoveBusy(false)
     }

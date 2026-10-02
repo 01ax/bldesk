@@ -32,6 +32,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import type { FieldChange } from '../../lib/diff'
 import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest } from '../../lib/backupSlots'
+import { notifyFailure } from '../../lib/failures'
 
 interface BackupManagerProps {
   /** The app's server list — see AGENTS.md rule 8; tabs do not call useServers. */
@@ -245,7 +246,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       setSelectedSlot('temporary')
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Backup failed: ${err.message}`)
+      notifyFailure('Backup failed', err)
     }
   }
 
@@ -277,7 +278,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Restore failed: ${err.message}`)
+      notifyFailure('Restore failed', err)
     } finally {
       setActionProcessingId(null)
     }
@@ -307,7 +308,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Attach failed: ${err.message}`)
+      notifyFailure('Attach failed', err)
     } finally {
       setActionProcessingId(null)
     }
@@ -326,7 +327,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       }
       window.open(downloadUrl, '_blank')
     } catch (err: any) {
-      alert(`Download failed for "${name}": ${err.message}`)
+      notifyFailure(`Download failed for "${name}"`, err)
     } finally {
       setActionProcessingId(null)
     }
@@ -351,7 +352,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(changeId, { outcome: 'failed', detail: err.message })
-      alert(`Detach failed: ${err.message}`)
+      notifyFailure('Detach failed', err)
     }
   }
 
@@ -385,7 +386,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Schedule update failed: ${err.message}`)
+      notifyFailure('Schedule update failed', err)
     }
   }
 

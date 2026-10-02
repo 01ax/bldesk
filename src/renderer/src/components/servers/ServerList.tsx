@@ -33,6 +33,7 @@ import { describeStatus, compareServersForList, ARCHIVE_HINT } from '../../lib/s
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange } from '../../lib/changelog'
 import { powerActionSummary } from '../../lib/actionLabels'
+import { notifyFailure } from '../../lib/failures'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -126,7 +127,7 @@ export const ServerList: React.FC<ServerListProps> = ({
       })
     } catch (err: any) {
       void updateChange(c.changeId, { outcome: 'failed', detail: err.message })
-      alert(`Action failed: ${err.message || 'Unknown error'}`)
+      notifyFailure('Action failed', err)
     } finally {
       setActionInProgressServerId(null)
     }
