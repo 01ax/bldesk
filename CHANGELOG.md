@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.20] - 2026-10-06
+
+**The macOS install script copes with any folder name, and three unused packages are gone**
+
+### Fixed
+- **The macOS update script treats the paths it is given as names** (#267, #279). It wrote the download, staging and installed-app paths inside double quotes, so a path containing a double quote, dollar sign or backtick was read as shell syntax and could point the commands at other paths, or run one. Each path is now written once, single-quoted, and the rest of the script only uses the variable. Nothing else in the script changes, and a failed install still keeps the installed app. A build check now runs the script under bash with awkward names and fails if one is misread. The script is written by the version that is quitting, so this takes effect when updating from this version, not to it.
+
+### Changed
+- **Three unused packages are no longer packaged** (#266, #278). `clsx`, `tailwind-merge` and `@electron-toolkit/preload` were installed with the app but nothing imported them. The app archive is about 0.65 MB smaller (6.50 MB to 5.85 MB, measured on Windows) and the licence notices list 35 packages instead of 38. What the app does is unchanged.
+
 ## [1.0.62-beta.19] - 2026-10-02
 
 **Failures show inside the app instead of in system pop-ups, and the licences ship with it**
