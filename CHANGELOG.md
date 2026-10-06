@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.24] - 2026-10-06
+
+**The Android library is updated to Capacitor 8.5.2, and a build-tool security fix is picked up**
+
+### Changed
+- **Capacitor is updated from 8.5.0 to 8.5.2** (#298, replacing #281). The Android app's native library and the Capacitor packages it works with move together. Capacitor's release notes list fixes to how listeners are removed, to the permission checks for Android plugins, to blocking navigation to its internal HTTP proxy path, and to safe-area and system-bar handling. Back, the tag editor and the layout behave the same on an Android 16 emulator as they did on 8.5.0; a screen with edge-to-edge system bars, where the safe-area fix would show, was not tested.
+
+### Security
+- **A build tool no longer has a denial-of-service flaw** (#287). `source-map-js` 1.2.1 to 1.2.2 fixes a denial of service from malicious indexed source maps (CVE-2026-93749). The package is used only while BLDesk is being built and is not part of the app you run.
+
 ## [1.0.62-beta.23] - 2026-10-06
 
 **Server tags show in the Servers list, and can be edited, coloured and filtered**
