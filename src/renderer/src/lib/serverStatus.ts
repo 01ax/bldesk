@@ -25,7 +25,7 @@ export interface StatusPresentation {
  * the API reference's definition of it, so the label is explained rather than
  * renamed.
  */
-export const ARCHIVE_HINT = 'Powered off due to cancellation or non-payment'
+export const ARCHIVE_HINT = 'Powered off due to non-payment'
 
 export function describeStatus(status: ServerStatus | undefined): StatusPresentation {
   switch (status) {
