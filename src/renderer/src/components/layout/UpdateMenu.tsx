@@ -161,9 +161,11 @@ export const UpdateMenu: React.FC = () => {
         </button>
       )}
 
-      {/* Popover */}
+      {/* Popover. Below the sm breakpoint (a phone) the version button is too far in from the right edge for a 320px
+          popup hung from it, which ran off the left of the screen. There the popup is fixed to the viewport, still
+          just under the button, 8px (or the safe-area inset) clear of both edges and as wide as fits, up to 320px. */}
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-80 bg-white dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-xl z-50 p-3 text-xs space-y-3 select-text">
+        <div className="absolute right-0 top-full mt-1.5 w-80 max-sm:fixed max-sm:top-auto max-sm:left-[max(0.5rem,env(safe-area-inset-left,0px))] max-sm:right-[max(0.5rem,env(safe-area-inset-right,0px))] max-sm:ml-auto max-sm:w-auto max-sm:max-w-80 bg-white dark:bg-[#2b3035] text-[#212529] dark:text-[#f8f9fa] border border-[#ced4da] dark:border-[#373b3e] rounded-lg shadow-xl z-50 p-3 text-xs space-y-3 select-text">
           <div className="flex items-center justify-between">
             <div>
               <div className="font-bold">BLDesk</div>
