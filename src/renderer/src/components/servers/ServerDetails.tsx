@@ -230,7 +230,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       // A failure with an empty body leaves `error` unset, so the status counts too: an unread list must not be saved as "no rules".
       if (fw.error || !fw.response.ok) throw new Error(fw.error ? describeApiError(fw.error) : `HTTP ${fw.response.status}`)
       const vpcName = server.vpc_id ? ((vpcsForCapture as any[]).find((v) => v.id === server.vpc_id)?.name as string | undefined) : undefined
-      onSaveAsTemplate(templateFromServer(server, { firewallRules: (fw.data as any)?.firewall_rules ?? [], userData: userDataQuery.data ?? null, vpcName }))
+      onSaveAsTemplate(templateFromServer(server, { firewallRules: fw.data?.firewall_rules ?? [], userData: userDataQuery.data ?? null, vpcName }))
     } catch (err: any) {
       setCaptureError(err?.message || 'Could not read the server’s firewall rules.')
     } finally {
