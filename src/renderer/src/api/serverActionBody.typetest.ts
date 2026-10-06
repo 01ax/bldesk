@@ -5,8 +5,19 @@
  * Each `@ts-expect-error` below is a body the type must reject. If the type is ever loosened
  * (to `any`, `Record<string, unknown>`, a cast), the line stops being an error, the directive
  * becomes unused, and the typecheck fails. Remove this file if the check is no longer wanted.
+ *
+ * It covers the types and the hooks that are exported. The functions that are not exported (`handleAction`,
+ * `executeAction`) are covered by scripts/check-typed-seams.mjs.
  */
-import type { ServerActionBody, SubmittableActionBody, UnpublishedActionBody } from './queries'
+import { useServerActionMutation, useServerActionWithHandoff, useServerDiagnosticMutation, type ServerActionBody, type SubmittableActionBody, type UnpublishedActionBody } from './queries'
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+type Expect<T extends true> = T
+
+// The three hooks that send an action body take the spec's body (setting one back to `any` makes these false).
+export type ActionMutationTakesSubmittable = Expect<Equal<Parameters<ReturnType<typeof useServerActionMutation>['mutate']>[0]['actionPayload'], SubmittableActionBody>>
+export type HandoffTakesSpecBody = Expect<Equal<Parameters<ReturnType<typeof useServerActionWithHandoff>['mutate']>[0], ServerActionBody>>
+export type DiagnosticTakesSpecBody = Expect<Equal<Parameters<ReturnType<typeof useServerDiagnosticMutation>['mutate']>[0], ServerActionBody>>
 
 // Bodies the spec defines are accepted.
 export const accepted: ServerActionBody[] = [

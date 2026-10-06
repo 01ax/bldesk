@@ -1,5 +1,11 @@
-// What a firewall rule written to BinaryLane must contain, and how a rule is placed in a list. No imports, so it can be
-// tested on its own (scripts/test-firewall-rules.mjs).
+// What a firewall rule written to BinaryLane must contain, and how a rule is placed in a list. Its one import is a type, so
+// it can be tested on its own (scripts/test-firewall-rules.mjs).
+
+import type { components } from '@shared/api/schema'
+
+type RuleAction = components['schemas']['AdvancedFirewallRuleAction']
+type RuleProtocol = components['schemas']['AdvancedFirewallRuleProtocol']
+type RuleRequest = components['schemas']['AdvancedFirewallRuleRequest']
 
 export interface FirewallRuleLike {
   action?: string | null
@@ -21,14 +27,23 @@ export function ruleCount(n: number): string {
  */
 export const ANY_ADDRESS = '0.0.0.0/0'
 
-/** The rule as it is written: with the destination the reference requires. A rule that already has one is returned as it is. */
-export function toRuleRequest<T extends FirewallRuleLike>(rule: T): T & { destination_addresses: string[] } {
-  if (Array.isArray(rule.destination_addresses) && rule.destination_addresses.length > 0) return rule as T & { destination_addresses: string[] }
+/** A rule as it is built before it is written: the reference's rule, except that its destination may still be missing. */
+export type RuleDraft = Omit<RuleRequest, 'destination_addresses'> & { destination_addresses?: string[] | null }
+
+/**
+ * The rule as it is written: with the destination the reference requires. A rule that already has one is returned as it is.
+ * It takes the reference's own rule, not "any object with some of the fields", so a misspelled field in a literal is an error.
+ */
+export function toRuleRequest(rule: RuleDraft): RuleRequest {
+  if (Array.isArray(rule.destination_addresses) && rule.destination_addresses.length > 0) return rule as RuleRequest
   return { ...rule, destination_addresses: [ANY_ADDRESS] }
 }
 
-const ACTIONS = ['accept', 'drop']
-const PROTOCOLS = ['all', 'icmp', 'tcp', 'udp']
+const ACTIONS: readonly RuleAction[] = ['accept', 'drop']
+const PROTOCOLS: readonly RuleProtocol[] = ['all', 'icmp', 'tcp', 'udp']
+// Guards, not `includes` on a string list, so a rule that passes is typed as the reference's own enum.
+const isAction = (v: unknown): v is RuleAction => typeof v === 'string' && (ACTIONS as readonly string[]).includes(v)
+const isProtocol = (v: unknown): v is RuleProtocol => typeof v === 'string' && (PROTOCOLS as readonly string[]).includes(v)
 /** The reference caps a rule's description at this many characters. */
 export const MAX_DESCRIPTION = 250
 
@@ -46,15 +61,15 @@ export function isIpv4OrRange(value: string): boolean {
  * as they will be written: only the fields the reference defines, with a destination on every rule. The first rule that
  * cannot be written is named, so nothing is sent for a list the API would refuse.
  */
-export function readImportedRules(parsed: unknown): { rules: Array<FirewallRuleLike & { destination_addresses: string[] }>; error?: undefined } | { rules?: undefined; error: string } {
+export function readImportedRules(parsed: unknown): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
   if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
-  const rules: Array<FirewallRuleLike & { destination_addresses: string[] }> = []
+  const rules: RuleRequest[] = []
   for (let i = 0; i < parsed.length; i++) {
     const r = parsed[i] as Record<string, unknown> | null
     const at = `Rule ${i + 1}`
     if (!r || typeof r !== 'object' || Array.isArray(r)) return { error: `${at} is not a rule object.` }
-    if (typeof r.action !== 'string' || !ACTIONS.includes(r.action)) return { error: `${at}: "action" must be "accept" or "drop".` }
-    if (typeof r.protocol !== 'string' || !PROTOCOLS.includes(r.protocol)) return { error: `${at}: "protocol" must be "all", "icmp", "tcp" or "udp".` }
+    if (!isAction(r.action)) return { error: `${at}: "action" must be "accept" or "drop".` }
+    if (!isProtocol(r.protocol)) return { error: `${at}: "protocol" must be "all", "icmp", "tcp" or "udp".` }
     if (!isStrings(r.source_addresses) || r.source_addresses.length === 0) return { error: `${at}: "source_addresses" must list at least one address.` }
     if (!r.source_addresses.every(isIpv4OrRange)) return { error: `${at}: "source_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
     if (r.destination_addresses != null && !isStrings(r.destination_addresses)) return { error: `${at}: "destination_addresses" must be a list of addresses.` }
@@ -109,8 +124,8 @@ export function insertRule<T extends FirewallRuleLike>(list: T[], rule: T): T[] 
 
 /** A firewall rule as a template stores it. */
 export interface TemplateRule {
-  action: string
-  protocol: string
+  action: RuleAction
+  protocol: RuleProtocol
   source_addresses: string[]
   destination_addresses: string[]
   destination_ports: string[] | null
@@ -130,8 +145,8 @@ export function readTemplateRules(raw: unknown): { rules: TemplateRule[]; error?
     const r = raw[i] as Record<string, unknown> | null
     const at = `Firewall rule ${i + 1}`
     if (!r || typeof r !== 'object' || Array.isArray(r)) return { error: `${at} is not a rule.` }
-    if (typeof r.action !== 'string' || !ACTIONS.includes(r.action)) return { error: `${at}: action must be accept or drop.` }
-    if (typeof r.protocol !== 'string' || !PROTOCOLS.includes(r.protocol)) return { error: `${at}: protocol must be all, icmp, tcp or udp.` }
+    if (!isAction(r.action)) return { error: `${at}: action must be accept or drop.` }
+    if (!isProtocol(r.protocol)) return { error: `${at}: protocol must be all, icmp, tcp or udp.` }
     if (!isStrings(r.source_addresses)) return { error: `${at}: source_addresses must be a list of addresses.` }
     if (r.destination_addresses != null && !isStrings(r.destination_addresses)) return { error: `${at}: destination_addresses must be a list of addresses.` }
     if (r.destination_ports != null && !isStrings(r.destination_ports)) return { error: `${at}: destination_ports must be a list of ports, as text.` }

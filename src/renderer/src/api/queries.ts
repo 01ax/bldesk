@@ -3,6 +3,7 @@ import { BinaryLaneClient } from './client'
 import { components, paths } from '@shared/api/schema'
 import type { FleetMetricResult } from '../lib/heatmap'
 import { toRuleRequest } from '../lib/firewallRules'
+import type { FwRule } from '../lib/firewallMatrix'
 import { ApiError, apiFailure, describeApiError, fetchAllPages, isFinalFailure } from './errors'
 export { ApiError, apiFailure, describeApiError, isFinalFailure }
 
@@ -341,7 +342,7 @@ const FIREWALL_READ_TIMEOUT_MS = 20_000
  * whole list back, so an empty list built from a failure let one added rule replace all of the server's real ones. A
  * failure with an empty body leaves `error` unset (openapi-fetch), so the status counts too.
  */
-export async function fetchFirewallRules(client: BinaryLaneClient, serverId: number): Promise<any[]> {
+export async function fetchFirewallRules(client: BinaryLaneClient, serverId: number): Promise<FwRule[]> {
   let res
   try {
     res = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
@@ -359,7 +360,7 @@ export async function fetchFirewallRules(client: BinaryLaneClient, serverId: num
 }
 
 /** The rules as they are now, or null when they could not be read. For a write that needs the current list to diff against. */
-export async function readFirewallRules(client: BinaryLaneClient, serverId: number): Promise<any[] | null> {
+export async function readFirewallRules(client: BinaryLaneClient, serverId: number): Promise<FwRule[] | null> {
   try {
     return await fetchFirewallRules(client, serverId)
   } catch {
@@ -407,7 +408,7 @@ export function useFleetFirewalls(client: BinaryLaneClient | null, serverIds: nu
   return useQuery({
     queryKey: ['fleet-firewalls', key],
     queryFn: async () => {
-      const map = new Map<number, any[] | null>()
+      const map = new Map<number, FwRule[] | null>()
       if (!client) return map
       const results = await mapLimitNullable(serverIds, 4, async (id) => {
         const { data, error, response } = await client.GET('/v2/servers/{server_id}/advanced_firewall_rules', {
@@ -528,7 +529,7 @@ export function useVpcMembers(client: BinaryLaneClient | null, vpcIds: number[])
 export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, serverId: number | null) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (rules: any[]) => {
+    mutationFn: async (rules: FwRule[]) => {
       if (!client || !serverId) throw new Error('No client or serverId')
       const { data, error, response } = await client.POST('/v2/servers/{server_id}/actions', {
         params: { path: { server_id: serverId } },

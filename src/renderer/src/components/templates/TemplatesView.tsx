@@ -719,8 +719,8 @@ const TemplateEditor: React.FC<{
             <div className="space-y-1.5">
               {rules.map((r, i) => (
                 <div key={i} className="grid grid-cols-[80px_80px_1fr_1.4fr_1.4fr_28px] gap-1.5 items-center">
-                  <select className={input} value={r.action} onChange={(e) => setRule(i, { action: e.target.value })}><option value="accept">accept</option><option value="drop">drop</option></select>
-                  <select className={input} value={r.protocol} onChange={(e) => setRule(i, { protocol: e.target.value, destination_ports: e.target.value === 'icmp' || e.target.value === 'all' ? null : r.destination_ports })}><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="all">all</option></select>
+                  <select className={input} value={r.action} onChange={(e) => setRule(i, { action: e.target.value as FwRule['action'] })}><option value="accept">accept</option><option value="drop">drop</option></select>
+                  <select className={input} value={r.protocol} onChange={(e) => setRule(i, { protocol: e.target.value as FwRule['protocol'], destination_ports: e.target.value === 'icmp' || e.target.value === 'all' ? null : r.destination_ports })}><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="all">all</option></select>
                   <input className={input} value={r.destination_ports?.join(', ') ?? ''} disabled={r.protocol === 'icmp' || r.protocol === 'all'} onChange={(e) => setRule(i, { destination_ports: csv(e.target.value) })} placeholder="ports" />
                   <input className={input} value={r.source_addresses.join(', ')} onChange={(e) => setRule(i, { source_addresses: csv(e.target.value) })} placeholder="from: 0.0.0.0/0, {{admin_cidr}}" />
                   <input className={input} value={r.description ?? ''} onChange={(e) => setRule(i, { description: e.target.value })} placeholder="description" />

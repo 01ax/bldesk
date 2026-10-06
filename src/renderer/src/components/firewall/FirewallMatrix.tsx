@@ -144,7 +144,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
     setCopyError(null)
     const ids = [sourceId, ...targets.map((t) => t.id)]
     const reads = await mapLimitNullable(ids, 4, (id) => fetchFirewallRules(client, id))
-    const now = new Map<number, any[] | null>(ids.map((id, i) => [id, reads[i]]))
+    const now = new Map<number, FwRule[] | null>(ids.map((id, i) => [id, reads[i]]))
     setCopying(false)
     const sourceNow = now.get(sourceId)
     if (!sourceNow) {

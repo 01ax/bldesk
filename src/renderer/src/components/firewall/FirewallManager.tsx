@@ -24,6 +24,7 @@ import { recordChange, updateChange, type ChangeTarget } from '../../lib/changel
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
+import type { FwRule } from '../../lib/firewallMatrix'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
 import { notifyFailure } from '../../lib/failures'
@@ -88,7 +89,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   }
   const [cloneError, setCloneError] = useState<string | null>(null)
 
-  const currentRules = (firewallQuery.data || []) as any[]
+  const currentRules: FwRule[] = firewallQuery.data || []
   const confirmAction = useConfirm()
   const { track, tracked } = useTrackedActions()
   // A write is applied when its action completes, not when it is queued, so until then the list on screen is the one from
@@ -165,7 +166,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
     if (!activeServerId || !canEdit) return
 
-    const newRule: any = toRuleRequest({
+    const newRule: FwRule = toRuleRequest({
       action: ruleAction,
       protocol: ruleProtocol,
       source_addresses: ruleSource
@@ -586,7 +587,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Action</label>
               <select
                 value={ruleAction}
-                onChange={(e) => setRuleAction(e.target.value as any)}
+                onChange={(e) => setRuleAction(e.target.value as FwRule['action'])}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white font-medium focus:outline-none focus:border-[#017cb6]"
               >
                 <option value="accept">ACCEPT</option>
@@ -598,7 +599,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
               <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Protocol</label>
               <select
                 value={ruleProtocol}
-                onChange={(e) => setRuleProtocol(e.target.value as any)}
+                onChange={(e) => setRuleProtocol(e.target.value as FwRule['protocol'])}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white uppercase font-mono focus:outline-none focus:border-[#017cb6]"
               >
                 <option value="tcp">TCP</option>
