@@ -5,6 +5,23 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.23] - 2026-10-06
+
+**Server tags show in the Servers list, and can be edited, coloured and filtered**
+
+### Added
+- **Tags show in the Servers list and grid** (#284, #273). A server's tags appear as chips after its name: the first three, then a +N chip whose tooltip names the rest. Tags are still kept on this device for each account profile; BinaryLane does not store them and nothing is sent when you change one. On a computer, double-click a chip (or focus it and press Enter or F2) to rename the tag everywhere, choose its colour or remove it from that server. On a phone the chips are labels, and tags are edited in the server's Settings.
+- **A Tags section in a server's Settings** (#284). Add a tag, pick one that other servers already use, remove it, rename it or choose its colour.
+- **A tag filter on the Servers page** (#284). Tick tags to show only the servers that have any of them, or all of them. It sits beside the Regions and Status filters, and the three now share one size and look.
+- **Search by tag with @** (#284). In the Servers search, a word starting with @ finds servers by tag (`@web`), and typing @ lists the tags in use. Plain text finds servers by name, address or #id only, never by tag. In the command palette, `@word` with no verb lists the matching tags and then the servers that have them. A server called `web` and a tag called `web` stay separate: `restart web` acts on the server and `restart @web` on the tagged servers.
+- **Tag colours** (#284). A new tag gets the first of eight preset colours that no tag in use has, and existing tags are not recoloured. A custom colour can be made with a wheel, a brightness slider, a hex code or RGB values, and up to eight are saved. Chip text is adjusted to stay readable in both themes. On a phone, press and hold a saved colour to remove it; the phone buzzes while you hold and once longer when it goes.
+
+### Changed
+- **The Android app now declares the VIBRATE permission** (#284). It is a normal permission with no prompt, used only for the hold-to-remove buzz. The desktop apps are not affected. A build check fails if the line is removed.
+- **Android Back closes an open tag filter, tag editor or colour picker** (#284). They close the way a dialog does, through the app's existing Back handling.
+- **The Fleet matrix draws tags the same way** (#284). It uses the same chips and, on a computer, the same editor. On a phone its tags are labels only.
+- **The Servers search no longer reads a field the API does not have** (#284). It looked for a tag field that BinaryLane does not return, so it could not find a tag.
+
 ## [1.0.62-beta.22] - 2026-10-06
 
 **The Archived explanation follows the API reference, which is now 0.43.3**
