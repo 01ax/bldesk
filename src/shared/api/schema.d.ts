@@ -2562,7 +2562,10 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Cancel an Existing Server */
+        /**
+         * Cancel an Existing Server
+         * @description **NB: cancellation of a post-paid (hourly-billed) server is final. A cancelled pre-paid server may be restored with the `uncancel` server action until it is suspended.**
+         */
         delete: {
             parameters: {
                 query?: {
@@ -4219,7 +4222,7 @@ export interface paths {
         put?: never;
         /**
          * Revert the Cancellation of a Server
-         * @description **NB: this is only available before the server is suspended and we make no guarantees that un-cancellation is possible.**
+         * @description **NB: this is only available for a pre-paid server before it is suspended, and we make no guarantees that un-cancellation is possible. Cancellation of a post-paid (hourly-billed) server is final: the server is no longer returned by the API once cancelled.**
          */
         post: {
             parameters: {
@@ -4688,7 +4691,7 @@ export interface paths {
         /**
          * Restore a Backup of a Server to a Different Existing Server
          * @description This is used to clone a new server from the backup of an existing server.
-         *     The action is 'performed' on the source server. The target server must have finished the initial building process: this will fail if the target server is does not have the status 'available'.
+         *     The action is 'performed' on the source server. The target server must have finished the initial building process: this will fail if the target server does not have the status 'active'.
          *     **NB: This is a destructive operation on the target server and no further confirmation will be requested.**
          */
         post: {
@@ -7660,12 +7663,12 @@ export interface components {
             backup_hour_of_day: number;
             /**
              * Format: int32
-             * @description If weekly backups are enabled the day of the week that the weekly backup will occur. Sunday is day 0.
+             * @description If weekly backups are enabled the day of the week, as an Australia/Sydney calendar day for all server regions, that the weekly backup will occur. Sunday is day 0.
              */
             backup_day_of_week: number;
             /**
              * Format: int32
-             * @description If monthly backups are enabled the day of the month the monthly backup will occur.
+             * @description If monthly backups are enabled the day of the month, as an Australia/Sydney calendar day for all server regions, that the monthly backup will occur.
              */
             backup_day_of_month: number;
             /** @description If offsite backups are enabled this details how they are stored and managed. */
@@ -7792,12 +7795,12 @@ export interface components {
             backup_hour_of_day?: number | null;
             /**
              * Format: int32
-             * @description Sunday is 0, Monday is 1 etc. Do not provide a value to keep the current setting.
+             * @description The day of the week, as an Australia/Sydney calendar day for all server regions. Sunday is 0, Monday is 1 etc. Do not provide a value to keep the current setting.
              */
             backup_day_of_week?: number | null;
             /**
              * Format: int32
-             * @description Do not provide a value to keep the current setting.
+             * @description The day of the month, as an Australia/Sydney calendar day for all server regions. Do not provide a value to keep the current setting.
              */
             backup_day_of_month?: number | null;
         };
@@ -9505,8 +9508,8 @@ export interface components {
          *     | ----- | ----------- |
          *     | new | The server is currently in the process of building and is not yet available for use. |
          *     | active | The server is available for use. |
-         *     | archive | The server is powered off due to cancellation or non payment. |
-         *     | off | The server has been powered off, but may be powered back on. |
+         *     | archive | The server is powered off due to non payment. |
+         *     | off | The server has been powered off, but may be powered back on. **NB: this value is not currently returned; such a server is reported as `active`. Use the `is_running` server action to determine whether a server is currently powered on: the action completes if the server is running and errors if it is not.** |
          * @enum {string}
          */
         ServerStatus: "new" | "active" | "archive" | "off";
@@ -10105,7 +10108,7 @@ export interface components {
             status?: number | null;
             detail?: string | null;
             instance?: string | null;
-            errors: {
+            errors?: {
                 [key: string]: string[];
             } | null;
         } & {
