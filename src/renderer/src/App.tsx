@@ -561,7 +561,7 @@ function ResetCacheButton() {
       summary: "Deletes the data BLDesk has saved in this app's local storage on this device, then reloads. Nothing in your BinaryLane account changes.",
       severity: 'destructive',
       notes: [
-        'Deleted: server groups and tags, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.',
+        'Deleted: server groups, tags, tag colours and saved custom colours, SSH key and connect-address choices, recent searches and commands, your light or dark choice, the cached server list (it is fetched again) and other saved preferences.',
         alsoLost.length
           ? `Also deleted on this device: ${alsoLost.join(' and ')}.`
           : 'History and cloud-init templates are kept: the desktop app stores them as files.'

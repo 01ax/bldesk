@@ -43,4 +43,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets WebView report navigator.onLine accurately for offline help. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Lets the phone buzz while a saved tag colour is held to remove it, and once longer when it goes. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

@@ -10,7 +10,10 @@ import { diffLines, describeFirewallRule, type DiffLine } from '../../lib/diff'
 import { ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import { primaryIpv4 } from '../../lib/deeplinks'
 import { auditServer, buildMatrix, worstLevel, type AuditFlag, type FwRule } from '../../lib/firewallMatrix'
-import { GROUPS_EVENT, effectiveGroups, loadGroups, loadTags, newGroup, resolveGroup, saveGroups, saveTags, tagsOf, withTag, type ServerGroup, type TagMap } from '../../lib/serverGroups'
+import { GROUPS_EVENT, allTags, colorOf, effectiveGroups, loadGroups, loadTagColors, loadTags, newGroup, resolveGroup, saveGroups, saveTags, tagsOf, withTag, type ServerGroup, type TagColorMap, type TagMap } from '../../lib/serverGroups'
+import { TagChip } from '../tags/TagChip'
+import { useTagEditor } from '../tags/TagEditor'
+import { usePhoneLayout } from '../../lib/usePhoneLayout'
 import { matchServers } from '../../lib/commands'
 
 type ServerResponse = components['schemas']['Server']
@@ -42,6 +45,10 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   // --- Groups
   const [groups, setGroups] = useState<ServerGroup[]>(() => loadGroups(profileId))
   const [tags, setTags] = useState<TagMap>(() => loadTags(profileId))
+  const [tagColors, setTagColors] = useState<TagColorMap>(() => loadTagColors(profileId))
+  const tagEditor = useTagEditor(profileId, servers)
+  // On a phone the tags here are only shown: they are added, renamed, coloured and removed in the server's Settings, Tags.
+  const phone = usePhoneLayout()
   const [groupId, setGroupId] = useState<string>('all')
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -52,10 +59,12 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   useEffect(() => {
     setGroups(loadGroups(profileId))
     setTags(loadTags(profileId))
+    setTagColors(loadTagColors(profileId))
     setGroupId('all')
     const onChange = () => {
       setGroups(loadGroups(profileId))
       setTags(loadTags(profileId))
+      setTagColors(loadTagColors(profileId))
     }
     window.addEventListener(GROUPS_EVENT, onChange)
     return () => window.removeEventListener(GROUPS_EVENT, onChange)
@@ -63,6 +72,8 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
 
   // Saved groups plus one per tag in use, so a tag is a group without ceremony.
   const allGroups = useMemo(() => effectiveGroups(groups, tags), [groups, tags])
+  /** A saved group named like a tag also includes the servers with that tag, and the list says so. */
+  const tagNames = useMemo(() => new Set(allTags(tags).map((t) => t.tag)), [tags])
   const activeGroup = allGroups.find((g) => g.id === groupId)
   const scoped = useMemo(() => (activeGroup ? resolveGroup(activeGroup, servers, tags) : servers), [activeGroup, servers, tags])
 
@@ -279,7 +290,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
             </option>
             {allGroups.map((g) => (
               <option key={g.id} value={g.id} className="bg-white dark:bg-[#2b3035]">
-                @{g.name} ({resolveGroup(g, servers, tags).length}){g.id.startsWith('tag_') ? ' · tag' : ''}
+                @{g.name} ({resolveGroup(g, servers, tags).length}){g.id.startsWith('tag_') ? ' · tag' : tagNames.has(g.name.toLowerCase()) ? ' · group + tag' : ''}
               </option>
             ))}
           </select>
@@ -502,14 +513,16 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
                     </div>
                     <div className="flex flex-wrap items-center gap-1 pl-3.5 mt-1">
                       {tagsOf(tags, s.id).map((t) => (
-                        <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-[#017cb6]/10 text-[#015f8c] dark:text-[#5fc3f0] border border-[#017cb6]/30 flex items-center gap-1 font-mono">
-                          @{t}
-                          <button onClick={() => setServerTag(s.id, t, false)} title={`Remove @${t}`} className="hover:text-rose-500">
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </span>
+                        <TagChip
+                          key={t}
+                          tag={t}
+                          color={colorOf(tagColors, t)}
+                          className="max-w-[9rem]"
+                          onEdit={profileId && !phone ? (el) => tagEditor.open(t, el, s.id) : undefined}
+                          onRemove={phone ? undefined : () => setServerTag(s.id, t, false)}
+                        />
                       ))}
-                      {tagEditId === s.id ? (
+                      {phone ? null : tagEditId === s.id ? (
                         <input
                           autoFocus
                           value={tagInput}
@@ -578,6 +591,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
         <Grid3x3 className="w-3.5 h-3.5" /> Columns are rule signatures (protocol, ports, source). <Check className="w-3 h-3 text-emerald-500" /> accept ·{' '}
         <X className="w-3 h-3 text-rose-500" /> drop · ± both · dot absent. Rules evaluate first-match, so order still matters inside a server; the single-server view shows it.
       </p>
+      {tagEditor.element}
     </div>
   )
 }

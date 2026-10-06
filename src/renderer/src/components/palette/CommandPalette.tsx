@@ -38,7 +38,9 @@ import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
 import { describeBackup, replacedByOldest } from '../../lib/backupSlots'
-import { expandGroupRefs, loadGroups, loadTags, saveTags, withTag, allTags, normaliseTag } from '../../lib/serverGroups'
+import { colorOf, expandGroupRefs, loadGroups, loadTagColors, loadTags, saveTags, withTag, allTags, normaliseTag, tagServerCount, tagsOf } from '../../lib/serverGroups'
+import { completeTagToken, liveTagCounts, matchesTagPrefixes, parseTagSearch, tagSuggestions } from '../../lib/tags'
+import { TagChip } from '../tags/TagChip'
 import {
   POWER_VERBS,
   TARGET_HELP,
@@ -89,6 +91,8 @@ interface Row {
   onEnter?: () => void
   /** Tab on this row replaces the query with this text. */
   fill?: string
+  /** Drawn in place of `title` (a tag row shows its coloured chip); `title` still names the row. */
+  titleNode?: React.ReactNode
 }
 
 interface Outcome {
@@ -337,8 +341,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           })
         }
       }
-      const needle = q.toLowerCase()
-      for (const nav of NAV_ROWS) {
+      // Two namespaces, always explicit: plain text lists servers by name (or address), never by tag; a word starting
+      // with @ lists servers by tag, @word matching tags that start with word, and several @ words must all match.
+      const { plain, tagPrefixes } = parseTagSearch(q)
+      const byTag = tagPrefixes.length > 0
+      const needle = (byTag ? plain : q).toLowerCase()
+      const tagMap = byTag ? loadTags(profileId) : null
+      if (tagMap) {
+        // The tags being typed come first, as rows to choose: the same list, order and prefix rule as the Servers
+        // search's @ suggestions. Choosing one completes the word and lists its servers; it runs nothing. A tag typed in
+        // full has nothing left to complete, so it has no row of its own and its servers are listed straight away.
+        const typed = query.trimStart()
+        const colours = loadTagColors(profileId)
+        for (const t of tagSuggestions(typed, liveTagCounts(tagMap, new Set(servers.map((s) => s.id))), Infinity)) {
+          const complete = completeTagToken(typed, t.tag)
+          rows.push({
+            id: `tag-row-${t.tag}`,
+            title: `@${t.tag}`,
+            titleNode: <TagChip tag={t.tag} color={colorOf(colours, t.tag)} size="md" />,
+            subtitle: `${t.count} ${t.count === 1 ? 'server' : 'servers'}`,
+            category: 'Tags',
+            icon: Tag,
+            fill: complete,
+            onEnter: () => setQuery(complete)
+          })
+        }
+      }
+      for (const nav of byTag ? [] : NAV_ROWS) {
         if (!needle || nav.title.toLowerCase().includes(needle) || nav.tab.includes(needle)) {
           rows.push({
             id: `nav-${nav.tab}`,
@@ -353,6 +382,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
       }
       for (const s of servers) {
+        if (tagMap && !matchesTagPrefixes(tagsOf(tagMap, s.id), tagPrefixes)) continue
         const sub = serverSubtitle(s)
         if (!needle || s.name.toLowerCase().includes(needle) || sub.toLowerCase().includes(needle)) {
           rows.push({
@@ -365,6 +395,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               openServer(s)
               close()
             }
+          })
+        }
+      }
+      if (byTag) {
+        const words = tagPrefixes.join('') === '' ? 'with a tag' : `tagged ${tagPrefixes.map((p) => `@${p}`).join(' ')}`
+        header = { icon: Tag, text: `Servers ${words} (${rows.filter((r) => r.category === 'Servers').length})`, tone: 'default' }
+      } else if (q && !q.includes(' ')) {
+        // Plain text that is also a tag's name: one separate row says so and rewrites the query on Enter. The server
+        // rows above are still only the servers whose name matches.
+        const inUse = allTags(loadTags(profileId)).find((t) => t.tag === q.toLowerCase())
+        const n = inUse ? tagServerCount(loadTags(profileId), inUse.tag, new Set(servers.map((s) => s.id))) : 0
+        if (inUse && n > 0) {
+          rows.push({
+            id: `tag-${inUse.tag}`,
+            title: `Tag @${inUse.tag} · ${n} ${n === 1 ? 'server' : 'servers'}`,
+            subtitle: `Press Enter to list the servers with this tag. Plain text finds servers by name only.`,
+            category: 'Tags',
+            icon: Tag,
+            fill: `@${inUse.tag}`,
+            onEnter: () => setQuery(`@${inUse.tag}`)
           })
         }
       }
@@ -932,7 +982,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="truncate">
-                        <div className={`truncate ${item.tone === 'muted' ? 'font-normal' : 'font-semibold'}`}>{item.title}</div>
+                        <div className={`truncate ${item.tone === 'muted' ? 'font-normal' : 'font-semibold'}`}>
+                          {item.titleNode ? (
+                            // on the blue selected row the chip sits on a plate of the surface colour it was made to read on
+                            isSelected ? <span className="inline-flex rounded-full bg-white dark:bg-[#2b3035] p-0.5">{item.titleNode}</span> : item.titleNode
+                          ) : (
+                            item.title
+                          )}
+                        </div>
                         {item.subtitle && (
                           <div className={`text-[11px] truncate ${isSelected ? 'text-white/80' : 'text-[#6c757d] dark:text-slate-400'}`}>{item.subtitle}</div>
                         )}

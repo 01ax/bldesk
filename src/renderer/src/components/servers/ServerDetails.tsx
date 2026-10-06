@@ -935,7 +935,7 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
         {/* SETTINGS TAB */}
 
         {activeSubTab === 'settings' && (
-          <ServerSettings client={client} server={server} servers={allServers ?? [server]} />
+          <ServerSettings client={client} server={server} servers={allServers ?? [server]} profileId={profileId} />
         )}
 
         {/* RECOVERY TAB */}
