@@ -8,7 +8,7 @@
       "url": "https://support.binarylane.com.au/support/home",
       "email": "support@binarylane.com.au"
     },
-    "version": "0.42.0",
+    "version": "0.43.3",
     "x-logo": {
       "url": "https://www.binarylane.com.au/res/images/binarylane/logo.png",
       "backgroundColor": "#000000",
@@ -3154,6 +3154,7 @@
           "Servers"
         ],
         "summary": "Cancel an Existing Server",
+        "description": "**NB: cancellation of a post-paid (hourly-billed) server is final. A cancelled pre-paid server may be restored with the `uncancel` server action until it is suspended.**",
         "parameters": [
           {
             "name": "server_id",
@@ -5077,7 +5078,7 @@
           "ServerActions"
         ],
         "summary": "Revert the Cancellation of a Server",
-        "description": "**NB: this is only available before the server is suspended and we make no guarantees that un-cancellation is possible.**",
+        "description": "**NB: this is only available for a pre-paid server before it is suspended, and we make no guarantees that un-cancellation is possible. Cancellation of a post-paid (hourly-billed) server is final: the server is no longer returned by the API once cancelled.**",
         "parameters": [
           {
             "name": "server_id",
@@ -5533,7 +5534,7 @@
           "ServerActions"
         ],
         "summary": "Restore a Backup of a Server to a Different Existing Server",
-        "description": "This is used to clone a new server from the backup of an existing server.  \nThe action is 'performed' on the source server. The target server must have finished the initial building process: this will fail if the target server is does not have the status 'available'.  \n**NB: This is a destructive operation on the target server and no further confirmation will be requested.**  \n  \n",
+        "description": "This is used to clone a new server from the backup of an existing server.  \nThe action is 'performed' on the source server. The target server must have finished the initial building process: this will fail if the target server does not have the status 'active'.  \n**NB: This is a destructive operation on the target server and no further confirmation will be requested.**  \n  \n",
         "parameters": [
           {
             "name": "server_id",
@@ -8826,12 +8827,12 @@
           },
           "backup_day_of_week": {
             "type": "integer",
-            "description": "If weekly backups are enabled the day of the week that the weekly backup will occur. Sunday is day 0.",
+            "description": "If weekly backups are enabled the day of the week, as an Australia/Sydney calendar day for all server regions, that the weekly backup will occur. Sunday is day 0.",
             "format": "int32"
           },
           "backup_day_of_month": {
             "type": "integer",
-            "description": "If monthly backups are enabled the day of the month the monthly backup will occur.",
+            "description": "If monthly backups are enabled the day of the month, as an Australia/Sydney calendar day for all server regions, that the monthly backup will occur.",
             "format": "int32"
           },
           "offsite_backup_settings": {
@@ -9066,7 +9067,7 @@
             "maximum": 6,
             "minimum": 0,
             "type": "integer",
-            "description": "Sunday is 0, Monday is 1 etc. Do not provide a value to keep the current setting.",
+            "description": "The day of the week, as an Australia/Sydney calendar day for all server regions. Sunday is 0, Monday is 1 etc. Do not provide a value to keep the current setting.",
             "format": "int32",
             "nullable": true
           },
@@ -9074,7 +9075,7 @@
             "maximum": 28,
             "minimum": 1,
             "type": "integer",
-            "description": "Do not provide a value to keep the current setting.",
+            "description": "The day of the month, as an Australia/Sydney calendar day for all server regions. Do not provide a value to keep the current setting.",
             "format": "int32",
             "nullable": true
           }
@@ -13002,12 +13003,12 @@
           "off"
         ],
         "type": "string",
-        "description": "\n| Value | Description |\n| ----- | ----------- |\n| new | The server is currently in the process of building and is not yet available for use. |\n| active | The server is available for use. |\n| archive | The server is powered off due to cancellation or non payment. |\n| off | The server has been powered off, but may be powered back on. |\n\n",
+        "description": "\n| Value | Description |\n| ----- | ----------- |\n| new | The server is currently in the process of building and is not yet available for use. |\n| active | The server is available for use. |\n| archive | The server is powered off due to non payment. |\n| off | The server has been powered off, but may be powered back on. **NB: this value is not currently returned; such a server is reported as `active`. Use the `is_running` server action to determine whether a server is currently powered on: the action completes if the server is running and errors if it is not.** |\n\n",
         "x-enum-descriptions": [
           "The server is currently in the process of building and is not yet available for use.",
           "The server is available for use.",
-          "The server is powered off due to cancellation or non payment.",
-          "The server has been powered off, but may be powered back on."
+          "The server is powered off due to non payment.",
+          "The server has been powered off, but may be powered back on. **NB: this value is not currently returned; such a server is reported as `active`. Use the `is_running` server action to determine whether a server is currently powered on: the action completes if the server is running and errors if it is not.**"
         ]
       },
       "ServersResponse": {
@@ -14172,7 +14173,6 @@
       },
       "ValidationProblemDetails": {
         "required": [
-          "errors",
           "title"
         ],
         "type": "object",
