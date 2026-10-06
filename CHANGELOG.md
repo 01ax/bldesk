@@ -5,6 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.22] - 2026-10-06
+
+**The Archived explanation follows the API reference, which is now 0.43.3**
+
+### Changed
+- **Archived now says it means powered off for non-payment** (#288). The API reference changed its definition of the Archived status from "cancellation or non-payment" to "non-payment". The tooltip on the status (in the list, the grid, a server's page and the Archive filter) and the sentence on the Servers help page follow it. The label stays Archived.
+- **The vendored API reference is now 0.43.3** (#288; it was 0.42.0). It is the same 94 paths and 206 schemas, and no request body, field or list of allowed values changed. One field is now optional: the list of errors in a validation failure, which BLDesk already handled as optional. The other changes are descriptions: cancelling a post-paid server is final, a backup's days are Australia/Sydney calendar days, and a server's `off` status is not returned.
+- **Save as template reads the firewall rules without a cast** (#289). The rules are now typed from the reference, so a misspelled field fails the typecheck instead of saving a template with no rules. What the app does is unchanged.
+
 ## [1.0.62-beta.21] - 2026-10-06
 
 **Firewall rules are checked against the API reference, and the reference is updated to 0.42.0**
