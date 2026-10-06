@@ -74,7 +74,9 @@ function install(name, { forceRunAfter = false, failUnzip = '' } = {}) {
     const read = (...parts) => (existsSync(join(dir, ...parts)) ? readFileSync(join(dir, ...parts), 'utf8').trim() : null)
     return { status, calls, left, targetApp, zipPath, stagingDir, version: read(targetApp, 'version.txt'), old: read(targetApp, 'Contents', 'old.txt') }
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    // On Windows a folder that was a process's working directory can stay locked for a moment after it exits (a virus
+    // scanner or the indexer holding it), and rmSync then fails with EPERM. It retries those errors when told to.
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 }
 
