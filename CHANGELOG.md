@@ -5,6 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.21] - 2026-10-06
+
+**Firewall rules are checked against the API reference, and the reference is updated to 0.42.0**
+
+### Changed
+- **The vendored API reference is now 0.42.0** (#285; it was 0.40.0). No path, field, type or list of allowed values changed: it is the same 94 paths and 206 schemas. Ten descriptions have new wording: backup hours are in Australia/Sydney time, duplicate reverse nameservers are rejected, and an SSH key's name and fingerprint must be unique on the account. BLDesk's help pages are not changed for them.
+- **Firewall rules are typed from the reference** (#170, #285). A rule that is read, imported, built in the Add Rule form or taken from a template is now compiled against the reference's own rule type, so a misspelled field, or a protocol or action the reference does not list, fails the typecheck instead of being sent. What BLDesk sends does not change.
+- **A build check keeps that typing from being loosened** (#170, #285). `npm run typecheck` now fails if a function that takes a server action body or a firewall rule is typed as `any`, or if an action body is cast `as any` or `as never`, and it names the function.
+
 ## [1.0.62-beta.20] - 2026-10-06
 
 **The macOS install script copes with any folder name, and three unused packages are gone**
