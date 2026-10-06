@@ -21,6 +21,8 @@ A PR that reworks the app's architecture to deliver a feature is a different pro
 
 BLDesk uses the BinaryLane API as its public reference documents it (https://api.binarylane.com.au, vendored here as `openapi.json`). Some endpoints and fields exist for BinaryLane's own website rather than for customers: if a call, parameter or behaviour is not in the public reference, don't build on it. Ask a maintainer, who will check with BinaryLane first.
 
+**Typed bodies.** A server action body and a firewall rule are typed from the generated `src/shared/api/schema.d.ts` (`ServerActionBody`, `FwRule`), so a misspelled field is a compile error. Do not cast one `as any` or `as never`, or type a parameter that carries one as `any`: `scripts/check-typed-seams.mjs` (part of `npm run typecheck`) fails on that, naming the function. If you rename or move one of the functions it lists, update `SEAMS` in that script with it.
+
 **Accepted exceptions.** A call the public reference does not list stays only where the maintainer has decided to keep it, and it is recorded here. The confirmation for such an action says it is not in BinaryLane's public API reference, and its behaviour is not described anywhere else as fact. Revisit an exception when BinaryLane publishes the action or removes it.
 
 - `enable_rescue_mode` (the Recovery tab's "Boot into Rescue Mode"): not in the reference. Kept by the maintainer's decision on 2 October 2026 (#129). It is listed in `src/renderer/src/lib/actionLabels.ts` (`UNPUBLISHED_ACTIONS`, which adds the note to its confirmation) in `scripts/gui-test/check-requests.mjs`, and as `UnpublishedActionBody` in `src/renderer/src/api/queries.ts` (the one body the typed action mutations accept beyond the spec's).

@@ -7655,7 +7655,7 @@ export interface components {
         BackupSettings: {
             /**
              * Format: int32
-             * @description The hour of the day that backups will be scheduled. This is an approximate value.
+             * @description The hour of the day, in Australia/Sydney time for all server regions, that backups will be scheduled. This is an approximate value.
              */
             backup_hour_of_day: number;
             /**
@@ -7787,7 +7787,7 @@ export interface components {
             type: "change_backup_schedule";
             /**
              * Format: int32
-             * @description Do not provide a value to keep the current setting.
+             * @description The hour of the day, in Australia/Sydney time for all server regions. This is an approximate value. Do not provide a value to keep the current setting.
              */
             backup_hour_of_day?: number | null;
             /**
@@ -7827,7 +7827,7 @@ export interface components {
              * @enum {string}
              */
             type: "change_ipv6_reverse_nameservers";
-            /** @description A list of all IPv6 reverse name servers for this server. Any existing reverse name servers that are omitted from the list will be removed from the server. */
+            /** @description A list of all IPv6 reverse name servers for this server. Any existing reverse name servers that are omitted from the list will be removed from the server. Duplicate nameservers are rejected. */
             ipv6_reverse_nameservers: string[];
         };
         /** @description Change the Kernel of a Server */
@@ -7977,7 +7977,7 @@ export interface components {
              *     If specified this is the absolute value, not just the additional storage above what is included in the size.
              *     Leave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.
              *
-             *     Valid values for sizes that do not provide a value for options.restricted_storage_values_gb:
+             *     The size's own disk value is always valid. Other valid values for sizes that do not provide a value for options.restricted_storage_values_gb:
              *     - must be a multiple of 5
              *     - &gt; 60GB must be a multiple of 10
              *     - &gt; 200GB must be a multiple of 100
@@ -8662,7 +8662,10 @@ export interface components {
              *     Submit an empty array to disable deployment of default keys.
              */
             ssh_keys?: (number | string)[] | null;
-            /** @description If provided this will be used to initialise the new server. This must be left null if the Image does not support UserData, see DistributionInfo.Features for more information. */
+            /**
+             * @description If provided this will be used to initialise the new server. This must be left null or empty if the Image does not support UserData, see DistributionInfo.Features for more information.
+             *     Leave null to keep the server's existing user data (if the Image supports UserData); submit an empty string to clear it.
+             */
             user_data?: string | null;
             /** @description If this is provided the default remote user account's password will be set to this value. If this is null a random password will be generated and emailed to the account email address. */
             password?: string | null;
@@ -9267,7 +9270,7 @@ export interface components {
             reverse_nameservers: string[];
         };
         ReverseNameserversRequest: {
-            /** @description A list of IPv6 reverse name servers for all IPv6 enabled servers. Any existing reverse name servers that are omitted from the list will be removed. */
+            /** @description A list of IPv6 reverse name servers for all IPv6 enabled servers. Any existing reverse name servers that are omitted from the list will be removed. Duplicate nameservers are rejected. */
             reverse_nameservers: string[];
         };
         RouteEntry: {
@@ -9706,7 +9709,7 @@ export interface components {
              *     If specified this is the absolute value, not just the additional storage above what is included in the size.
              *     Leave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.
              *
-             *     Valid values for sizes that do not provide a value for options.restricted_storage_values_gb:
+             *     The size's own disk value is always valid. Other valid values for sizes that do not provide a value for options.restricted_storage_values_gb:
              *     - must be a multiple of 5
              *     - &gt; 60GB must be a multiple of 10
              *     - &gt; 200GB must be a multiple of 100
@@ -9808,9 +9811,9 @@ export interface components {
             default: boolean;
         };
         SshKeyRequest: {
-            /** @description The public key in OpenSSH "authorized_keys" format. */
+            /** @description The public key in OpenSSH "authorized_keys" format. Your account must not already have an SSH key with the same fingerprint. */
             public_key: string;
-            /** @description A name to help you identify the key. */
+            /** @description A name to help you identify the key. It must be unique among the SSH keys on your account. */
             name: string;
             /** @description Optional: If true this will be added to all new server installations (if we support SSH Key injection for the server's operating system). */
             default?: boolean | null;
@@ -10021,7 +10024,7 @@ export interface components {
             links?: components["schemas"]["ActionsLinks"] | null;
         };
         UpdateSshKeyRequest: {
-            /** @description A name to help you identify the key. */
+            /** @description A name to help you identify the key. It must be unique among the SSH keys on your account. */
             name: string;
             /**
              * @description Do not provide or leave null to leave the default status of the key unchanged.

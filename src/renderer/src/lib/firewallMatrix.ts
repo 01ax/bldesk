@@ -9,14 +9,10 @@
  * diff first.
  */
 
-export interface FwRule {
-  source_addresses: string[]
-  destination_addresses: string[]
-  destination_ports?: string[] | null
-  protocol: string
-  action: string
-  description?: string | null
-}
+import type { components } from '@shared/api/schema'
+
+/** A firewall rule as BinaryLane's reference defines it. A rule that is read and a rule that is written have the same fields. */
+export type FwRule = components['schemas']['AdvancedFirewallRule']
 
 export type CellState = 'accept' | 'drop' | 'mixed'
 
