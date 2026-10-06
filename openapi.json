@@ -8,7 +8,7 @@
       "url": "https://support.binarylane.com.au/support/home",
       "email": "support@binarylane.com.au"
     },
-    "version": "0.40.0",
+    "version": "0.42.0",
     "x-logo": {
       "url": "https://www.binarylane.com.au/res/images/binarylane/logo.png",
       "backgroundColor": "#000000",
@@ -8821,7 +8821,7 @@
         "properties": {
           "backup_hour_of_day": {
             "type": "integer",
-            "description": "The hour of the day that backups will be scheduled. This is an approximate value.",
+            "description": "The hour of the day, in Australia/Sydney time for all server regions, that backups will be scheduled. This is an approximate value.",
             "format": "int32"
           },
           "backup_day_of_week": {
@@ -9058,7 +9058,7 @@
             "maximum": 23,
             "minimum": 0,
             "type": "integer",
-            "description": "Do not provide a value to keep the current setting.",
+            "description": "The hour of the day, in Australia/Sydney time for all server regions. This is an approximate value. Do not provide a value to keep the current setting.",
             "format": "int32",
             "nullable": true
           },
@@ -9148,7 +9148,7 @@
             "items": {
               "type": "string"
             },
-            "description": "A list of all IPv6 reverse name servers for this server. Any existing reverse name servers that are omitted from the list will be removed from the server."
+            "description": "A list of all IPv6 reverse name servers for this server. Any existing reverse name servers that are omitted from the list will be removed from the server. Duplicate nameservers are rejected."
           }
         },
         "description": "Update the IPv6 Reverse Name Servers for a Server"
@@ -9415,7 +9415,7 @@
           },
           "disk": {
             "type": "integer",
-            "description": "The total storage in GB for this server.\nIf specified this is the absolute value, not just the additional storage above what is included in the size.\nLeave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.\n            \nValid values for sizes that do not provide a value for options.restricted_storage_values_gb:\n- must be a multiple of 5\n- &gt; 60GB must be a multiple of 10\n- &gt; 200GB must be a multiple of 100",
+            "description": "The total storage in GB for this server.\nIf specified this is the absolute value, not just the additional storage above what is included in the size.\nLeave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.\n            \nThe size's own disk value is always valid. Other valid values for sizes that do not provide a value for options.restricted_storage_values_gb:\n- must be a multiple of 5\n- &gt; 60GB must be a multiple of 10\n- &gt; 200GB must be a multiple of 100",
             "format": "int32",
             "nullable": true
           },
@@ -10860,7 +10860,7 @@
           "user_data": {
             "maxLength": 65536,
             "type": "string",
-            "description": "If provided this will be used to initialise the new server. This must be left null if the Image does not support UserData, see DistributionInfo.Features for more information.",
+            "description": "If provided this will be used to initialise the new server. This must be left null or empty if the Image does not support UserData, see DistributionInfo.Features for more information.\nLeave null to keep the server's existing user data (if the Image supports UserData); submit an empty string to clear it.",
             "nullable": true
           },
           "password": {
@@ -12285,7 +12285,7 @@
             "items": {
               "type": "string"
             },
-            "description": "A list of IPv6 reverse name servers for all IPv6 enabled servers. Any existing reverse name servers that are omitted from the list will be removed."
+            "description": "A list of IPv6 reverse name servers for all IPv6 enabled servers. Any existing reverse name servers that are omitted from the list will be removed. Duplicate nameservers are rejected."
           }
         }
       },
@@ -13343,7 +13343,7 @@
           },
           "disk": {
             "type": "integer",
-            "description": "The total storage in GB for this server.\nIf specified this is the absolute value, not just the additional storage above what is included in the size.\nLeave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.\n            \nValid values for sizes that do not provide a value for options.restricted_storage_values_gb:\n- must be a multiple of 5\n- &gt; 60GB must be a multiple of 10\n- &gt; 200GB must be a multiple of 100",
+            "description": "The total storage in GB for this server.\nIf specified this is the absolute value, not just the additional storage above what is included in the size.\nLeave null to accept the default for the size if this is a new server or a resize to a different base size, or to keep the current value if this a resize with the same base size but different options.\n            \nThe size's own disk value is always valid. Other valid values for sizes that do not provide a value for options.restricted_storage_values_gb:\n- must be a multiple of 5\n- &gt; 60GB must be a multiple of 10\n- &gt; 200GB must be a multiple of 100",
             "format": "int32",
             "nullable": true
           },
@@ -13601,12 +13601,12 @@
           "public_key": {
             "minLength": 1,
             "type": "string",
-            "description": "The public key in OpenSSH \"authorized_keys\" format."
+            "description": "The public key in OpenSSH \"authorized_keys\" format. Your account must not already have an SSH key with the same fingerprint."
           },
           "name": {
             "minLength": 1,
             "type": "string",
-            "description": "A name to help you identify the key."
+            "description": "A name to help you identify the key. It must be unique among the SSH keys on your account."
           },
           "default": {
             "type": "boolean",
@@ -14041,7 +14041,7 @@
           "name": {
             "minLength": 1,
             "type": "string",
-            "description": "A name to help you identify the key."
+            "description": "A name to help you identify the key. It must be unique among the SSH keys on your account."
           },
           "default": {
             "type": "boolean",
