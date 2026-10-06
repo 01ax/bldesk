@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.25] - 2026-10-07
+
+**The version popup stays on screen on a phone, and the skip reason for archived servers follows the API reference**
+
+### Fixed
+- **The popup from the version button no longer runs off the left of the screen on a phone** (#294, #290). On a screen narrower than 640 px the 320 px popup, with the version, the channel and the date of the last check, hung from the button's right edge and ran 55 to 65 px past the left edge of the screen, so its text was cut off. It now sits just under the button, 8 px (or the safe-area inset, if larger) from each side of the screen, and is as wide as fits, up to 320 px. From 640 px up, which covers every desktop window size and zoom, it is unchanged. Between 481 and 639 px it is now right-aligned to the screen, where before it hung under the button. Checked on a Samsung phone at 411 px wide and in the desktop app at widths from 320 to 1280 px; the safe-area insets were only simulated.
+
+### Changed
+- **The reason for skipping an archived server now reads "archived (non-payment)"** (#297). When a power command in the palette or Broadcast SSH skips an archived server, the reason said "cancelled or unpaid". It now follows the API reference's 0.43.3 definition of Archived, as the status tooltip and the Servers help page already do (#288). Which servers are skipped has not changed.
+
 ## [1.0.62-beta.24] - 2026-10-06
 
 **The Android library is updated to Capacitor 8.5.2, and a build-tool security fix is picked up**
