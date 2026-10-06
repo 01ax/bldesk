@@ -456,10 +456,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
               </div>
               <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
                 {isAutoBackupEnabled
-                  ? 'BinaryLane takes an automated nightly backup during your scheduled maintenance window.'
+                  ? "BinaryLane takes an automated nightly backup during your scheduled maintenance window. Weekly and monthly backups are set in the server's Change Plan, under Backups."
                   : weeklyOrMonthlyOnly
-                    ? 'This server keeps weekly or monthly backups and no daily ones. Daily backups are set in Change Plan.'
-                    : 'Automated backups are currently turned off for this server.'}
+                    ? "This server keeps weekly or monthly backups and no daily ones. Daily, weekly and monthly backups are set in the server's Change Plan, under Backups."
+                    : "Automated backups are currently turned off for this server. The button enables two daily backups; weekly and monthly backups are set in the server's Change Plan, under Backups."}
               </p>
             </div>
           </div>
