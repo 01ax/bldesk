@@ -1106,3 +1106,23 @@ Service fact, from `openapi.json` only: the `enable_rescue_mode` action is not i
 - Real Electron through `scripts/gui-test`, the installed 1.0.62-beta.17 as BASE next to this branch as FIXED. The Recovery tab's “Boot into Rescue Mode”: BASE's confirmation reads “Submits "Enable Rescue Mode" to BinaryLane.” and FIXED adds the note above, and the button has a tooltip saying the action is not in the reference. Both send the request once on confirm.
 - `check-requests.mjs`, on a synthetic log with `enable_rescue_mode`, an invented action and `reboot`: the invented one is reported invalid, `reboot` is checked, and `enable_rescue_mode` is counted as an accepted exception instead of being reported.
 - Not checked: what the action does on a real server (it is not documented in the reference) and the live API.
+
+## The skip reason for Archived servers (6 October 2026, after 1.0.62-beta.23)
+
+Branch: `fix/palette-archived-skip-reason`. No help page changed. The `reason` for an archived server is set in `partitionByStatus` (`lib/commands.ts`) and shown by `CommandPalette.tsx` and, through `terminalSessions.ts`, by `BroadcastPanel.tsx`. It was missed when the Archived wording followed the 0.43.3 reference (the Archived rows in the 23 September section above).
+
+Service fact, from `openapi.json` only: `ServerStatus` describes `archive` as "The server is powered off due to non payment."
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “skipped — archived (non-payment)”, on the palette's Skip row when a power command matches an archived server | `CommandPalette.tsx`: `skipped — ${m.reason}`, with the reason from `partitionByStatus` for `status === 'archive'` | Changed from “skipped — archived (cancelled or unpaid)”, to follow the reference's definition. The other reason, “still being built”, is unchanged. |
+| “Skipped (1): archived-old-01 (archived (non-payment))”, in Broadcast SSH's target preview, and the same text in the broadcast confirmation's note | `BroadcastPanel.tsx`: `${s.server.name} (${s.reason})`, the same reason | Changed with the row above (one string). The confirmation's note was not opened: reaching it needs a command and Run broadcast, which starts SSH. |
+
+### Checks performed
+
+- All of CI's steps pass: `npm run typecheck` (with every guard and test), `npm run test:terminal` and `npm run build`.
+- The compiled app against a build of `main` (`3d8e239`): main and preload are byte-identical, and in the renderer one file differs, the main chunk, in this one string.
+- Real Electron through `scripts/gui-test`, with a temporary archived server added to a local copy of the mock (never committed). It checks the reason against ServerStatus's own description of `archive` in `openapi.json`: the palette with `shutdown` and with `start` on the archived server, and with `poweroff` on it and another server (that one stays eligible), and the Broadcast SSH preview with those two names typed. Before the change, 0 of 4 pass and each shows “cancelled or unpaid”. After, 4 of 4. No write requests were sent, no command was typed in Broadcast and no SSH tab opened.
+- The same harness suites as for the Archived rows above, on this branch: the 19 UI steps (the same 23 action requests, the same SHA-256 as the earlier run), the 12 further action cases (the same 30 write requests) and the 13 firewall and template cases (the same 11), and the 4 Archived wording checks (4 of 4). `node --test scripts/gui-test/mock.test.mjs` passes 16 of 16.
+- Android, on a physical tablet (shown wide enough for the desktop layout): a throwaway debug build of this commit with the harness README's test-only edits, driven over the DevTools protocol, with the same temporary archived server. The palette, opened with its on-screen Search button: `shutdown`, `start` and `poweroff` with another server show “skipped — archived (non-payment)”, 3 of 3. The 4 Archived wording checks: 4 of 4. The 15 firewall, template and action cases send the same requests as on desktop (the template apply's two requests are byte-identical, 1,503 and 621 characters), except that Power On went to the temporary archived server with it in the mock; against the mock without it, it sent the same request as on desktop. Broadcast SSH is not on Android: the Embedded SSH tab, which holds it, only exists where the desktop's pty bridge does.
+- Not checked: the broadcast confirmation's note (see above), a phone, and the live API.

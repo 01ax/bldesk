@@ -385,7 +385,7 @@ export function partitionByStatus(
   for (const m of matches) {
     const status = m.server.status
     if (status === 'new') skipped.push({ ...m, reason: 'still being built' })
-    else if (status === 'archive') skipped.push({ ...m, reason: 'archived (cancelled or unpaid)' })
+    else if (status === 'archive') skipped.push({ ...m, reason: 'archived (non-payment)' })
     else eligible.push(m)
   }
   return { eligible, skipped }
