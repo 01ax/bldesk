@@ -458,7 +458,7 @@ A security release. Two things need action from Android users:
 - **Packaging & Electron 33 Native Build**:
   - Pinned `@electron/rebuild: 3.7.2` via npm overrides to guarantee ABI 130 compatibility across macOS, Linux, and Windows.
   - Package validation hook in `scripts/after-pack.cjs` that fails builds loud if any platform target is missing `pty.node` or platform spawn helpers.
-  - Verified live SSH connectivity to real BinaryLane VPS instance (`scratchpad`).
+  - Verified live SSH connectivity to a real BinaryLane VPS instance.
 
 ## [1.0.61-beta.1] - 2026-09-05
 

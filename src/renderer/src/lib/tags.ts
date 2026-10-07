@@ -584,7 +584,7 @@ export interface TargetMatchOf<S extends TargetServer = TargetServer> {
  *
  * Each comma-separated pattern is tried as, in order:
  *   `#123` / `123`   — server id
- *   `43.224.183.192` / `43.224` — a public IPv4 or a prefix of one (digits and dots only)
+ *   `203.0.113.20` / `203.0.113` — a public IPv4 or a prefix of one (digits and dots only)
  *   `wp-*` / `web?`  — glob on the name, case-insensitive
  *   `jumpbox`        — exact name if one exists, otherwise a name prefix
  *
