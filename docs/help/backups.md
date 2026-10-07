@@ -59,6 +59,18 @@ Verify the server name and image in the change table. Type the target name, then
 ## Disabling automatic backups
 The banner at the top of the page reads Enabled when the server has daily backups in its options. Backups taken by hand do not count: a server with only temporary backups reads Disabled. A server with weekly or monthly backups and no daily ones reads No nightly and has no button, because enabling nightly backups is for a server that has none; set its daily backups in Change Plan.
 
+This page cannot turn weekly or monthly backups on. Change Plan, one of the server's own pages in the sidebar, sets how many daily, weekly and monthly backups a server keeps, under Backups, and the banner says so in each state. A server with daily backups reads:
+
+“BinaryLane takes an automated nightly backup during your scheduled maintenance window. Weekly and monthly backups are set in the server's Change Plan, under Backups.”
+
+A server with weekly or monthly backups and no daily ones reads:
+
+“This server keeps weekly or monthly backups and no daily ones. Daily, weekly and monthly backups are set in the server's Change Plan, under Backups.”
+
+A server with no backups in its options reads the text below, and its one button enables two daily backups:
+
+“Automated backups are currently turned off for this server. The button enables two daily backups; weekly and monthly backups are set in the server's Change Plan, under Backups.”
+
 “Remove Daily Backups” is not a pause, and it is the banner's button only while the server has daily backups. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. The dialog title is “Remove daily backups”. Its button is red but asks for no typed name, so read the summary before you confirm. The request is recorded in History.
 
 The summary says:
