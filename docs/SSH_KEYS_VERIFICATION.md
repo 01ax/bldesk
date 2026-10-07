@@ -24,28 +24,28 @@ Native Electron layout checks cover 1024×680 and 1280×840 at 80%, 125% and 150
 
 Completed on macOS on 6 September 2026 using the packaged native binary (`release/mac-arm64/BLDesk.app`) against two live BinaryLane cloud servers accepting different SSH keys:
 
-- **Server 1**: `scratchpad` (#560625, `43.224.183.192`, Ubuntu 24.04 LTS), configured with key `~/.ssh/ansible_key`. Negative control: rejects `binarylane_key` with exit 255.
-- **Server 2**: `claudeonbinarylane` (#587261, `119.42.52.205`, Ubuntu 24.04 LTS), configured with key `~/.ssh/binarylane_key`. Negative control: rejects `ansible_key` with exit 255.
+- **Server 1**: a test server (Ubuntu 24.04 LTS), configured with SSH key A. Negative control: rejects key B with exit 255.
+- **Server 2**: a second test server (Ubuntu 24.04 LTS), configured with SSH key B. Negative control: rejects key A with exit 255.
 
 ### Verification flow and findings
 
-1. **Clean baseline**: Profile `mainkey` (`prof_mtb4lwm4czx2`) had its local storage associations cleared.
+1. **Clean baseline**: The test profile had its local storage associations cleared.
 2. **Individual connection & learning**:
-   - In Embedded SSH connect bar, selected `scratchpad` with `ansible_key`. Connected successfully to live PTY session. Kept session live >= 10s; learning timer triggered and persisted `{ 560625: ~/.ssh/ansible_key }` with source `learned` and updated `lastWorking`.
-   - In connect bar, selected `claudeonbinarylane` with `binarylane_key`. Connected successfully to live PTY session. Kept session live >= 10s; learning timer triggered and persisted `{ 587261: ~/.ssh/binarylane_key }` with source `learned` alongside the existing association.
+   - In Embedded SSH connect bar, selected Server 1 with key A. Connected successfully to live PTY session. Kept session live >= 10s; learning timer triggered and persisted `{ <Server 1 id>: <path of key A> }` with source `learned` and updated `lastWorking`.
+   - In connect bar, selected Server 2 with key B. Connected successfully to live PTY session. Kept session live >= 10s; learning timer triggered and persisted `{ <Server 2 id>: <path of key B> }` with source `learned` alongside the existing association.
 3. **Persistence across restart**: Quit the packaged Electron app completely and relaunched. Checked local storage: both associations remained intact.
 4. **Broadcast execution**:
    - Opened Embedded SSH → Broadcast panel.
-   - Entered target expression: `scratchpad, claudeonbinarylane`.
+   - Entered a target expression naming both servers, separated by a comma.
    - Broadcast target preview table automatically resolved distinct keys per host:
-     - `scratchpad`: `ansible_key`
-     - `claudeonbinarylane`: `binarylane_key`
+     - Server 1: key A
+     - Server 2: key B
    - Broadcast command `hostname` was confirmed and executed in parallel across both live servers.
-   - Both panes completed with exit **0 / 0**, outputting their respective hostnames `scratchpad` and `claudeonbinarylane`.
+   - Both panes completed with exit **0 / 0**, each outputting its own server's hostname.
 5. **Remote Access UI**:
-   - Navigated to `scratchpad` details → Remote Access: "Key for this server" displayed `ansible_key` with note *"Learned from an SSH session"*.
-   - Navigated to `claudeonbinarylane` details → Remote Access: "Key for this server" displayed `binarylane_key` with note *"Learned from an SSH session"*.
-6. **Teardown**: Original `authorized_keys` restored on `scratchpad`, re-verifying `binarylane_key` connectivity.
+   - Navigated to Server 1's details → Remote Access: "Key for this server" displayed key A with note *"Learned from an SSH session"*.
+   - Navigated to Server 2's details → Remote Access: "Key for this server" displayed key B with note *"Learned from an SSH session"*.
+6. **Teardown**: Original `authorized_keys` restored on Server 1, re-verifying key B connectivity.
 
 Packaged Windows/Linux and Android were not retested for this desktop key-selection change. No release, version bump, commit or push is part of this verification.
 

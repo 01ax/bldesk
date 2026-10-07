@@ -68,10 +68,10 @@ output.
   `pty.node` as `x64--149`, and the packaged AppImage opened a pty session that
   ran `ssh`. macOS and Windows use node-pty's N-API prebuilds.
 - Packaged app real server session: PASS on macOS arm64. Opened an interactive
-  session to BinaryLane's `scratchpad` VPS (`43.224.183.192`, Ubuntu 24.04.4 LTS)
-  directly from the packaged `BLDesk.app` using local identity `~/.ssh/binarylane_key`.
+  session to a BinaryLane test VPS (Ubuntu 24.04.4 LTS)
+  directly from the packaged `BLDesk.app` using a local identity file.
   The unpacked native module loaded, spawned `/usr/bin/ssh`, rendered MOTD and
-  prompt in xterm, ran `uname -a` (`Linux scratchpad 6.8.0-138-generic ... x86_64`),
+  prompt in xterm, ran `uname -a` (`Linux <hostname> 6.8.0-138-generic ... x86_64`),
   and closed cleanly on `exit` with status 0.
 
 ## Platform boundary
@@ -97,7 +97,7 @@ during review: broadcast panes no longer take keyboard focus as they mount
 `go terminal` / `bldesk://tab/terminal` shows a desktop-only notice instead of an
 empty pane; FEATURES.md no longer lists the terminal as future work.
 
-A real session against BinaryLane server `scratchpad` (`43.224.183.192`) was
+A real session against a BinaryLane test server was
 verified in the packaged app. Windows and Linux legs are checked when the
 release workflow runs; the after-pack hook fails loudly if any leg ships without
 its native binary.
