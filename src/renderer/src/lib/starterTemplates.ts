@@ -715,11 +715,7 @@ write_files:
         };
       }
 runcmd:
-  - |
-    set -euo pipefail
-    export NIXOS_IMPORT=./hardened.nix
-    export NIX_CHANNEL=nixos-26.05
-    curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/40f62a680bb0e8f2f607d79abfaaecd99d59401c/nixos-infect | bash 2>&1 | tee /var/log/nixos-infect.log
+  - curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/40f62a680bb0e8f2f607d79abfaaecd99d59401c/nixos-infect -o /root/nixos-infect && NIXOS_IMPORT=./hardened.nix NIX_CHANNEL=nixos-26.05 bash /root/nixos-infect > /var/log/nixos-infect.log 2>&1
 final_message: "NixOS 26.05 infection completed after $UPTIME seconds — see /var/log/nixos-infect.log if the server has not rebooted into NixOS"
 `
 
