@@ -657,10 +657,10 @@ final_message: "PostgreSQL 16 ready after $UPTIME seconds — {{db_name}} owned 
 `
 
 const NIXOS_HARDENED_CLOUD_INIT = `#cloud-config
-# BLDesk starter: Hardened NixOS 24.11
+# BLDesk starter: Hardened NixOS 26.05
 # Converts a fresh Debian 12 instance in-place via nixos-infect using NIXOS_IMPORT=./hardened.nix.
-# Automatically harvests the SSH keys BinaryLane installed in /root/.ssh/authorized_keys,
-# generates hardware-configuration.nix & networking.nix, and reboots into declarative NixOS.
+# Automatically harvests the SSH keys BinaryLane installed in /root/.ssh/authorized_keys
+# and generates hardware-configuration.nix (BinaryLane's KVM network assigns the public IP via DHCP).
 hostname: {{hostname}}
 timezone: {{timezone}}
 write_files:
@@ -668,15 +668,8 @@ write_files:
     permissions: '0644'
     content: |
       { lib, pkgs, ... }: {
-        # Compressed RAM swap so 1 GB std-min instances can run nixos-rebuild switch without OOM
-        zramSwap = {
-          enable = true;
-          memoryPercent = 100;
-        };
-
         # Key-only SSH, password authentication disabled
         services.openssh = {
-          enable = true;
           ports = [ {{ssh_port}} ];
           settings = {
             PasswordAuthentication = false;
@@ -686,7 +679,7 @@ write_files:
           };
         };
 
-        # Kernel lockdown + TCP BBR congestion control
+        # Kernel sysctl hardening + TCP BBR congestion control
         boot.kernelModules = [ "tcp_bbr" ];
         boot.kernel.sysctl = {
           "kernel.dmesg_restrict" = 1;
@@ -710,7 +703,7 @@ write_files:
           allowPing = true;
         };
 
-        time.timeZone = lib.mkForce "{{timezone}}";
+        time.timeZone = "{{timezone}}";
         nix.gc = {
           automatic = true;
           dates = "weekly";
@@ -720,13 +713,14 @@ write_files:
           experimental-features = [ "nix-command" "flakes" ];
           auto-optimise-store = true;
         };
-
-        system.stateVersion = "24.11";
       }
 runcmd:
-  - export NIXOS_IMPORT=./hardened.nix
-  - export NIX_CHANNEL=nixos-24.11
-  - curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | bash 2>&1 | tee /var/log/nixos-infect.log
+  - |
+    set -euo pipefail
+    export NIXOS_IMPORT=./hardened.nix
+    export NIX_CHANNEL=nixos-26.05
+    curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/40f62a680bb0e8f2f607d79abfaaecd99d59401c/nixos-infect | bash 2>&1 | tee /var/log/nixos-infect.log
+final_message: "NixOS 26.05 infection completed after $UPTIME seconds — see /var/log/nixos-infect.log if the server has not rebooted into NixOS"
 `
 
 const at = '2026-09-03T00:00:00.000Z'
@@ -780,8 +774,8 @@ export const STARTER_TEMPLATES: Array<{ slug: string; template: ServerTemplate }
     slug: 'starter-nixos-hardened',
     template: {
       kind: TEMPLATE_KIND,
-      name: 'NixOS 24.11 hardened',
-      description: 'Declarative NixOS 24.11 bootstrapped in-place from Debian 12 via nixos-infect. Inherits your selected BinaryLane SSH keys, enables zram swap for 1 GB plans, TCP BBR, kernel sysctl lockdown, flakes, and declarative firewall.',
+      name: 'NixOS 26.05 hardened',
+      description: 'Declarative NixOS 26.05 bootstrapped in-place from Debian 12 via nixos-infect. Inherits your selected BinaryLane SSH keys, enables zram swap, TCP BBR, kernel sysctl hardening, flakes, and declarative firewall.',
       labels: ['starter', 'hardened', 'nixos'],
       created_at: at,
       variables: ADMIN_VARS,
