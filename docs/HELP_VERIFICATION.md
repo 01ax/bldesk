@@ -1,5 +1,21 @@
 # Help verification
 
+## README install instructions (13 October 2026, after 1.0.62-beta.25)
+
+Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.
+
+Tested on Ubuntu 26.04 (amd64):
+
+- **Release `.deb`.** `sudo apt install ./BLDesk-1.0.62-beta.25-linux-amd64.deb` installed it. `linux/after-install.sh` and `linux/after-remove.sh` were read: they add and remove the `/usr/bin/bldesk` alternatives link and `/etc/apparmor.d/bldesk`, and neither touches the home folder. apt printed `Download is performed unsandboxed as root as file ... couldn't be accessed by user '_apt'` when the file was in a folder `_apt` cannot read (twice, the second time under the home folder); the install completed both times.
+- **From source.** With Node v22.23.3 from nodejs.org (checksum verified): `npm ci` (528 packages, no engine warnings), `npm run typecheck` (exit 0) and `npm run build:linux` (writes `release/BLDesk-1.0.62-beta.25-linux-amd64.deb` and `release/BLDesk-1.0.62-beta.25-linux-x86_64.AppImage`; `build.directories.output` in `package.json` is `release`). The built `.deb`'s `postinst` and `postrm` are identical to the published release's. After `sudo apt remove bldesk`, `sudo apt install ./release/BLDesk-1.0.62-beta.25-linux-amd64.deb` installed it; `/opt/BLDesk/bldesk.bin` is byte-identical to `release/linux-unpacked/bldesk.bin`. Launched headless with the Chromium sandbox on and a throwaway data directory, it started its zygote and network service processes with no sandbox error. No window was looked at.
+- **Ubuntu's apt Node.** `nodejs` 22.22.1 from apt reports `process.config.variables.node_use_amaro` as `false`. `node --experimental-strip-types` on a one-line `.ts` file, `scripts/test-api-errors.mjs` (inside `npm run typecheck`) and `scripts/write-notices.mjs` (the last step of `npm run build`) all stop with `ERR_NO_TYPESCRIPT`. Node 22.23.3 from nodejs.org runs all three.
+- **Compiler.** `node_modules/node-pty/prebuilds` holds darwin-arm64, darwin-x64, win32-arm64 and win32-x64 only; on Linux `npm ci` compiled `build/Release/pty.node`. `g++` and `make` came from `build-essential`; Python 3 was already installed, and the build was not tried without it, so `python3` is listed in the README's `apt` command rather than assumed.
+- **Node 22.** `node-version: 22` in `.github/workflows/ci.yml`, `release.yml` and `android.yml`. The old README said "v20+ recommended"; Node 20 was not tested.
+- **Profiles after removal.** `vaultPath` in `src/main/safeStorage.ts` is `vault.enc` under `app.getPath('userData')`, which is in the home folder.
+- **Troubleshooting.** `docs/help/troubleshooting.md` exists and `HelpView.tsx` lists it under Reference.
+
+Not tested: Windows, macOS and Android. The Windows SmartScreen sentence repeats "Unsigned NSIS installers trigger SmartScreen warnings" in `docs/AUTO_UPDATE.md`, and the portable build's lack of self-update repeats the Windows (NSIS) row of that file's table. The asset names are from the 1.0.62-beta.25 release's asset list. The macOS and Android sentence repeats the macOS signing paragraph in `docs/AUTO_UPDATE.md` and the Installation section of `docs/help/troubleshooting.md`. The Windows steps should be run through on a Windows machine and reworded if SmartScreen behaves differently.
+
 ## GUI harness backup model (30 September 2026, issue #198)
 
 Branch: `fix/gui-mock-backups`. Only developer harness documentation changed; no in-app text changed. Checked `scripts/gui-test/README.md` against `sizeOpts`, `mkServer`, `reset`, `makeBackup`, `backupPlan`, the image routes and `applyAction` in `scripts/gui-test/mock.mjs`, and the checks in `scripts/gui-test/mock.test.mjs`. Field names, slot and replacement semantics, lock restrictions and attachment metadata were checked against `SizeOptions`, `OffsiteBackupFrequencyCost`, `BackupInfo`, `BackupDisk`, `TakeBackup`, `BackupReplacementStrategy`, `ImageRequest` and `AttachedBackup` in `openapi.json`. The documented pricing constants are explicitly attributed to the dated public snapshot reported in #198; no live account was accessed for this change. Documentation also states that the other fixture prices are fictitious and temporary images do not expire automatically in the mock.

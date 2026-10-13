@@ -78,10 +78,56 @@ Open **Help** in the sidebar or click a page's circled **?** for bundled BLDesk 
 
 ---
 
+## 📥 Install
+
+Installers are attached to the [latest release](https://github.com/termau/bldesk/releases/latest). A beta is published as a full release, so the latest release can be a beta build (see [docs/AUTO_UPDATE.md](docs/AUTO_UPDATE.md)).
+
+### Windows
+
+1. Download `BLDesk-<version>-win-x64.exe` from the latest release.
+2. Run it.
+3. The builds are not code-signed, so Windows SmartScreen warns about the installer. If you downloaded it from the releases page above, approve the warning to continue.
+
+`BLDesk-<version>-win-x64-portable.exe` runs without installing, but it does not update itself.
+
+### Linux (Ubuntu and Debian)
+
+**From the release.** Download `BLDesk-<version>-linux-amd64.deb`, then install it from the folder you saved it in:
+
+```bash
+sudo apt install ./BLDesk-<version>-linux-amd64.deb
+```
+
+The package adds the `bldesk` command and an AppArmor profile that lets BLDesk's Chromium sandbox start on Ubuntu 23.10 and later. Start BLDesk from the application menu or run `bldesk`.
+
+If the `.deb` is in a folder the `_apt` user cannot read, such as your home folder, apt prints `Download is performed unsandboxed as root`. It is a notice, not an error, and the install still completes.
+
+**From source.** You need:
+
+* `git`
+* [Node.js](https://nodejs.org/en/download) 22, the version CI builds with. Install it from nodejs.org. Do not use Ubuntu's `nodejs` package: on Ubuntu 26.04 (22.22.1) it is built without the TypeScript support the build scripts use (`node --experimental-strip-types`), and the build stops with `ERR_NO_TYPESCRIPT`.
+* A C/C++ compiler, `make` and Python 3: `sudo apt install build-essential python3`. `node-pty` has no prebuilt Linux binary, so `npm ci` compiles it.
+
+```bash
+git clone https://github.com/termau/bldesk.git
+cd bldesk
+npm ci
+npm run build:linux
+sudo apt install ./release/BLDesk-*-linux-amd64.deb
+```
+
+`npm run build:linux` writes a `.deb` and an AppImage to `release/`. To replace a release build with the one you built, run `sudo apt remove bldesk` first. Removing the package does not delete your saved profiles, which are stored in your home folder.
+
+### macOS and Android
+
+The macOS `.dmg` and `BLDesk-android.apk` are attached to the same releases. The macOS build is not signed or notarised, so macOS may warn about it; see Troubleshooting in the in-app Help.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
-* [Node.js](https://nodejs.org) (v20+ recommended)
+* [Node.js](https://nodejs.org) 22 (the version CI uses). On Ubuntu, see [Linux (Ubuntu and Debian)](#linux-ubuntu-and-debian) for why Ubuntu's `nodejs` package does not work.
 * [npm](https://npmjs.com)
 
 ### Installation & Development
