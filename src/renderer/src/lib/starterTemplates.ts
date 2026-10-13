@@ -716,7 +716,7 @@ write_files:
       }
 runcmd:
   - curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/40f62a680bb0e8f2f607d79abfaaecd99d59401c/nixos-infect -o /root/nixos-infect && NIXOS_IMPORT=./hardened.nix NIX_CHANNEL=nixos-26.05 bash /root/nixos-infect > /var/log/nixos-infect.log 2>&1
-final_message: "NixOS 26.05 infection completed after $UPTIME seconds — see /var/log/nixos-infect.log if the server has not rebooted into NixOS"
+final_message: "cloud-init finished after $UPTIME seconds — if the server has not rebooted into NixOS, check /var/log/nixos-infect.log"
 `
 
 const at = '2026-09-03T00:00:00.000Z'
