@@ -656,6 +656,79 @@ runcmd:
 final_message: "PostgreSQL 16 ready after $UPTIME seconds — {{db_name}} owned by {{db_user}}, reachable from {{allowed_cidr}}"
 `
 
+const NIXOS_HARDENED_CLOUD_INIT = `#cloud-config
+# BLDesk starter: Hardened NixOS 24.11
+# Converts a fresh Debian 12 instance in-place via nixos-infect using NIXOS_IMPORT=./hardened.nix.
+# Automatically harvests the SSH keys BinaryLane installed in /root/.ssh/authorized_keys,
+# generates hardware-configuration.nix & networking.nix, and reboots into declarative NixOS.
+hostname: {{hostname}}
+timezone: {{timezone}}
+write_files:
+  - path: /etc/nixos/hardened.nix
+    permissions: '0644'
+    content: |
+      { lib, pkgs, ... }: {
+        # Compressed RAM swap so 1 GB std-min instances can run nixos-rebuild switch without OOM
+        zramSwap = {
+          enable = true;
+          memoryPercent = 100;
+        };
+
+        # Key-only SSH, password authentication disabled
+        services.openssh = {
+          enable = true;
+          ports = [ {{ssh_port}} ];
+          settings = {
+            PasswordAuthentication = false;
+            KbdInteractiveAuthentication = false;
+            PermitRootLogin = "prohibit-password";
+            X11Forwarding = false;
+          };
+        };
+
+        # Kernel lockdown + TCP BBR congestion control
+        boot.kernelModules = [ "tcp_bbr" ];
+        boot.kernel.sysctl = {
+          "kernel.dmesg_restrict" = 1;
+          "kernel.kptr_restrict" = 2;
+          "net.core.default_qdisc" = "fq";
+          "net.ipv4.tcp_congestion_control" = "bbr";
+          "net.ipv4.conf.all.rp_filter" = 1;
+          "net.ipv4.conf.default.rp_filter" = 1;
+          "net.ipv4.conf.all.accept_redirects" = 0;
+          "net.ipv4.conf.default.accept_redirects" = 0;
+          "net.ipv6.conf.all.accept_redirects" = 0;
+          "net.ipv6.conf.default.accept_redirects" = 0;
+          "net.ipv4.conf.all.send_redirects" = 0;
+          "net.ipv4.conf.default.send_redirects" = 0;
+        };
+
+        # Declarative NixOS firewall
+        networking.firewall = {
+          enable = true;
+          allowedTCPPorts = [ {{ssh_port}} ];
+          allowPing = true;
+        };
+
+        time.timeZone = lib.mkForce "{{timezone}}";
+        nix.gc = {
+          automatic = true;
+          dates = "weekly";
+          options = "--delete-older-than 14d";
+        };
+        nix.settings = {
+          experimental-features = [ "nix-command" "flakes" ];
+          auto-optimise-store = true;
+        };
+
+        system.stateVersion = "24.11";
+      }
+runcmd:
+  - export NIXOS_IMPORT=./hardened.nix
+  - export NIX_CHANNEL=nixos-24.11
+  - curl -sSfL https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | bash 2>&1 | tee /var/log/nixos-infect.log
+`
+
 const at = '2026-09-03T00:00:00.000Z'
 const TZ = ADMIN_VARS[2]
 
@@ -700,6 +773,26 @@ export const STARTER_TEMPLATES: Array<{ slug: string; template: ServerTemplate }
         firewallRules: [SSH_FROM, PING, DROP_ALL],
         tags: ['hardened'],
         cloudInit: CIS_CLOUD_INIT
+      }
+    }
+  },
+  {
+    slug: 'starter-nixos-hardened',
+    template: {
+      kind: TEMPLATE_KIND,
+      name: 'NixOS 24.11 hardened',
+      description: 'Declarative NixOS 24.11 bootstrapped in-place from Debian 12 via nixos-infect. Inherits your selected BinaryLane SSH keys, enables zram swap for 1 GB plans, TCP BBR, kernel sysctl lockdown, flakes, and declarative firewall.',
+      labels: ['starter', 'hardened', 'nixos'],
+      created_at: at,
+      variables: ADMIN_VARS,
+      spec: {
+        region: 'syd',
+        size: 'std-min',
+        image: 'debian-12',
+        options: { ipv4_addresses: 1, daily_backups: 0, weekly_backups: 0, monthly_backups: 0, offsite_backups: false },
+        firewallRules: [SSH_FROM, PING, DROP_ALL],
+        tags: ['nixos', 'hardened'],
+        cloudInit: NIXOS_HARDENED_CLOUD_INIT
       }
     }
   },
