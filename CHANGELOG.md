@@ -5,6 +5,20 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.26] - 2026-10-13
+
+**Change backup schedules and see every IPv4 address on server tiles**
+
+### Added
+- **View and change when scheduled backups run** (#305, #301). The Backups page shows the approximate hour in Australia/Sydney time, plus the weekday for weekly backups and the day of the month for monthly backups. Change Schedule confirms the values being changed, sends only those fields, and records the request in History. Values left untouched follow the server's refreshed schedule while the form is open.
+- **Installation instructions for Windows and Linux** (#307). The README now covers the Windows installer, Ubuntu/Debian packages, building on Linux, and the Node.js and compiler prerequisites, with pointers to the macOS and Android downloads.
+
+### Fixed
+- **Server tiles show every public and private IPv4 address, with labels and copy buttons** (#304, #296). Secondary public addresses and private addresses are no longer hidden. Servers in a VPC show its name under their private addresses, and a server without a public IPv4 shows None instead of presenting its private address as public. Copy feedback identifies the server as well as the address.
+
+### Changed
+- **Backup guidance uses daily rather than nightly and explains where retention is set** (#303, #305). The page points to the Backups section of Change Plan for daily, weekly and monthly retention counts, and to Backup Schedule for the hour and days.
+
 ## [1.0.62-beta.25] - 2026-10-07
 
 **The version popup stays on screen on a phone, and the skip reason for archived servers follows the API reference**
