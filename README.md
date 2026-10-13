@@ -84,9 +84,10 @@ Installers are attached to the [latest release](https://github.com/termau/bldesk
 
 ### Windows
 
-1. Download `BLDesk-<version>-win-x64.exe` from the latest release.
-2. Run it.
-3. The builds are not code-signed, so Windows SmartScreen warns about the installer. If you downloaded it from the releases page above, approve the warning to continue.
+1. Download `BLDesk-<version>-win-x64.exe` from the latest release. The release also lists `BLDesk-<version>-win-x64-portable.exe`, which is the portable build, not the installer.
+2. The builds are not code-signed, so your browser may warn that the file isn't commonly downloaded. In Microsoft Edge, open the **More actions** (**…**) menu on the download and choose **Keep**. In the box that follows ("Make sure you trust …"), open the arrow beside **Delete** and choose **Keep anyway**. Other browsers may word this differently.
+3. Open the downloaded file. The installer has no pages to click through: it installs BLDesk for your user, adds Start menu and desktop shortcuts, and starts BLDesk.
+4. To remove it, open **Settings → Apps → Installed apps → BLDesk → Uninstall**. Uninstalling does not delete your saved profiles, which are stored in `%APPDATA%\bldesk`.
 
 `BLDesk-<version>-win-x64-portable.exe` runs without installing, but it does not update itself.
 
