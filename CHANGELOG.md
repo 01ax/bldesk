@@ -5,6 +5,13 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.27] - 2026-10-14
+
+**A hardened NixOS starter template**
+
+### Added
+- **NixOS 26.05 hardened starter template** (#309). Converts a fresh Debian 12 server to NixOS 26.05 in place at first boot, using a pinned copy of nixos-infect, and keeps the SSH keys chosen when the server was created. Key-only SSH, TCP BBR, sysctl hardening, flakes, weekly store cleanup and a declarative firewall.
+
 ## [1.0.62-beta.26] - 2026-10-13
 
 **Change backup schedules and see every IPv4 address on server tiles**
