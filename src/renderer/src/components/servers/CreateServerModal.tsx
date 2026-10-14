@@ -17,7 +17,7 @@ import {
 } from '../../api/queries'
 import { logoForDistribution } from '../../lib/distroHelper'
 import { setKeyAssociation } from '../../lib/sshKeyAssociations'
-import { hostnameFields } from '../../lib/createServerHostname'
+import { cloudInitToSend, createdDetail, createdName, createdTarget, hostnameFields } from '../../lib/createServerHostname'
 import { GenerateKeyPairDialog, canGenerateKeyPair } from '../keys/GenerateKeyPairDialog'
 import { BlockedMark, PlanBlockNotes } from './PlanBlocks'
 import { listServerTemplates, imageSupportsUserData, TEMPLATES_EVENT, TEMPLATE_KIND, type ServerTemplate, type CreateServerPrefill } from '../../lib/serverTemplates'
@@ -442,6 +442,10 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
 
   if (!isOpen) return null
 
+  // BinaryLane names a server created without a hostname, so a blank one is sent as no `name` at all.
+  const host = hostnameFields(hostname)
+  const userData = cloudInitToSend(acceptsUserData, cloudInitOn, cloudInit)
+
   // The keys the request names: the ticked ones, even none, once the form has the account's keys to show (a reload that
   // failed after they loaded still leaves them on screen) or a decision has been made. Before that the field is left
   // out and BinaryLane deploys the account's defaults.
@@ -450,9 +454,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
-    // BinaryLane names a server created without a hostname, so a blank one is sent as no `name` at all.
-    const host = hostnameFields(hostname)
-    const name = host.name
     if (!image?.slug) return setErrorMsg('Choose an operating system.')
     if (!selectedSize) return setErrorMsg('Choose a plan.')
     const blocked = planUnavailableReason(selectedSize, region, image)
@@ -502,16 +503,19 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
           monthly_backups: backups.monthly,
           offsite_backups: backups.offsite
         },
-        user_data: acceptsUserData && cloudInitOn && cloudInit.trim() ? cloudInit : undefined
+        user_data: userData
       } as any)
+      // With no hostname typed, the entry becomes the server BinaryLane named, so the entries do not all read "New server".
+      const target = createdTarget(host, created)
       void updateChange(changeId, {
         outcome: 'completed',
-        detail: created?.id ? `BinaryLane accepted the request; server #${created.id}${name || !created.name ? '' : ` (${created.name})`} is being built.` : 'BinaryLane accepted the request.'
+        detail: createdDetail(host, created),
+        ...(target ? { target } : {})
       })
       // A pair generated here becomes the new server's SSH key, so it connects first time.
       const generatedPath = selectedKeys.map((id) => generatedKeys[id]).find(Boolean)
       if (created?.id && generatedPath) setKeyAssociation(profileId, created.id, generatedPath, 'manual')
-      onCreated?.({ id: created?.id, name: name || created?.name || '' })
+      onCreated?.({ id: created?.id, name: createdName(host, created) })
       resetForm()
       onClose()
     } catch (err: any) {
@@ -697,6 +701,12 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                   placeholder="server.example.com"
                   className="w-full max-w-sm px-2.5 py-1.5 text-xs bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
                 />
+                {/* Under the hostname, so it shows in both layouts, and only when cloud-init is going to be sent with no hostname. */}
+                {host.blank && userData && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    No hostname is set, so BinaryLane gives the server a name of its own. BLDesk does not update a hostname already written into the cloud-init, including one a template filled in for {'{{hostname}}'}.
+                  </p>
+                )}
               </Field>
 
               {!showAll ? (
@@ -833,11 +843,6 @@ export const CreateServerModal: React.FC<CreateServerModalProps> = ({ isOpen, on
                           placeholder={'#cloud-config\npackages:\n  - nginx'}
                           className="mt-2 w-full px-2.5 py-2 text-[11px] font-mono bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded outline-none focus:border-[#017cb6] text-[#212529] dark:text-white"
                         />
-                        {hostnameFields(hostname).blank && (
-                          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                            No hostname is set, so BinaryLane gives the server a name of its own. BLDesk does not update a hostname already written into the cloud-init, including one a template filled in for {'{{hostname}}'}.
-                          </p>
-                        )}
                       </>
                     )}
                   </Field>

@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { BLANK_HOSTNAME_TARGET, hostnameFields } from '../src/renderer/src/lib/createServerHostname.ts'
+import { BLANK_HOSTNAME_TARGET, cloudInitToSend, createdDetail, createdName, createdTarget, hostnameFields } from '../src/renderer/src/lib/createServerHostname.ts'
 
 const spec = JSON.parse(readFileSync(new URL('../openapi.json', import.meta.url), 'utf8'))
 const form = readFileSync(new URL('../src/renderer/src/components/servers/CreateServerModal.tsx', import.meta.url), 'utf8')
@@ -49,10 +49,71 @@ test('the History entry names a blank hostname "New server" and says it was left
   assert.deepEqual(typed.changes, [])
 })
 
-test('the form no longer refuses a blank hostname, and builds the request name and the History entry from these fields', () => {
+test('cloud-init is sent only when the image takes it, the box is ticked and it holds something; the text is sent as typed', () => {
+  assert.equal(cloudInitToSend(true, true, '#cloud-config\n'), '#cloud-config\n')
+  assert.equal(cloudInitToSend(true, true, '  #cloud-config  '), '  #cloud-config  ')
+  assert.equal(cloudInitToSend(true, true, ''), undefined)
+  assert.equal(cloudInitToSend(true, true, ' \n\t '), undefined)
+  assert.equal(cloudInitToSend(true, false, '#cloud-config'), undefined)
+  assert.equal(cloudInitToSend(false, true, '#cloud-config'), undefined)
+  assert.equal(cloudInitToSend(false, false, '#cloud-config'), undefined)
+})
+
+test('the History detail names the server BinaryLane gave only when no hostname was typed', () => {
+  const blank = hostnameFields('')
+  const typed = hostnameFields('web-01')
+  assert.equal(createdDetail(blank, { id: 7, name: 'quiet-otter-7' }), 'BinaryLane accepted the request; server #7 (quiet-otter-7) is being built.')
+  assert.equal(createdDetail(blank, { id: 7 }), 'BinaryLane accepted the request; server #7 is being built.')
+  assert.equal(createdDetail(typed, { id: 7, name: 'web-01' }), 'BinaryLane accepted the request; server #7 is being built.')
+  // A response with no server, or one with no id, is still an accepted request.
+  for (const host of [blank, typed]) {
+    assert.equal(createdDetail(host, undefined), 'BinaryLane accepted the request.')
+    assert.equal(createdDetail(host, {}), 'BinaryLane accepted the request.')
+    assert.equal(createdDetail(host, { name: 'x' }), 'BinaryLane accepted the request.')
+  }
+})
+
+test('a blank hostname leaves "New server" for the server itself once there is one; otherwise the History target is left as recorded', () => {
+  const blank = hostnameFields('  ')
+  assert.deepEqual(createdTarget(blank, { id: 7, name: 'quiet-otter-7' }), { kind: 'server', id: 7, name: 'quiet-otter-7' })
+  assert.deepEqual(createdTarget(blank, { id: 7 }), { kind: 'server', id: 7, name: '#7' })
+  assert.deepEqual(createdTarget(blank, { id: 7, name: '' }), { kind: 'server', id: 7, name: '#7' })
+  // No server id (or no response at all): keep the placeholder rather than invent a target.
+  assert.equal(createdTarget(blank, undefined), undefined)
+  assert.equal(createdTarget(blank, {}), undefined)
+  assert.equal(createdTarget(blank, { name: 'x' }), undefined)
+  // A typed hostname is already the target.
+  assert.equal(createdTarget(hostnameFields('web-01'), { id: 7, name: 'web-01' }), undefined)
+})
+
+test('the name handed to onCreated is the typed hostname, else the returned name, else the id, and never an empty string', () => {
+  const blank = hostnameFields('')
+  const typed = hostnameFields(' web-01 ')
+  assert.equal(createdName(typed, { id: 7, name: 'other' }), 'web-01')
+  assert.equal(createdName(typed, undefined), 'web-01')
+  assert.equal(createdName(blank, { id: 7, name: 'quiet-otter-7' }), 'quiet-otter-7')
+  assert.equal(createdName(blank, { id: 7 }), '#7')
+  assert.equal(createdName(blank, { id: 7, name: '' }), '#7')
+  assert.equal(createdName(blank, undefined), BLANK_HOSTNAME_TARGET)
+  assert.equal(createdName(blank, {}), BLANK_HOSTNAME_TARGET)
+})
+
+// Crude, on purpose: the behaviour is checked in the running app, but this catches the note being moved back into the
+// View All only part of the form, or the note and the request using different tests for "cloud-init is sent".
+test('the form builds the request and the History entry from these helpers, and the note sits under the Hostname field', () => {
   assert.ok(!form.includes('Enter a hostname for the server'))
-  assert.match(form, /hostnameFields\(hostname\)/)
+  assert.match(form, /const host = hostnameFields\(hostname\)/)
+  assert.match(form, /const userData = cloudInitToSend\(acceptsUserData, cloudInitOn, cloudInit\)/)
   assert.match(form, /\.\.\.host\.request/)
   assert.match(form, /historyTarget/)
   assert.match(form, /\.\.\.host\.changes/)
+  assert.match(form, /user_data: userData/)
+  assert.match(form, /createdTarget\(host, created\)/)
+  assert.match(form, /createdDetail\(host, created\)/)
+  assert.match(form, /createdName\(host, created\)/)
+  const hostnameField = form.indexOf('<Field label="Hostname"')
+  const note = form.indexOf('host.blank && userData')
+  const layoutSwitch = form.indexOf('{!showAll ? (')
+  assert.ok(hostnameField > 0 && note > hostnameField && note < layoutSwitch, 'the note is inside the Hostname field, before the simple and View All layouts split')
+  assert.equal(form.split('No hostname is set, so BinaryLane gives the server a name of its own.').length - 1, 1, 'the note text appears once')
 })
