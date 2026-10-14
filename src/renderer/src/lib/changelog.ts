@@ -142,7 +142,7 @@ export async function recordChange(change: NewChange, profileId = currentProfile
   return entry.id
 }
 
-export async function updateChange(id: string | undefined, patch: Partial<Pick<ChangeEntry, 'outcome' | 'detail' | 'actionId'>>, profileId = (id ? changeProfile.get(id) : undefined) ?? currentProfileId): Promise<void> {
+export async function updateChange(id: string | undefined, patch: Partial<Pick<ChangeEntry, 'outcome' | 'detail' | 'actionId' | 'target'>>, profileId = (id ? changeProfile.get(id) : undefined) ?? currentProfileId): Promise<void> {
   if (!id) return
   if (!profileId) return
   const full = { ...patch, settledAt: patch.outcome ? new Date().toISOString() : undefined }
