@@ -377,7 +377,7 @@ async function handleApi(req, res, u, body) {
   }
   if (m === 'GET' && p === '/v2/servers') return json(res, 200, page(servers, q, 'servers'))
   if (m === 'POST' && p === '/v2/servers') {
-    const id = nextId++, s = mkServer({ id, name: body.name, size_slug: body.size, region: body.region, image: body.image, vpc_id: body.vpc_id || 901, ip: '203.0.113.' + (id % 200), status: 'new', backups: false,
+    const id = nextId++, s = mkServer({ id, name: body.name ?? `generated-name-${id}`, size_slug: body.size, region: body.region, image: body.image, vpc_id: body.vpc_id || 901, ip: '203.0.113.' + (id % 200), status: 'new', backups: false,
       memory: body.options?.memory, disk: body.options?.disk, options: { ...(body.backups ? { daily_backups: 2 } : {}), ...body.options } })
     servers.push(s); setTimeout(() => { s.status = 'active' }, cfg.actionMs * 2); return json(res, 200, { server: s, links: { pages: {} } })
   }
