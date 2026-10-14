@@ -5,6 +5,13 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.28] - 2026-10-14
+
+**Add a Cloud Server no longer needs a hostname**
+
+### Fixed
+- **A new server can be created with the hostname left blank** (#311, #310). The form used to stop with "Enter a hostname for the server." although the API reference makes the name optional. A blank or spaces-only hostname now sends no name and BinaryLane names the server. The hint under the field says so. When no hostname is set and cloud-init is going to be sent, a note warns that BLDesk does not change a hostname already written into the cloud-init, including one a template filled in. In History the entry starts as "New server" with a Hostname row that says it was left blank, then becomes the server BinaryLane named, with its name and number. Applying a template still asks for a hostname.
+
 ## [1.0.62-beta.27] - 2026-10-14
 
 **A hardened NixOS starter template**
