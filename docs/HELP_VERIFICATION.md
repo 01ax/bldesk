@@ -53,6 +53,12 @@ The final code was also rerun on a physical Android tablet shown wide enough for
 
 The QA app was uninstalled, its two USB mappings removed, and both final fixture servers and the Electron instance were stopped. `npm run typecheck` with all guards, `npm run build`, the 15-case helper suite, the 26-case mock suite and the offline QA APK build passed. All added device checks used synthetic fixtures; no additional live guest, backup-retention or billing change was made.
 
+### Mock completion follow-up (19 October 2026)
+
+After the final review of 8a7638a, corrected the GUI-test mock only: terminal status and completed_at now follow the action callback, including its failure returns, rather than elapsed time. Waiting actions remain in progress; proceeding replaces the pending timer. Checked the harness README against scheduleAction, actionView and the new regression assertions. No production component, request body or bundled help text changed.
+
+Both zero-delay success/failure regressions failed against the old mock and passed after the fix. The 15 helper and 30 mock cases pass. Twenty additional runs each passed the formerly intermittent competing-slot case and both zero-delay cases. Trimming assertions now check other slot types and another server, a limit above the held-image count, and a reduction without a pre-action backup. Typecheck with all guards and the full build passed. No live API, Electron or Android run was repeated for this harness-only follow-up; the earlier device checks remain the product-code verification.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.

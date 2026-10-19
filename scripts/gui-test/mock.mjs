@@ -258,8 +258,17 @@ function newAction(type, server, body) {
   // `interaction` makes reboots, shutdowns and power cycles stop and ask a question (UserInteractionType) until it is answered at POST /v2/actions/{id}/proceed.
   const id = nextId++, a = { id, type, server_id: server?.id, body, startedAt: Date.now(), ms: cfg.actionMs, outcome: cfg.actionOutcome, waiting: cfg.interaction && ['reboot', 'shutdown', 'power_cycle'].includes(type) ? cfg.interaction : null }
   actions.set(id, a)
-  setTimeout(() => applyAction(a, server), a.ms)
+  scheduleAction(a, server)
   return id
+}
+function scheduleAction(a, server) {
+  clearTimeout(a.timer)
+  a.completedAt = null
+  a.timer = setTimeout(() => {
+    if (a.waiting) return
+    // A terminal status is only valid after mutations or error handling finish.
+    try { applyAction(a, server) } finally { a.completedAt = Date.now() }
+  }, a.ms)
 }
 function applyAction(a, server) {
   if (a.waiting || a.outcome !== 'completed' || !server || !servers.includes(server)) return
@@ -298,12 +307,12 @@ function applyAction(a, server) {
   if (a.type === 'change_advanced_firewall_rules') fwOverride.set(server.id, b.firewall_rules || [])
 }
 function actionView(a) {
-  const done = !a.waiting && Date.now() - a.startedAt >= a.ms, server = servers.find((s) => s.id === a.server_id)
+  const done = !a.waiting && a.completedAt != null, server = servers.find((s) => s.id === a.server_id)
   const status = !done ? 'in-progress' : a.outcome === 'errored' ? 'errored' : 'completed'
   const base = mk('ActionsResponse', 'actions', {
-    id: a.id, status, type: a.type, started_at: new Date(a.startedAt).toISOString(), completed_at: done ? new Date(a.startedAt + a.ms).toISOString() : null,
+    id: a.id, status, type: a.type, started_at: new Date(a.startedAt).toISOString(), completed_at: done ? new Date(a.completedAt).toISOString() : null,
     resource_type: 'server', resource_id: a.server_id ?? 0, region: server?.region, region_slug: server?.region?.slug, title: a.type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()),
-    reason: 'Your request is being processed', progress: { current_step: done ? '' : 'Working', current_step_detail: null, percent_complete: done ? 100 : Math.min(90, Math.round((Date.now() - a.startedAt) / a.ms * 100)), completed_steps: done ? ['Working'] : [] },
+    reason: 'Your request is being processed', progress: { current_step: done ? '' : 'Working', current_step_detail: null, percent_complete: done ? 100 : Math.min(90, Math.round((Date.now() - a.startedAt) / Math.max(1, a.ms) * 100)), completed_steps: done ? ['Working'] : [] },
     error_message: done && a.outcome === 'errored' ? a.error || 'The simulated action failed (mock server).' : null, result_data: null, blocking_invoice_id: null, user_interaction_required: a.waiting ? { interaction_type: a.waiting } : null
   })
   return base
@@ -335,7 +344,7 @@ async function handleApi(req, res, u, body) {
     const a = actions.get(+mt[1]); if (!a) return json(res, 404, { id: 'not_found', message: 'Action not found' })
     // Answering lets the action carry on (true) or stops it (false); either way it settles shortly after.
     a.waiting = null; a.startedAt = Date.now(); a.ms = 400; a.outcome = body?.proceed ? 'completed' : 'errored'; a.error = body?.proceed ? null : 'Stopped: the answer was no.'
-    setTimeout(() => applyAction(a, servers.find((s) => s.id === a.server_id)), a.ms)
+    scheduleAction(a, servers.find((s) => s.id === a.server_id))
     return json(res, 204)
   }
   if ((mt = p.match(/^\/v2\/actions\/(\d+)$/)) && m === 'GET') { const a = actions.get(+mt[1]); return a ? json(res, 200, { action: actionView(a) }) : json(res, 404, { id: 'not_found', message: 'Action not found' }) }

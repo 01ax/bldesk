@@ -219,7 +219,8 @@ test('a temporary pre-action backup survives disabling scheduled retention', asy
 
 for (const protection of ['locked', 'attached']) {
   test(`positive retention trimming deletes the oldest ${protection} image, not the new pre-action backup`, async () => {
-    const oldest = (await backups()).find((b) => b.backup_info.type === 'daily')
+    const before = await backups(), otherBefore = await backups(8101)
+    const oldest = before.find((b) => b.backup_info.type === 'daily')
     await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label: 'Second daily' }))
     if (protection === 'locked') await request(`/v2/images/${oldest.id}`, { locked: true }, 'PUT')
     else await completed(await request('/v2/servers/8100/actions', { type: 'attach_backup', image: oldest.id }))
@@ -229,13 +230,37 @@ for (const protection of ['locked', 'attached']) {
       type: 'resize', options: { daily_backups: 1 },
       pre_action_backup: { type: 'take_backup', backup_type: 'daily', replacement_strategy: 'none', label: 'Retained pre-action backup' }
     }))
-    const remaining = (await backups()).filter((b) => b.backup_info.type === 'daily')
+    const after = await backups(), remaining = after.filter((b) => b.backup_info.type === 'daily')
     assert.equal(remaining.length, 1)
     assert.equal(remaining[0].name, 'Retained pre-action backup')
     assert.notEqual(remaining[0].id, oldest.id)
     assert.equal((await server()).selected_size_options.daily_backups, 1)
+    assert.deepEqual(after.filter((b) => b.backup_info.type !== 'daily'), before.filter((b) => b.backup_info.type !== 'daily'))
+    assert.deepEqual(await backups(8101), otherBefore)
   })
 }
+
+test('a positive retention reduction above the held image count deletes nothing without a pre-action backup', async () => {
+  const before = await backups(), otherBefore = await backups(8101)
+  assert.equal(before.filter((b) => b.backup_info.type === 'daily').length, 1)
+  assert.equal((await server()).selected_size_options.daily_backups, 3)
+  await completed(await request('/v2/servers/8100/actions', { type: 'resize', options: { daily_backups: 2 } }))
+  assert.equal((await server()).selected_size_options.daily_backups, 2)
+  assert.deepEqual(await backups(), before)
+  assert.deepEqual(await backups(8101), otherBefore)
+})
+
+test('positive retention trimming without a pre-action backup keeps the newest image and leaves other images alone', async () => {
+  const before = await backups(), otherBefore = await backups(8101)
+  for (const label of ['Second daily', 'Newest daily']) await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label }))
+  const newest = (await backups()).find((b) => b.name === 'Newest daily')
+  await completed(await request('/v2/servers/8100/actions', { type: 'resize', options: { daily_backups: 1 } }))
+  const after = await backups()
+  assert.deepEqual(after.filter((b) => b.backup_info.type === 'daily'), [newest])
+  assert.equal((await server()).selected_size_options.daily_backups, 1)
+  assert.deepEqual(after.filter((b) => b.backup_info.type !== 'daily'), before.filter((b) => b.backup_info.type !== 'daily'))
+  assert.deepEqual(await backups(8101), otherBefore)
+})
 
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {
   for (const label of ['Free slot one', 'Free slot two']) {
@@ -301,6 +326,27 @@ test('locked and attached images cannot be replaced; oldest skips a locked candi
   assert.ok(!(await backups()).some((b) => b.name === 'Unlocked older'))
 })
 
+for (const outcome of ['completed', 'errored']) {
+  test(`a zero-delay ${outcome} action stays in progress until its callback settles`, async () => {
+    const before = await backups(9003)
+    await request('/__mock/config', { actionMs: 0, actionOutcome: outcome })
+    const queued = await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Zero delay' }, 9003)
+    assert.equal(queued.action.status, 'in-progress')
+    assert.equal(queued.action.completed_at, null)
+    assert.equal(queued.action.error_message, null)
+    assert.ok(Number.isFinite(queued.action.progress.percent_complete))
+    assert.ok(queued.action.progress.percent_complete < 100)
+    const settled = await completed(queued, outcome)
+    assert.ok(Date.parse(settled.completed_at) >= Date.parse(settled.started_at))
+    assert.equal(settled.progress.percent_complete, 100)
+    if (outcome === 'completed') assert.equal((await backups(9003))[0].name, 'Zero delay')
+    else {
+      assert.match(settled.error_message, /simulated action failed/)
+      assert.deepEqual(await backups(9003), before)
+    }
+  })
+}
+
 test('a simulated failed action leaves backup state unchanged', async () => {
   const before = await backups()
   await request('/__mock/config', { actionOutcome: 'errored' })
@@ -345,6 +391,7 @@ test('an action can stop and ask a question, and is answered at /proceed', async
   await sleep(60)
   const waiting = (await request(`/v2/actions/${action.id}`)).action
   assert.equal(waiting.status, 'in-progress')
+  assert.equal(waiting.completed_at, null)
   assert.equal(waiting.user_interaction_required.interaction_type, 'continue-after-ping-failure')
   // Other actions are not asked anything.
   const rename = await request('/v2/servers/8100/actions', { type: 'rename', name: 'x' }, 'POST')
