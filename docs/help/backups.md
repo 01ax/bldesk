@@ -21,7 +21,7 @@ For the daily, weekly and monthly slots, the number a slot keeps is the retentio
 
 The row “Replaced backup” gives the name, ID, slot and date of the backup that goes, and the row shows it changing to “New daily backup”. History records the entry as destructive. When BinaryLane picks the oldest backup, it skips locked and attached ones.
 
-BinaryLane's API reference does not say how many temporary backups a server can hold, so BLDesk cannot tell whether the temporary slot is full. If the server already has a temporary backup that is not locked or attached, the dialog is worded as a possibility, with the row “Replaced if no slot is free”:
+For temporary backups, the Take Backup dialog retains conditional wording because the public API reference does not specify their capacity. If the server already has a temporary backup that is not locked or attached, the dialog is worded as a possibility, with the row “Replaced if no slot is free”:
 
 “If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.”
 

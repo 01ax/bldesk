@@ -1,5 +1,32 @@
 # Help verification
 
+## Temporary backup availability and Change Plan (19 October 2026, issue #312)
+
+Branch: `codex/fix-temporary-backup-slots-312`, based on 1.0.62-beta.28. No new runtime dependency. Checked `docs/help/server-change-plan.md` against `ChangePlanPanel.tsx` and `freeBackupSlots` in `backupSlots.ts`; checked the temporary-warning paragraph in `docs/help/backups.md` against the unchanged `BackupManager.tsx` / `replacedByOldest` confirmation. That warning remains conditional; the helper no longer describes an occupied temporary slot as free.
+
+Live API checks on 19 October 2026, through the CLI, using one disposable Ubuntu 26.04 server with daily, weekly and monthly counts all 0 and offsite backups false:
+
+- `take_backup` with temporary / `none` completed and produced one available temporary image without enabling scheduled backups.
+- A second temporary / `none` request was refused: `there are no free temporary slots`. The existing image remained available.
+- Temporary / `oldest` completed, replacing the first image and leaving one temporary image.
+- A resize from 1 GB to 2 GB memory, with a temporary pre-action backup using `specified` and its existing backup ID, completed. Its completed steps included taking the backup, updating plan details, shutting down and starting the server. The memory was then 2 GB, with one new temporary image and scheduled/offsite settings unchanged.
+- A resize back to 1 GB with a temporary pre-action backup using `none` was refused with the same no-free-temporary-slot validation. Retrying with `specified` and the current test image completed; the server was active at its original 1 GB, with one temporary image, 20 GB disk and scheduled/offsite settings unchanged.
+
+These are API observations on that server, not claims that the public reference guarantees the temporary-slot count. The vendored reference documents `temporary`, `none`, `oldest` and `specified`, but does not state temporary capacity. No billing-ledger audit was performed. The live calls were made through the CLI, not BLDesk's UI. A resize with an initially empty temporary slot was checked in fixtures only.
+
+Desktop fixture checks used the built Electron app, an isolated profile and fictitious credentials:
+
+- On the no-scheduled-backups server, Change Plan offered its empty temporary slot. Cancel sent no resize; confirmation sent `pre_action_backup` with temporary / `none` and created one image.
+- Once occupied, the free-slot picker showed no free slot, kept the user's backup-first choice, and disabled submission. Explicitly selecting Replace an existing backup and its temporary image enabled submission and sent temporary / `specified` with that image's ID. The summary named the image. The mock retained exactly one temporary image.
+- A different server with an occupied temporary slot and spare scheduled capacity offered daily and weekly, not temporary; its fallback selected an actually free slot and did not display the temporary-only explanation.
+- Initial loading and injected failed reads did not offer a temporary slot as though the list were empty. Retry recovered the genuine empty-slot choice.
+- Take First Backup on the empty no-scheduled fixture and ordinary Take Backup with an occupied temporary slot both completed, retaining one temporary image. The latter kept its existing replacement warning. No daily-backup enable action was sent.
+- Actual Electron windows at 1024x680 and 1280x840, at 80%, 125% and 150% zoom through `webContents.sendInputEvent`: the occupied-slot notice fitted, the form's final button was reachable by scrolling, and the replacement confirmation's Cancel/Resize controls remained in view. Native `capturePage` screenshots were inspected at the small/high-zoom and large/low-zoom extremes. CSS viewport scaling was not used as a substitute for Electron zoom.
+
+Physical Android checks used a separate debug application ID and localhost mock in a throwaway copy, not production connection/security settings. On a tablet in landscape (1280x800 CSS viewport), touch confirmation sent the empty-slot resize using temporary / `none`, while Cancel sent no action. After that slot filled, another free-slot submission was disabled. Selecting the named image enabled a replacement resize and the native HTTP bridge sent temporary / `specified` with the chosen ID; one image remained. Both bodies validated against `openapi.json`. The dialog's Cancel/Resize controls were visible and a native device screenshot was inspected. The test app was uninstalled and both USB forwards removed afterwards. Portrait was not checked. Building with the host JDK required the process-only setting `-Djdk.net.unixdomain.tmpdir=C:\tmp` to avoid its local pipe error; no system setting or repository configuration changed for that workaround.
+
+Regression coverage: `scripts/test-backup-slots.mjs` failed five of seven cases before the helper fix and passes all seven after it. `scripts/gui-test/mock.test.mjs` covers the one-slot replacement requirement and backup-before-resize refusal; the mock previously allowed unlimited temporary images. `npm run typecheck`, `npm run build`, the mock suite and `npm run test:terminal` passed. One direct automation-launched Electron instance crashed locally; normal launches completed the desktop checks.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.

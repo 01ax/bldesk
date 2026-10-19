@@ -306,7 +306,12 @@ export const ChangePlanPanel: React.FC<{
    * so offering a permitted-but-full slot is a predictable 400 - which is why
    * this uses `freeBackupSlots` rather than `availableBackupSlots`.
    */
-  const backupSlots = useMemo(() => freeBackupSlots(current, existingBackups), [current, existingBackups])
+  const backupsLoaded = backupsQuery.data !== undefined
+  const backupSlots = useMemo(
+    () => (backupsLoaded ? freeBackupSlots(current, existingBackups) : []),
+    [backupsLoaded, current, existingBackups]
+  )
+  const chosenPreBackupSlot = backupSlots.includes(preBackupSlot) ? preBackupSlot : backupSlots[0]
 
   const ipOpts = selected?.options ?? server.size?.options
   /*
@@ -356,10 +361,6 @@ export const ChangePlanPanel: React.FC<{
       setter(value)
       if (value + others() === 0) setOffsiteBackups(false)
     }
-
-  useEffect(() => {
-    if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
-  }, [backupSlots, preBackupSlot])
 
   // A named backup that has since gone (or a list that arrived later) must not
   // stay selected, or the payload would reference an id the API will reject.
@@ -548,13 +549,13 @@ export const ChangePlanPanel: React.FC<{
     // The pre-action backup and the cost are consequences of the rows above, so
     // they only belong here once something else has changed.
     if (changed.length) {
-      if (preBackup === 'free' || (preBackup === 'specified' && replaceBackupId !== null)) {
+      if ((preBackup === 'free' && chosenPreBackupSlot) || (preBackup === 'specified' && replaceBackupId !== null)) {
         changed.push({
           label: 'Backup first',
           to:
             preBackup === 'specified'
               ? `replacing ${describeBackup(existingBackups.find((b) => b.id === replaceBackupId) ?? { id: 0 })}`
-              : `${preBackupSlot} slot`
+              : `${chosenPreBackupSlot} slot`
         })
       }
       if (oldCost && newCost) {
@@ -603,6 +604,7 @@ export const ChangePlanPanel: React.FC<{
     licencesReady &&
     !licenceError &&
     missingGroups.length === 0 &&
+    !(preBackup === 'free' && !chosenPreBackupSlot) &&
     // "Replace an existing backup" without saying which one would 400.
     !(preBackup === 'specified' && replaceBackupId === null)
 
@@ -1198,23 +1200,37 @@ export const ChangePlanPanel: React.FC<{
           <div>
             <label className={labelClass}>Backup slot</label>
             <select
-              value={preBackupSlot}
+              value={chosenPreBackupSlot ?? ''}
               onChange={(e) => setPreBackupSlot(e.target.value as typeof preBackupSlot)}
-              disabled={busy}
+              disabled={busy || !chosenPreBackupSlot}
               className={selectClass}
             >
+              {!chosenPreBackupSlot && <option value="">No free slot available</option>}
               {backupSlots.map((slot: BackupSlot) => (
                 <option key={slot} value={slot}>
                   {BACKUP_SLOT_LABELS[slot]}
                 </option>
               ))}
             </select>
-            {backupSlots.length === 1 && (
+            {!backupsLoaded ? (
+              <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400" role="status">
+                {backupsQuery.isError ? 'Could not load backups. Retry to check for a free slot.' : 'Loading backups...'}
+                {backupsQuery.isError && (
+                  <button type="button" className="ml-1 underline" onClick={() => void backupsQuery.refetch()}>
+                    Retry
+                  </button>
+                )}
+              </p>
+            ) : backupSlots.length === 0 ? (
+              <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400" role="status">
+                No backup slots are free. Choose Replace an existing backup and select which backup to replace.
+              </p>
+            ) : backupSlots.length === 1 && backupSlots[0] === 'temporary' ? (
               <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
                 Only a temporary slot is free. Scheduled slots are either not kept by this server or already full -
                 replace a named backup instead.
               </p>
-            )}
+            ) : null}
           </div>
         )}
       </div>
@@ -1307,6 +1323,7 @@ export const ChangePlanPanel: React.FC<{
           disabled={busy || !canApply}
           onClick={() =>
             selected &&
+            canApply &&
             onApply(
               {
                 type: 'resize',
@@ -1341,11 +1358,11 @@ export const ChangePlanPanel: React.FC<{
                  * validates that the named backup is of the given type, so the
                  * type is read back off the chosen backup.
                  */
-                ...(preBackup === 'free'
+                ...(preBackup === 'free' && chosenPreBackupSlot
                   ? {
                       pre_action_backup: {
                         type: 'take_backup',
-                        backup_type: preBackupSlot,
+                        backup_type: chosenPreBackupSlot,
                         replacement_strategy: 'none'
                       }
                     }

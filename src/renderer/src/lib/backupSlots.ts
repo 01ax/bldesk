@@ -47,7 +47,7 @@ export interface ExistingBackup {
  * `specified` against a named backup instead, which makes the deletion explicit
  * rather than implied by "oldest".
  *
- * Temporary is on-demand and has no retention setting, so it is always free.
+ * The single temporary slot is free only when no temporary backup is held.
  */
 export function freeBackupSlots(
   options:
@@ -57,7 +57,7 @@ export function freeBackupSlots(
   existing: ExistingBackup[]
 ): BackupSlot[] {
   const held = (t: string): number => existing.filter((b) => b.backup_info?.type === t).length
-  const out: BackupSlot[] = ['temporary']
+  const out: BackupSlot[] = held('temporary') === 0 ? ['temporary'] : []
   if ((options?.daily_backups ?? 0) - held('daily') > 0) out.push('daily')
   if ((options?.weekly_backups ?? 0) - held('weekly') > 0) out.push('weekly')
   if ((options?.monthly_backups ?? 0) - held('monthly') > 0) out.push('monthly')

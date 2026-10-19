@@ -24,7 +24,7 @@
     "test:ssh-key-names": "node --experimental-strip-types --no-warnings --test scripts/test-ssh-key-names.mjs",
     "test:deeplink": "node --experimental-strip-types --no-warnings --test scripts/test-deeplink.mjs",
     "test:server-tags": "node --experimental-strip-types --no-warnings --test scripts/test-server-tags.mjs",
-    "test:backup-schedule": "node --experimental-strip-types --no-warnings --test scripts/test-backup-schedule.mjs",
+    "test:backup-schedule": "node --experimental-strip-types --no-warnings --test scripts/test-backup-schedule.mjs scripts/test-backup-slots.mjs",
     "test:create-hostname": "node --experimental-strip-types --no-warnings --test scripts/test-create-hostname.mjs",
     "test:terminal-launchers": "node --experimental-strip-types --no-warnings --test scripts/test-terminal-launchers.mjs",
     "test:notices": "node --experimental-strip-types --no-warnings --test scripts/test-notices.mjs",

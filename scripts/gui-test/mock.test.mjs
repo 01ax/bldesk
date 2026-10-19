@@ -129,6 +129,44 @@ test('a newly created server starts empty and its requested retention controls s
   assert.equal(list[0].min_disk_size, 60)
 })
 
+test('a temporary slot with no scheduled backups needs a replacement strategy once occupied', async () => {
+  const options = (await server(9003)).selected_size_options
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'First' }, 9003))
+  const first = await backups(9003)
+  await take({ backup_type: 'temporary', replacement_strategy: 'none' }, 9003, 400)
+  assert.deepEqual(await backups(9003), first)
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'Oldest replacement' }, 9003))
+  const second = await backups(9003)
+  assert.equal(second.length, 1)
+  assert.notEqual(second[0].id, first[0].id)
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'specified', backup_id_to_replace: second[0].id, label: 'Named replacement' }, 9003))
+  const third = await backups(9003)
+  assert.equal(third.length, 1)
+  assert.equal(third[0].name, 'Named replacement')
+  assert.notEqual(third[0].id, second[0].id)
+  assert.deepEqual((await server(9003)).selected_size_options, options)
+})
+
+test('resize backs up into an empty temporary slot, then requires explicit replacement', async () => {
+  const before = await server(9003)
+  const resize = (memory, pre_action_backup, status = 200) => request('/v2/servers/9003/actions', {
+    type: 'resize', options: { memory }, pre_action_backup: { type: 'take_backup', backup_type: 'temporary', ...pre_action_backup }
+  }, 'POST', status)
+  await completed(await resize(before.memory + 1024, { replacement_strategy: 'none' }))
+  const first = await backups(9003)
+  assert.equal(first.length, 1)
+  assert.equal((await server(9003)).memory, before.memory + 1024)
+  await resize(before.memory, { replacement_strategy: 'none' }, 400)
+  assert.equal((await server(9003)).memory, before.memory + 1024)
+  assert.deepEqual(await backups(9003), first)
+  await completed(await resize(before.memory, { replacement_strategy: 'specified', backup_id_to_replace: first[0].id }))
+  assert.equal((await server(9003)).memory, before.memory)
+  const replaced = await backups(9003)
+  assert.equal(replaced.length, 1)
+  assert.notEqual(replaced[0].id, first[0].id)
+  assert.deepEqual((await server(9003)).selected_size_options, before.selected_size_options)
+})
+
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {
   for (const label of ['Free slot one', 'Free slot two']) {
     await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label }))
@@ -196,16 +234,16 @@ test('locked and attached images cannot be replaced; oldest skips a locked candi
 test('a simulated failed action leaves backup state unchanged', async () => {
   const before = await backups()
   await request('/__mock/config', { actionOutcome: 'errored' })
-  const { action } = await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Failed' })
+  const { action } = await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'Failed' })
   await sleep(40)
   assert.equal((await request(`/v2/actions/${action.id}`)).action.status, 'errored')
   assert.deepEqual(await backups(), before)
 })
 
 test('reset clears new backups and an old pending action cannot leak into the reset fleet', async () => {
-  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Added' }))
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'Added' }))
   await request('/__mock/config', { actionMs: 75 })
-  await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Pending before reset' })
+  await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'Pending before reset' })
   await request('/__mock/reset', {})
   await sleep(100)
   assert.equal((await backups()).length, 4)
