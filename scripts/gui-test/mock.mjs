@@ -276,7 +276,11 @@ function applyAction(a, server) {
       const key = `${type}_backups`
       if (b.options?.[key] != null) {
         server.selected_size_options[key] = b.options[key]
-        if (b.options[key] === 0) setBackups(server, backupsFor(server).filter((image) => image.backup_info.type !== type))
+        const held = backupsFor(server).filter((image) => image.backup_info.type === type)
+          .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id)
+        // Retention trimming, unlike slot replacement, does not protect locked or attached images.
+        const removed = new Set(held.slice(0, Math.max(0, held.length - b.options[key])).map((image) => image.id))
+        setBackups(server, backupsFor(server).filter((image) => !removed.has(image.id)))
       }
     }
     if (b.options?.offsite_backups != null) server.selected_size_options.offsite_backups = b.options.offsite_backups

@@ -217,6 +217,26 @@ test('a temporary pre-action backup survives disabling scheduled retention', asy
   assert.equal((await server()).memory, before.memory)
 })
 
+for (const protection of ['locked', 'attached']) {
+  test(`positive retention trimming deletes the oldest ${protection} image, not the new pre-action backup`, async () => {
+    const oldest = (await backups()).find((b) => b.backup_info.type === 'daily')
+    await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label: 'Second daily' }))
+    if (protection === 'locked') await request(`/v2/images/${oldest.id}`, { locked: true }, 'PUT')
+    else await completed(await request('/v2/servers/8100/actions', { type: 'attach_backup', image: oldest.id }))
+    const replace = { backup_type: 'daily', replacement_strategy: 'specified', backup_id_to_replace: oldest.id }
+    await take(replace, 8100, 400)
+    await completed(await request('/v2/servers/8100/actions', {
+      type: 'resize', options: { daily_backups: 1 },
+      pre_action_backup: { type: 'take_backup', backup_type: 'daily', replacement_strategy: 'none', label: 'Retained pre-action backup' }
+    }))
+    const remaining = (await backups()).filter((b) => b.backup_info.type === 'daily')
+    assert.equal(remaining.length, 1)
+    assert.equal(remaining[0].name, 'Retained pre-action backup')
+    assert.notEqual(remaining[0].id, oldest.id)
+    assert.equal((await server()).selected_size_options.daily_backups, 1)
+  })
+}
+
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {
   for (const label of ['Free slot one', 'Free slot two']) {
     await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label }))

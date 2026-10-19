@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { availableBackupSlots, freeBackupSlots, preActionBackupChoices } from '../src/renderer/src/lib/backupSlots.ts'
+import { availableBackupSlots, freeBackupSlots, preActionBackupChoices, reducedBackupSlots } from '../src/renderer/src/lib/backupSlots.ts'
 
 const none = { daily_backups: 0, weekly_backups: 0, monthly_backups: 0 }
 const image = (id, type) => ({ id, backup_info: { type } })
@@ -79,4 +79,21 @@ test('retained scheduled slots remain available independently of a disabled slot
   assert.deepEqual(preActionBackupChoices(current, pending, existing), {
     freeSlots: ['weekly', 'monthly'], replacementBackups: [existing[0], existing[2]], removedSlots: ['daily']
   })
+})
+
+test('every scheduled retention reduction is identified, including positive limits', () => {
+  const current = { daily_backups: 3, weekly_backups: 2, monthly_backups: 1 }
+  assert.deepEqual(reducedBackupSlots(current, { daily_backups: 1, weekly_backups: 1, monthly_backups: 0 }), ['daily', 'weekly', 'monthly'])
+  assert.deepEqual(reducedBackupSlots(current, current), [])
+  assert.deepEqual(reducedBackupSlots(none, current), [])
+})
+
+test('a positive retention reduction still permits a pre-action backup in current free capacity', () => {
+  const current = { daily_backups: 3, weekly_backups: 0, monthly_backups: 0 }
+  const pending = { ...current, daily_backups: 1 }
+  const existing = [image(1, 'temporary'), image(2, 'daily')]
+  assert.deepEqual(preActionBackupChoices(current, pending, existing), {
+    freeSlots: ['daily'], replacementBackups: existing, removedSlots: []
+  })
+  assert.deepEqual(reducedBackupSlots(current, pending), ['daily'])
 })

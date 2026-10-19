@@ -82,6 +82,13 @@ export function preActionBackupChoices(
   }
 }
 
+/** Scheduled types whose configured retention is being reduced. */
+export function reducedBackupSlots(current: BackupRetention, pending: BackupRetention): BackupSlot[] {
+  return (['daily', 'weekly', 'monthly'] as const).filter(
+    (slot) => (pending?.[`${slot}_backups`] ?? 0) < (current?.[`${slot}_backups`] ?? 0)
+  )
+}
+
 /**
  * The backup `replacement_strategy: 'oldest'` replaces when a backup is taken
  * into `slot`, or null when nothing is replaced. The reference: "Use any free

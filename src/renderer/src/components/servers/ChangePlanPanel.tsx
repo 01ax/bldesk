@@ -14,6 +14,7 @@ import {
 import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
 import {
   preActionBackupChoices,
+  reducedBackupSlots,
   describeBackup,
   BACKUP_SLOT_LABELS,
   type BackupSlot
@@ -620,9 +621,10 @@ export const ChangePlanPanel: React.FC<{
    * may be reassigned, and anything pointing at it breaks. Reinstalling is the
    * worse one this change adds, because it destroys the disks outright.
    */
-  // The API reference says that reducing weekly backups to 0 removes all of them, which "4 → 0" in the table does not.
-  const weeklyRemoved = weeklyBackups === 0 && ((current.weekly_backups as number) ?? 0) > 0
-  const WEEKLY_REMOVED_NOTE = "Setting weekly backups to 0 removes all of this server's weekly backups. They will no longer be available."
+  const retentionReduced = reducedBackupSlots(current, {
+    daily_backups: dailyBackups, weekly_backups: weeklyBackups, monthly_backups: monthlyBackups
+  }).length > 0
+  const RETENTION_REDUCED_NOTE = 'Reducing scheduled backup retention deletes the oldest backups above the new limits. Setting a count to 0 removes all backups of that type. Locked or attached backups can be deleted too.'
   const confirmExtra =
     reinstalling || ipsToRemove.length
       ? {
@@ -644,14 +646,14 @@ export const ChangePlanPanel: React.FC<{
                     `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
                   ]
                 : []),
-            ...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []),
+            ...(retentionReduced ? [RETENTION_REDUCED_NOTE] : []),
             ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])
           ]
         }
-      : storageChanging || weeklyRemoved
+      : storageChanging || retentionReduced
         ? {
-            ...(weeklyRemoved ? { severity: 'destructive' as const } : {}),
-            notes: [...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []), ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])]
+            ...(retentionReduced ? { severity: 'destructive' as const } : {}),
+            notes: [...(retentionReduced ? [RETENTION_REDUCED_NOTE] : []), ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])]
           }
         : undefined
 
@@ -1245,8 +1247,8 @@ export const ChangePlanPanel: React.FC<{
         )}
         {preBackup !== 'off' && backupChoices.removedSlots.length > 0 && (
           <p className="sm:col-span-2 text-[11px] text-amber-700 dark:text-amber-400" role="status">
-            Scheduled slots being disabled are not offered for Backup first: this plan change would delete the new backup too.
-            Keep retention for that slot, use a temporary backup, or take a separate backup before changing plans.
+            Scheduled slots being disabled are not offered under Backup will: this plan change would delete the new backup too.
+            Keep retention for that slot, use a temporary backup, or download a backup and retain a separate copy before changing plans.
           </p>
         )}
       </div>

@@ -4,6 +4,8 @@
 
 Branch: `codex/fix-temporary-backup-slots-312`, based on 1.0.62-beta.28. No new runtime dependency. Checked `docs/help/server-change-plan.md` against `ChangePlanPanel.tsx` and `freeBackupSlots` in `backupSlots.ts`; checked the temporary-warning paragraph in `docs/help/backups.md` against the unchanged `BackupManager.tsx` / `replacedByOldest` confirmation. That warning remains conditional; the helper no longer describes an occupied temporary slot as free.
 
+### Initial verification (13f26f0)
+
 Live API checks on 19 October 2026, through the CLI, using one disposable Ubuntu 26.04 server with daily, weekly and monthly counts all 0 and offsite backups false:
 
 - `take_backup` with temporary / `none` completed and produced one available temporary image without enabling scheduled backups.
@@ -27,7 +29,7 @@ Physical Android checks used a separate debug application ID and localhost mock 
 
 Regression coverage: `scripts/test-backup-slots.mjs` failed five of seven cases before the helper fix and passes all seven after it. `scripts/gui-test/mock.test.mjs` covers the one-slot replacement requirement and backup-before-resize refusal; the mock previously allowed unlimited temporary images. `npm run typecheck`, `npm run build`, the mock suite and `npm run test:terminal` passed. One direct automation-launched Electron instance crashed locally; normal launches completed the desktop checks.
 
-### Review follow-up: retention changes and loading states
+### Review follow-up: retention changes and loading states (592535e)
 
 Checked `docs/help/server-change-plan.md` against `preActionBackupChoices` in `backupSlots.ts` and Change Plan's picker, summary, submission guard and typed request body. A scheduled slot being disabled by the same change is excluded from both free-slot choices and named replacements. An already selected replacement is cleared if its retention becomes zero; backup-first intent remains selected and submission stays blocked until a usable choice is made. New scheduled capacity cannot be used before the resize. Temporary remains independent of scheduled retention. The loading and failed-first-read placeholders now distinguish an unknown list from a known full one.
 
@@ -36,6 +38,20 @@ The helper suite now passes 13 cases, including daily/weekly/monthly retention z
 The built Electron app was checked again with an isolated profile and fictitious data. Each scheduled type was selected for replacement and then disabled; its selection cleared, it disappeared from the picker, and submission was blocked. Disabling all schedules with the temporary slot occupied blocked the free choice, while explicitly replacing the temporary image remained usable. Six confirmations were cancelled without sending a resize. One confirmed request contained only the retained temporary replacement, with all scheduled counts zero; its body passed the public schema check. Injected first-read failures showed the failed-read placeholder, and Retry restored actual choices. No renderer page exceptions occurred; injected HTTP errors were expected.
 
 Native Electron windows at 1024x680 and 1280x840 were checked at 80%, 125% and 150% through `webContents.sendInputEvent`; the actual zoom factor was verified. The retention warning fitted, the form's final button was reachable, and both confirmation buttons stayed visible. Native screenshots were inspected. The isolated app and mock were stopped. `npm run typecheck` (including all guards and the helper tests), `npm run build`, the helper suite and the mock suite passed. The updater's Bash checks required Git Bash on the process PATH; no machine or repository setting was changed. The follow-up was not rerun on physical Android, and no new live guest change was made.
+
+### Final retention clarification and device checks
+
+Source boundary: the vendored Resize reference says the pre-action backup precedes other actions and explicitly describes weekly retention zero removing all weekly backups. BinaryLane confirmed on 19 October 2026 that a scheduled pre-action image is also removed when that same change sets its retention to zero; the API does not prevent the combination. This includes daily and monthly, which the reference does not explicitly describe. BinaryLane also confirmed that reductions to a positive limit trim the oldest images of that type until the new count is met, without protecting locked or attached images. Slot replacement skips those images; retention trimming does not. These are product confirmations, not additional live tests or conclusions inferred from fixtures.
+
+Checked the revised `docs/help/server-change-plan.md` against `reducedBackupSlots`, the retention-reduction confirmation in `ChangePlanPanel.tsx`, and the shared confirmation's destructive severity. Every scheduled-count reduction now warns that the oldest images above the new limits are deleted, including locked or attached images; zero removes all images of that type. The pre-action choices still allow a positive retained count when current capacity is free. The in-form note names Backup will and recommends retaining a downloaded copy rather than ambiguously taking another scheduled backup.
+
+Fifteen helper cases and 26 mock cases pass. The added helper cases identify reductions in all three schedules and retain the positive-count pre-action path. Two mock cases protect the oldest daily image by locking or attaching it: slot replacement is refused, but a subsequent reduction to one deletes that old image and retains the newer pre-action image. The mock now trims by age at positive counts too. This encodes the confirmed rule, not an independent live test; cleanup of guest attachments and other derived metadata is not simulated.
+
+The final built Electron app passed the six native window/zoom cases again at 1024x680 and 1280x840, each at 80%, 125% and 150%. The longer warning fitted and the confirmation controls remained visible. A positive-count reduction kept the daily pre-action choice and displayed the destructive retention warning. Seven confirmations were cancelled without a resize; one confirmed temporary replacement with all scheduled counts zero was received by the fake API and passed schema validation. Initial failed-read placeholders and Retry were checked again.
+
+The final code was also rerun on a physical Android tablet shown wide enough for the desktop layout. An isolated QA application, fictitious token, local-only API override and USB mappings were used; the normal app's installation and profiles were not changed. Native taps cancelled a positive reduction without a request, then confirmed daily/none with retention reduced to one; one newest daily image remained in the fake API. Disabling a selected named schedule cleared the selection and blocked submission, while explicitly choosing temporary/specified allowed all scheduled counts to become zero and kept one temporary image. Native Retry recovered from injected backup-read errors. Both actual request bodies received through the native HTTP bridge passed schema validation. Native screenshots were inspected and both confirmation buttons were visible. No renderer exceptions occurred. Portrait was not checked.
+
+The QA app was uninstalled, its two USB mappings removed, and both final fixture servers and the Electron instance were stopped. `npm run typecheck` with all guards, `npm run build`, the 15-case helper suite, the 26-case mock suite and the offline QA APK build passed. All added device checks used synthetic fixtures; no additional live guest, backup-retention or billing change was made.
 
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
