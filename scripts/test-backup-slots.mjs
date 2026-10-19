@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { availableBackupSlots, freeBackupSlots } from '../src/renderer/src/lib/backupSlots.ts'
+import { availableBackupSlots, freeBackupSlots, preActionBackupChoices } from '../src/renderer/src/lib/backupSlots.ts'
 
 const none = { daily_backups: 0, weekly_backups: 0, monthly_backups: 0 }
 const image = (id, type) => ({ id, backup_info: { type } })
@@ -45,4 +45,38 @@ test('backups beyond retention do not produce a free slot or alter the input', (
   const existing = Object.freeze([Object.freeze(image(1, 'daily')), Object.freeze(image(2, 'daily')), Object.freeze(image(3, 'temporary'))])
   assert.deepEqual(freeBackupSlots(options, existing), [])
   assert.deepEqual(existing.map((b) => b.id), [1, 2, 3])
+})
+
+for (const slot of ['daily', 'weekly', 'monthly']) {
+  test(`disabling ${slot} excludes both its free capacity and named backups from Backup first`, () => {
+    const current = { ...none, [`${slot}_backups`]: 2 }
+    const existing = [image(1, 'temporary'), image(2, slot)]
+    assert.deepEqual(freeBackupSlots(current, existing), [slot])
+    assert.deepEqual(preActionBackupChoices(current, none, existing), {
+      freeSlots: [], replacementBackups: [existing[0]], removedSlots: [slot]
+    })
+  })
+}
+
+test('empty temporary capacity survives disabling every scheduled slot', () => {
+  const current = { daily_backups: 2, weekly_backups: 2, monthly_backups: 2 }
+  const existing = ['daily', 'weekly', 'monthly'].map((slot, i) => image(i + 1, slot))
+  assert.deepEqual(preActionBackupChoices(current, none, existing), {
+    freeSlots: ['temporary'], replacementBackups: [], removedSlots: ['daily', 'weekly', 'monthly']
+  })
+})
+
+test('newly purchased scheduled slots cannot be used before the change', () => {
+  assert.deepEqual(preActionBackupChoices(none, { daily_backups: 2 }, [image(1, 'temporary')]), {
+    freeSlots: [], replacementBackups: [image(1, 'temporary')], removedSlots: []
+  })
+})
+
+test('retained scheduled slots remain available independently of a disabled slot', () => {
+  const current = { daily_backups: 2, weekly_backups: 2, monthly_backups: 2 }
+  const pending = { daily_backups: 0, weekly_backups: 1, monthly_backups: 2 }
+  const existing = [image(1, 'temporary'), image(2, 'daily'), image(3, 'monthly')]
+  assert.deepEqual(preActionBackupChoices(current, pending, existing), {
+    freeSlots: ['weekly', 'monthly'], replacementBackups: [existing[0], existing[2]], removedSlots: ['daily']
+  })
 })

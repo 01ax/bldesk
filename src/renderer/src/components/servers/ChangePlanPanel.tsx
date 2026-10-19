@@ -13,7 +13,7 @@ import {
 } from '../../api/queries'
 import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
 import {
-  freeBackupSlots,
+  preActionBackupChoices,
   describeBackup,
   BACKUP_SLOT_LABELS,
   type BackupSlot
@@ -295,8 +295,8 @@ export const ChangePlanPanel: React.FC<{
 
   /*
    * Which slots a pre-action backup can use: the server's *current* retention,
-   * not what this form is about to set, because the backup is taken before the
-   * new options apply. See `availableBackupSlots`.
+   * because the backup is taken before the new options apply. Scheduled slots
+   * being disabled must also be excluded: the change deletes that new backup.
    */
   const backupsQuery = useServerBackups(client, server.id)
   const existingBackups = useMemo(() => (backupsQuery.data ?? []) as any[], [backupsQuery.data])
@@ -304,14 +304,19 @@ export const ChangePlanPanel: React.FC<{
    * Retention says how many backups of a type may be kept; a free slot is one
    * of those actually unused. `replacement_strategy: 'none'` needs a free one,
    * so offering a permitted-but-full slot is a predictable 400 - which is why
-   * this uses `freeBackupSlots` rather than `availableBackupSlots`.
+   * this checks occupancy as well as current and pending retention.
    */
   const backupsLoaded = backupsQuery.data !== undefined
-  const backupSlots = useMemo(
-    () => (backupsLoaded ? freeBackupSlots(current, existingBackups) : []),
-    [backupsLoaded, current, existingBackups]
+  const backupChoices = useMemo(
+    () => preActionBackupChoices(current, {
+      daily_backups: dailyBackups, weekly_backups: weeklyBackups, monthly_backups: monthlyBackups
+    }, existingBackups),
+    [current, dailyBackups, weeklyBackups, monthlyBackups, existingBackups]
   )
+  const backupSlots = backupsLoaded ? backupChoices.freeSlots : []
+  const replacementBackups = backupsLoaded ? backupChoices.replacementBackups : []
   const chosenPreBackupSlot = backupSlots.includes(preBackupSlot) ? preBackupSlot : backupSlots[0]
+  const chosenReplacementBackup = replacementBackups.find((b) => b.id === replaceBackupId)
 
   const ipOpts = selected?.options ?? server.size?.options
   /*
@@ -362,13 +367,12 @@ export const ChangePlanPanel: React.FC<{
       if (value + others() === 0) setOffsiteBackups(false)
     }
 
-  // A named backup that has since gone (or a list that arrived later) must not
-  // stay selected, or the payload would reference an id the API will reject.
+  // A missing image or a scheduled slot being disabled cannot remain selected.
   useEffect(() => {
-    if (replaceBackupId !== null && !existingBackups.some((b) => b.id === replaceBackupId)) {
+    if (replaceBackupId !== null && !chosenReplacementBackup) {
       setReplaceBackupId(null)
     }
-  }, [existingBackups, replaceBackupId])
+  }, [chosenReplacementBackup, replaceBackupId])
 
   /*
    * What memory and storage start at for a plan: the server's own figures on its
@@ -549,12 +553,12 @@ export const ChangePlanPanel: React.FC<{
     // The pre-action backup and the cost are consequences of the rows above, so
     // they only belong here once something else has changed.
     if (changed.length) {
-      if ((preBackup === 'free' && chosenPreBackupSlot) || (preBackup === 'specified' && replaceBackupId !== null)) {
+      if ((preBackup === 'free' && chosenPreBackupSlot) || (preBackup === 'specified' && chosenReplacementBackup)) {
         changed.push({
           label: 'Backup first',
           to:
-            preBackup === 'specified'
-              ? `replacing ${describeBackup(existingBackups.find((b) => b.id === replaceBackupId) ?? { id: 0 })}`
+            preBackup === 'specified' && chosenReplacementBackup
+              ? `replacing ${describeBackup(chosenReplacementBackup)}`
               : `${chosenPreBackupSlot} slot`
         })
       }
@@ -605,8 +609,8 @@ export const ChangePlanPanel: React.FC<{
     !licenceError &&
     missingGroups.length === 0 &&
     !(preBackup === 'free' && !chosenPreBackupSlot) &&
-    // "Replace an existing backup" without saying which one would 400.
-    !(preBackup === 'specified' && replaceBackupId === null)
+    // A named replacement must still exist and survive the retention change.
+    !(preBackup === 'specified' && !chosenReplacementBackup)
 
   /*
    * Two shapes of resize are not undoable, so both confirm like a rebuild -
@@ -1179,13 +1183,13 @@ export const ChangePlanPanel: React.FC<{
           <div>
             <label className={labelClass}>Backup to replace</label>
             <select
-              value={replaceBackupId ?? ''}
+              value={chosenReplacementBackup?.id ?? ''}
               onChange={(e) => setReplaceBackupId(e.target.value ? Number(e.target.value) : null)}
               disabled={busy}
               className={selectClass}
             >
               <option value="">Choose a backup...</option>
-              {existingBackups.map((b) => (
+              {replacementBackups.map((b) => (
                 <option key={b.id} value={b.id}>
                   {describeBackup(b)}
                 </option>
@@ -1205,7 +1209,13 @@ export const ChangePlanPanel: React.FC<{
               disabled={busy || !chosenPreBackupSlot}
               className={selectClass}
             >
-              {!chosenPreBackupSlot && <option value="">No free slot available</option>}
+              {!chosenPreBackupSlot && (
+                <option value="">
+                  {!backupsLoaded
+                    ? backupsQuery.isError ? 'Could not check backup slots' : 'Loading backups...'
+                    : 'No free slot available'}
+                </option>
+              )}
               {backupSlots.map((slot: BackupSlot) => (
                 <option key={slot} value={slot}>
                   {BACKUP_SLOT_LABELS[slot]}
@@ -1223,15 +1233,21 @@ export const ChangePlanPanel: React.FC<{
               </p>
             ) : backupSlots.length === 0 ? (
               <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400" role="status">
-                No backup slots are free. Choose Replace an existing backup and select which backup to replace.
+                No usable backup slots are free. Choose Replace an existing backup and select which backup to replace.
               </p>
             ) : backupSlots.length === 1 && backupSlots[0] === 'temporary' ? (
               <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
-                Only a temporary slot is free. Scheduled slots are either not kept by this server or already full -
-                replace a named backup instead.
+                Only a temporary slot can keep this backup. Scheduled slots must have free capacity now and remain
+                enabled after the change.
               </p>
             ) : null}
           </div>
+        )}
+        {preBackup !== 'off' && backupChoices.removedSlots.length > 0 && (
+          <p className="sm:col-span-2 text-[11px] text-amber-700 dark:text-amber-400" role="status">
+            Scheduled slots being disabled are not offered for Backup first: this plan change would delete the new backup too.
+            Keep retention for that slot, use a temporary backup, or take a separate backup before changing plans.
+          </p>
         )}
       </div>
 
@@ -1366,13 +1382,13 @@ export const ChangePlanPanel: React.FC<{
                         replacement_strategy: 'none'
                       }
                     }
-                  : preBackup === 'specified' && replaceBackupId !== null
+                  : preBackup === 'specified' && chosenReplacementBackup
                     ? {
                         pre_action_backup: {
                           type: 'take_backup',
-                          backup_type: existingBackups.find((b) => b.id === replaceBackupId)?.backup_info?.type,
+                          backup_type: chosenReplacementBackup.backup_info.type,
                           replacement_strategy: 'specified',
-                          backup_id_to_replace: replaceBackupId
+                          backup_id_to_replace: chosenReplacementBackup.id
                         }
                       }
                     : {})

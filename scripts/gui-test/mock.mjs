@@ -272,6 +272,14 @@ function applyAction(a, server) {
       if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
       setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.pre_action_backup.label || 'Pre-action backup')])
     }
+    for (const type of ['daily', 'weekly', 'monthly']) {
+      const key = `${type}_backups`
+      if (b.options?.[key] != null) {
+        server.selected_size_options[key] = b.options[key]
+        if (b.options[key] === 0) setBackups(server, backupsFor(server).filter((image) => image.backup_info.type !== type))
+      }
+    }
+    if (b.options?.offsite_backups != null) server.selected_size_options.offsite_backups = b.options.offsite_backups
     if (b.size) { server.size_slug = b.size; server.size = sizeBySlug(b.size); server.vcpus = server.size.vcpus; server.memory = server.size.memory; server.disk = server.size.disk }
     if (b.options?.memory) server.memory = b.options.memory
     if (b.options?.disk) server.disk = b.options.disk

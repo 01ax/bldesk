@@ -1,5 +1,10 @@
 export type BackupSlot = 'temporary' | 'daily' | 'weekly' | 'monthly'
 
+type BackupRetention =
+  | { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null }
+  | null
+  | undefined
+
 /**
  * The backup slots a server can take a backup into right now.
  *
@@ -12,9 +17,7 @@ export type BackupSlot = 'temporary' | 'daily' | 'weekly' | 'monthly'
  * Shared by the Backup Manager's slot picker and Change Plan's pre-action
  * backup so the two cannot disagree about what the server can hold.
  */
-export function availableBackupSlots(
-  options: { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null } | null | undefined
-): BackupSlot[] {
+export function availableBackupSlots(options: BackupRetention): BackupSlot[] {
   const out: BackupSlot[] = ['temporary']
   if ((options?.daily_backups ?? 0) > 0) out.push('daily')
   if ((options?.weekly_backups ?? 0) > 0) out.push('weekly')
@@ -36,6 +39,8 @@ export interface ExistingBackup {
   backup_info?: { type?: string | null; locked?: boolean | null } | null
 }
 
+type SlottedBackup = ExistingBackup & { backup_info: { type: BackupSlot } }
+
 /**
  * The slots that are not just permitted but actually *empty*.
  *
@@ -50,10 +55,7 @@ export interface ExistingBackup {
  * The single temporary slot is free only when no temporary backup is held.
  */
 export function freeBackupSlots(
-  options:
-    | { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null }
-    | null
-    | undefined,
+  options: BackupRetention,
   existing: ExistingBackup[]
 ): BackupSlot[] {
   const held = (t: string): number => existing.filter((b) => b.backup_info?.type === t).length
@@ -62,6 +64,22 @@ export function freeBackupSlots(
   if ((options?.weekly_backups ?? 0) - held('weekly') > 0) out.push('weekly')
   if ((options?.monthly_backups ?? 0) - held('monthly') > 0) out.push('monthly')
   return out
+}
+
+/** A pre-action backup needs capacity now and retention after the change. */
+export function preActionBackupChoices(
+  current: BackupRetention,
+  pending: BackupRetention,
+  existing: ExistingBackup[]
+): { freeSlots: BackupSlot[]; replacementBackups: SlottedBackup[]; removedSlots: BackupSlot[] } {
+  const retained = availableBackupSlots(pending)
+  return {
+    freeSlots: freeBackupSlots(current, existing).filter((slot) => retained.includes(slot)),
+    replacementBackups: existing.filter(
+      (backup): backup is SlottedBackup => retained.some((slot) => slot === backup.backup_info?.type)
+    ),
+    removedSlots: availableBackupSlots(current).filter((slot) => !retained.includes(slot))
+  }
 }
 
 /**
@@ -77,7 +95,7 @@ export function freeBackupSlots(
  */
 export function replacedByOldest(
   slot: BackupSlot,
-  options: { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null } | null | undefined,
+  options: BackupRetention,
   existing: ExistingBackup[],
   attachedId?: number | null
 ): { backup: ExistingBackup; certain: boolean } | null {

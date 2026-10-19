@@ -46,11 +46,11 @@ async function request(path, body, method = body === undefined ? 'GET' : 'POST',
 const backups = async (id = 8100) => (await request(`/v2/servers/${id}/backups?per_page=100`)).backups
 const server = async (id = 8100) => (await request(`/v2/servers/${id}`)).server
 const take = (body, id = 8100, status = 200) => request(`/v2/servers/${id}/actions`, { type: 'take_backup', ...body }, 'POST', status)
-async function completed(response) {
+async function completed(response, expected = 'completed') {
   const deadline = Date.now() + 3000
   while (Date.now() < deadline) {
     const { action } = await request(`/v2/actions/${response.action.id}`)
-    if (action.status !== 'in-progress') { assert.equal(action.status, 'completed', action.error_message); return action }
+    if (action.status !== 'in-progress') { assert.equal(action.status, expected, action.error_message); return action }
     await sleep(10)
   }
   assert.fail('Mock action did not finish')
@@ -165,6 +165,56 @@ test('resize backs up into an empty temporary slot, then requires explicit repla
   assert.equal(replaced.length, 1)
   assert.notEqual(replaced[0].id, first[0].id)
   assert.deepEqual((await server(9003)).selected_size_options, before.selected_size_options)
+})
+
+test('a slot filled after resize validation refuses the pre-action backup before applying options', async () => {
+  const before = await server(9003)
+  await request('/__mock/config', { actionMs: 1000 })
+  const resize = await request('/v2/servers/9003/actions', {
+    type: 'resize', options: { memory: before.memory + 1024, daily_backups: 1, offsite_backups: true },
+    pre_action_backup: { type: 'take_backup', backup_type: 'temporary', replacement_strategy: 'none' }
+  })
+  assert.equal(resize.action.status, 'in-progress')
+  await request('/__mock/config', { actionMs: 15 })
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Competing backup' }, 9003))
+  const filled = await backups(9003)
+  const refused = await completed(resize, 'errored')
+  assert.match(refused.error_message, /No free temporary backup slots/)
+  assert.equal((await server(9003)).memory, before.memory)
+  assert.deepEqual((await server(9003)).selected_size_options, before.selected_size_options)
+  assert.deepEqual(await backups(9003), filled)
+})
+
+for (const slot of ['daily', 'weekly', 'monthly']) {
+  test(`resize retention zero removes even the newly taken ${slot} pre-action replacement`, async () => {
+    const before = await backups()
+    const replace = before.find((b) => b.backup_info.type === slot)
+    assert.ok(replace)
+    await completed(await request('/v2/servers/8100/actions', {
+      type: 'resize', options: { [`${slot}_backups`]: 0 },
+      pre_action_backup: { type: 'take_backup', backup_type: slot, replacement_strategy: 'specified', backup_id_to_replace: replace.id }
+    }))
+    assert.equal((await server()).selected_size_options[`${slot}_backups`], 0)
+    assert.deepEqual(await backups(), before.filter((b) => b.backup_info.type !== slot))
+  })
+}
+
+test('a temporary pre-action backup survives disabling scheduled retention', async () => {
+  const before = await server()
+  const temporary = (await backups()).find((b) => b.backup_info.type === 'temporary')
+  await completed(await request('/v2/servers/8100/actions', {
+    type: 'resize', options: { daily_backups: 0, weekly_backups: 0, monthly_backups: 0, offsite_backups: false },
+    pre_action_backup: { type: 'take_backup', backup_type: 'temporary', replacement_strategy: 'specified', backup_id_to_replace: temporary.id }
+  }))
+  const remaining = await backups()
+  assert.equal(remaining.length, 1)
+  assert.equal(remaining[0].backup_info.type, 'temporary')
+  assert.notEqual(remaining[0].id, temporary.id)
+  assert.equal((await server()).selected_size_options.daily_backups, 0)
+  assert.equal((await server()).selected_size_options.weekly_backups, 0)
+  assert.equal((await server()).selected_size_options.monthly_backups, 0)
+  assert.equal((await server()).selected_size_options.offsite_backups, false)
+  assert.equal((await server()).memory, before.memory)
 })
 
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {
