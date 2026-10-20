@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { installAndroidBackButton } from './lib/androidBack'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TitleBar } from './components/layout/TitleBar'
+import { SettingsView } from './components/settings/SettingsView'
 import { Sidebar, ActiveTab, ServerSubTab } from './components/layout/Sidebar'
 import { BottomNav } from './components/layout/BottomNav'
 import { ServerList } from './components/servers/ServerList'
@@ -10,6 +11,7 @@ import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { TerminalView } from './components/terminal/TerminalView'
 import { openSsh } from './lib/openSsh'
+import { useTraySaveFailures } from './lib/traySettings'
 import { openServerSsh } from './lib/openServerSsh'
 import { VpcManager } from './components/vpcs/VpcManager'
 import { DnsManager } from './components/dns/DnsManager'
@@ -95,6 +97,7 @@ function FleetWatch({
 }
 
 function MainDashboard() {
+  useTraySaveFailures()
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
   const [helpLocation, setHelpLocation] = useState<HelpLocation>({})
   useEffect(() => {
@@ -335,6 +338,8 @@ function MainDashboard() {
           onSwitchProfile={handleSwitchProfile}
           onOpenAuth={() => setIsAuthOpen(true)}
           onOpenCommandPalette={() => setIsPaletteOpen(true)}
+          onOpenSettings={() => handleSelectTab('settings')}
+          settingsActive={activeTab === 'settings'}
           onToggleMobileDrawer={() => setIsMobileDrawerOpen((prev) => !prev)}
         />
 
@@ -459,6 +464,8 @@ function MainDashboard() {
             {activeTab === 'account' && (
               <AccountOverview client={client} />
             )}
+
+            {activeTab === 'settings' && <SettingsView />}
 
             {activeTab === 'map' && (
               <NetworkMap

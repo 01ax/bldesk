@@ -16,7 +16,7 @@ import {
   Waypoints,
   ChartNoAxesCombined,
   ChevronLeft,
-  X, UserCircle, LayoutTemplate} from 'lucide-react'
+  X, UserCircle, LayoutTemplate, Settings} from 'lucide-react'
 import { DarkModeToggle } from './DarkModeToggle'
 import logoFull from '../../assets/logo-binarylane.png'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
@@ -38,6 +38,7 @@ export type ActiveTab =
   | 'map'
   | 'heatmap'
   | 'terminal'
+  | 'settings'
 
 export type ServerSubTab =
   | 'overview'
@@ -97,6 +98,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'help', label: 'Help', icon: CircleHelp },
     ...(window.bldeskApi?.pty ? [{ id: 'terminal' as const, label: 'Embedded SSH', icon: Terminal }] : [])
   ]
+
+  // On a phone the title bar has no room for the Settings gear (see TitleBar), so the drawer carries it.
+  const mobileMenuItems: typeof menuItems = [...menuItems, { id: 'settings', label: 'Settings', icon: Settings }]
 
   const serverSubNavItems: { id: ServerSubTab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -329,7 +333,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   })
                 ) : (
                   // Global Links
-                  menuItems.map((item) => {
+                  mobileMenuItems.map((item) => {
                     const Icon = item.icon
                     const isActive = activeTab === item.id
                     return (

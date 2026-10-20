@@ -12,6 +12,7 @@ import { UpdaterManager } from './updater'
 import { probeTcp, probePing, traceroute, setAllowedTargets } from './reachability'
 import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
+import { NOTIFICATION_SETTING_KEYS, NOTIFICATION_SETTING_UNSAVED } from '../shared/notifications'
 import { ChangeLogStore } from './changelog'
 import { TemplateStore } from './templates'
 import { registerHelpHandlers } from './help'
@@ -231,7 +232,8 @@ function createTray(): void {
   TrayManager.init({
     icon: getTrayIcon(),
     getWindow: () => mainWindow,
-    showWindow: showMainWindow
+    showWindow: showMainWindow,
+    onSettingsChanged: (settings, unsaved) => mainWindow?.webContents.send('tray:settingsChanged', settings, unsaved)
   })
 }
 
@@ -367,6 +369,14 @@ function registerIpcHandlers(): void {
   // Tray / menu bar
   ipcMain.handle('tray:update', (_, summary: TrayFleetSummary) => TrayManager.update(summary))
   ipcMain.handle('tray:getSettings', () => TrayManager.getSettings())
+  // Only the notification switches: launch-at-login registers the app with the OS, which the renderer has no business doing.
+  ipcMain.handle('tray:setSetting', (event, key: unknown, value: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Notification settings are restricted to the main window.')
+    if (typeof key !== 'string' || !(NOTIFICATION_SETTING_KEYS as readonly string[]).includes(key) || typeof value !== 'boolean') throw new Error('Invalid notification setting.')
+    const { settings, saved } = TrayManager.setSetting(key as (typeof NOTIFICATION_SETTING_KEYS)[number], value, 'renderer')
+    if (!saved) throw new Error(NOTIFICATION_SETTING_UNSAVED) // the change still applies; the page shows this and reads the setting in force
+    return settings
+  })
 
   // Window Controls
   ipcMain.handle('window:minimize', () => mainWindow?.minimize())
@@ -430,7 +440,9 @@ if (!gotTheLock) {
     registerIpcHandlers()
     createWindow()
     createTray()
-    UpdaterManager.init()
+    UpdaterManager.init((title, body) => {
+      TrayManager.notify({ title, body, kind: 'update' })
+    })
 
     app.on('activate', function () {
       showMainWindow()

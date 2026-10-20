@@ -2,7 +2,8 @@ import { app, BrowserWindow, Menu, MenuItemConstructorOptions, Notification, Tra
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { writeOwnerFileAtomic } from './ownerFiles'
-import { NotificationKind, SystemNotificationOptions, TrayFleetSummary, TraySettings } from '../shared/ipc-types'
+import { NotificationSettingKey, SystemNotificationOptions, TrayFleetSummary, TraySettings } from '../shared/ipc-types'
+import { DEFAULT_TRAY_SETTINGS, normaliseTraySettings, notificationAllowed } from '../shared/notifications'
 import { DeepLinkManager } from './deeplink'
 import { formatDeepLink } from '../shared/deeplink'
 import { UpdaterManager } from './updater'
@@ -15,21 +16,14 @@ import { UpdaterManager } from './updater'
  * the picture changes. Main turns that into a tooltip, a menu with counts and a
  * Quick SSH submenu, and (on macOS) a title next to the icon while actions run.
  *
- * Settings live in `<userData>/tray.json` and are edited from the menu itself,
- * so there is no renderer UI to build or keep in sync. Notification categories
- * are filtered here too: every notification the app sends passes through
+ * Settings live in `<userData>/tray.json`. The menu edits them, and so does the
+ * Settings view in the renderer (through `setSetting`); `onSettingsChanged`
+ * tells the renderer when the menu changed one. Notification categories are
+ * filtered here too: every notification the app sends passes through
  * `notify()`, and a muted kind is dropped before it reaches the OS.
  */
 
 const SETTINGS_FILE = 'tray.json'
-
-const DEFAULTS: TraySettings = {
-  launchAtLogin: false,
-  closeToTray: true,
-  notifyServerState: true,
-  notifyActions: true,
-  notifyBalance: true
-}
 
 function settingsPath(): string {
   return join(app.getPath('userData'), SETTINGS_FILE)
@@ -39,44 +33,52 @@ function readSettings(): TraySettings {
   try {
     const p = settingsPath()
     if (existsSync(p)) {
-      const parsed = JSON.parse(readFileSync(p, 'utf8'))
-      const out = { ...DEFAULTS }
-      for (const key of Object.keys(DEFAULTS) as Array<keyof TraySettings>) {
-        if (typeof parsed?.[key] === 'boolean') out[key] = parsed[key]
-      }
-      return out
+      return normaliseTraySettings(JSON.parse(readFileSync(p, 'utf8')))
     }
   } catch (err) {
     console.warn('[Tray] Failed to read settings:', err)
   }
-  return { ...DEFAULTS }
+  return { ...DEFAULT_TRAY_SETTINGS }
 }
 
-function writeSettings(s: TraySettings): void {
+/** Whether the settings were written. A failure is logged here and reported to the user by setSetting's callers. */
+function writeSettings(s: TraySettings): boolean {
   try {
     writeOwnerFileAtomic(settingsPath(), JSON.stringify(s, null, 2))
+    return true
   } catch (err) {
     console.warn('[Tray] Failed to write settings:', err)
+    return false
   }
 }
 
-const KIND_SETTING: Partial<Record<NotificationKind, keyof TraySettings>> = {
-  'server-state': 'notifyServerState',
-  action: 'notifyActions',
-  balance: 'notifyBalance'
+// The tray menu's wording for each switch. A Record, so a new category cannot ship without one.
+const NOTIFY_MENU_LABEL: Record<NotificationSettingKey, string> = {
+  notifyServerState: 'Notify when a server changes state',
+  notifyActions: 'Notify when an action finishes or fails',
+  notifyBalance: 'Notify about billing (low credit, failed payments)',
+  notifyGeneral: 'Notify about changes you make in BLDesk',
+  notifyUpdates: 'Notify when a BLDesk update is ready'
 }
 
 export class TrayManager {
   private static tray: Tray | null = null
-  private static settings: TraySettings = { ...DEFAULTS }
+  private static settings: TraySettings = { ...DEFAULT_TRAY_SETTINGS }
   private static summary: TrayFleetSummary | null = null
   private static getWindow: () => BrowserWindow | null = () => null
   private static showWindow: () => void = () => {}
+  private static onSettingsChanged: (settings: TraySettings, unsaved: boolean) => void = () => {}
   private static hiddenToTrayNoticeShown = false
 
-  static init(opts: { icon: NativeImage; getWindow: () => BrowserWindow | null; showWindow: () => void }): void {
+  static init(opts: {
+    icon: NativeImage
+    getWindow: () => BrowserWindow | null
+    showWindow: () => void
+    onSettingsChanged?: (settings: TraySettings, unsaved: boolean) => void
+  }): void {
     this.getWindow = opts.getWindow
     this.showWindow = opts.showWindow
+    this.onSettingsChanged = opts.onSettingsChanged ?? (() => {})
     this.settings = readSettings()
     // Re-assert the login item only when it is on: registering an unpackaged
     // dev binary fails ("Operation not permitted" on macOS), and there is
@@ -100,12 +102,22 @@ export class TrayManager {
     return { ...this.settings }
   }
 
-  static setSetting<K extends keyof TraySettings>(key: K, value: TraySettings[K]): TraySettings {
+  /**
+   * The change applies at once, saved or not: the settings in force are the ones in memory. `saved` says whether they
+   * reached tray.json. A change from the menu has nobody to hand that to, so the renderer is told through
+   * `onSettingsChanged`; a caller from the renderer gets it in the result and reports it itself.
+   */
+  static setSetting<K extends keyof TraySettings>(
+    key: K,
+    value: TraySettings[K],
+    source: 'menu' | 'renderer' = 'menu'
+  ): { settings: TraySettings; saved: boolean } {
     this.settings = { ...this.settings, [key]: value }
-    writeSettings(this.settings)
+    const saved = writeSettings(this.settings)
     if (key === 'launchAtLogin') this.applyLoginItem()
     this.rebuild()
-    return this.getSettings()
+    this.onSettingsChanged(this.getSettings(), source === 'menu' && !saved)
+    return { settings: this.getSettings(), saved }
   }
 
   /** Called by the renderer whenever the fleet picture changes. */
@@ -125,9 +137,7 @@ export class TrayManager {
    * so callers can fall back to in-app feedback when a kind is muted.
    */
   static notify(options: SystemNotificationOptions): boolean {
-    const kind = options.kind ?? 'general'
-    const gate = KIND_SETTING[kind]
-    if (gate && !this.settings[gate]) return false
+    if (!notificationAllowed(this.settings, options.kind)) return false
     if (!Notification.isSupported()) return false
     const n = new Notification({ title: options.title, body: options.body, silent: false })
     // Clicking a notification is a request to look, so bring the window back.
@@ -295,22 +305,26 @@ export class TrayManager {
       },
       { type: 'separator' },
       {
-        label: 'Notify when a server changes state',
+        label: 'Show notifications',
         type: 'checkbox',
-        checked: this.settings.notifyServerState,
-        click: (item) => this.setSetting('notifyServerState', item.checked)
+        checked: this.settings.notificationsEnabled,
+        click: (item) => this.setSetting('notificationsEnabled', item.checked)
       },
-      {
-        label: 'Notify when an action finishes or fails',
+      // Each kept as set while the master switch is off, so turning it back on restores them.
+      ...(Object.keys(NOTIFY_MENU_LABEL) as NotificationSettingKey[]).map<MenuItemConstructorOptions>((key) => ({
+        label: NOTIFY_MENU_LABEL[key],
         type: 'checkbox',
-        checked: this.settings.notifyActions,
-        click: (item) => this.setSetting('notifyActions', item.checked)
-      },
+        enabled: this.settings.notificationsEnabled,
+        checked: this.settings[key],
+        click: (item) => this.setSetting(key, item.checked)
+      })),
+      { type: 'separator' },
       {
-        label: 'Notify about billing (low credit, failed payments)',
-        type: 'checkbox',
-        checked: this.settings.notifyBalance,
-        click: (item) => this.setSetting('notifyBalance', item.checked)
+        label: 'All settings…',
+        click: () => {
+          this.showWindow()
+          DeepLinkManager.dispatch(formatDeepLink({ kind: 'tab', tab: 'settings' }))
+        }
       }
     )
     template.push({ label: 'Settings', submenu: settingsItems })
