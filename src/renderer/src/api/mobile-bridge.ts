@@ -3,7 +3,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { HELP_API_ORIGIN, HELP_TIMEOUT_MS, helpQuestion, helpFeedbackBody, readHelpAnswer, readHelpSuggestions } from '@shared/help-api'
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import { AccountProfile, IpcApi, SaveProfileResult, TraySettings, UpdateChannel, UpdaterState } from '@shared/ipc-types'
-import { NOTIFICATION_SETTING_KEYS, normaliseTraySettings, notificationAllowed } from '@shared/notifications'
+import { createNotificationSettingsStore, NOTIFICATION_SETTING_KEYS, notificationAllowed } from '@shared/notifications'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
 const PROFILES_KEY = 'bldesk_profiles_v1'
@@ -40,41 +40,24 @@ async function saveChannel(channel: UpdateChannel): Promise<void> {
 }
 
 /**
- * The notification switches, kept across launches the way the desktop app keeps them in tray.json. There is no tray
- * here, so the launch-at-login and close-to-tray settings read as off.
+ * The notification switches, kept across launches the way the desktop app keeps them in tray.json: in app preferences,
+ * and in localStorage when those cannot be written. There is no tray here, so the launch-at-login and close-to-tray
+ * settings read as off.
  */
-async function readNotificationSettings(): Promise<TraySettings> {
-  let value: string | null = null
-  try {
-    value = (await Preferences.get({ key: NOTIFICATION_SETTINGS_KEY })).value
-  } catch {
-    try {
-      value = localStorage.getItem(NOTIFICATION_SETTINGS_KEY)
-    } catch {
-      value = null
-    }
-  }
-  let parsed: unknown = null
-  try {
-    parsed = value ? JSON.parse(value) : null
-  } catch {
-    // unreadable: every notification stays on, as it was before there was a switch
-  }
-  return { ...normaliseTraySettings(parsed), launchAtLogin: false, closeToTray: false }
-}
-
-async function saveNotificationSettings(settings: TraySettings): Promise<void> {
-  const value = JSON.stringify(settings)
-  try {
-    await Preferences.set({ key: NOTIFICATION_SETTINGS_KEY, value })
-  } catch {
-    try {
-      localStorage.setItem(NOTIFICATION_SETTINGS_KEY, value)
-    } catch {
-      // not saved: the choice holds until the app is closed
-    }
-  }
-}
+const notificationSettings = createNotificationSettingsStore(
+  {
+    get: async (key) => (await Preferences.get({ key })).value,
+    set: (key, value) => Preferences.set({ key, value }),
+    remove: (key) => Preferences.remove({ key })
+  },
+  {
+    get: async (key) => localStorage.getItem(key),
+    set: async (key, value) => localStorage.setItem(key, value),
+    remove: async (key) => localStorage.removeItem(key)
+  },
+  NOTIFICATION_SETTINGS_KEY
+)
+const withoutTray = (settings: TraySettings): TraySettings => ({ ...settings, launchAtLogin: false, closeToTray: false })
 
 /**
  * Hand a link to Android and say whether an app took it. Capacitor's WebView gives no answer when nothing handles the
@@ -470,7 +453,7 @@ export async function initMobileBridge(): Promise<void> {
     },
     sendNotification: async (opts) => {
       console.log(`[Notification] ${opts.title}: ${opts.body}`)
-      if (!notificationAllowed(await readNotificationSettings(), opts.kind)) return
+      if (!notificationAllowed(await notificationSettings.get(), opts.kind)) return
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(opts.title, { body: opts.body })
       }
@@ -489,12 +472,10 @@ export async function initMobileBridge(): Promise<void> {
     templatesReveal: undefined as any,
     // No tray on Android; the summary has nowhere to go.
     updateTray: async () => {},
-    getTraySettings: readNotificationSettings,
+    getTraySettings: async () => withoutTray(await notificationSettings.get()),
     setTraySetting: async (key, value) => {
       if (!NOTIFICATION_SETTING_KEYS.includes(key) || typeof value !== 'boolean') throw new Error('Invalid notification setting.')
-      const next = { ...(await readNotificationSettings()), [key]: value }
-      await saveNotificationSettings(next)
-      return next
+      return withoutTray(await notificationSettings.set(key, value))
     },
     platform: (window as any).Capacitor?.isNativePlatform?.() ? 'android' : 'web',
     minimizeWindow: async () => {},
