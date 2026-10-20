@@ -150,13 +150,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           </button>
         )}
 
-        {/* Settings */}
+        {/* Settings. Hidden below 640px, where the bar is already full: the mobile drawer has the entry there. */}
         <button
           onClick={onOpenSettings}
           title="Settings"
           aria-label="Settings"
           aria-pressed={settingsActive}
-          className={`w-7 h-7 flex items-center justify-center rounded transition ${
+          className={`w-7 h-7 hidden sm:flex items-center justify-center rounded transition ${
             settingsActive ? 'text-[#f1ca00] bg-white/10' : 'text-slate-300 hover:text-white hover:bg-white/10'
           }`}
         >

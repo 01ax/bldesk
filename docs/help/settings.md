@@ -5,7 +5,7 @@ keywords: [settings, notifications, mute, alerts, preferences, tray]
 ---
 
 # Settings
-Settings holds preferences for this device. Open it with the gear button in the title bar. Nothing here is saved to your BinaryLane account or changes anything on it; the choices stay on this device.
+Settings holds preferences for this device. Open it with the gear button in the title bar. On a phone the title bar has no room for it, so open More and choose Settings instead. Nothing here is saved to your BinaryLane account or changes anything on it; the choices stay on this device.
 
 Today it holds the notification switches. Other preferences are not on this page yet.
 

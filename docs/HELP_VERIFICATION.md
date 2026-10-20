@@ -47,6 +47,21 @@ The settings are now kept by `createNotificationSettingsStore` in `src/shared/no
 - The real `mobile-bridge.ts`, bundled with esbuild against stand-ins for the Capacitor modules (a Preferences stand-in that answers after a pause and can be made to refuse writes, a localStorage stand-in, and a captured `Notification` constructor), driven through `window.bldeskApi`, with a new bundle for each simulated launch. The original bridge (`02a9389`) lost a switch in 10 of 10 overlapping-save runs, and after a refused write it still let notifications through, before and after a simulated restart. The fixed bridge kept both switches in memory, in storage and after a simulated restart in 10 of 10 runs; showed nothing after a refused write, before and after a restart, and nothing when both stores fail; and reported that nothing was saved when both failed. The checks that did not depend on the fix (a kind switched off mutes only that kind, no kind is “general”, `launchAtLogin`, `closeToTray` and `__proto__` are refused, launch at login and close to tray read as off) passed on both.
 - This is not a device-storage failure or an OS-delivery test, and the overlapping-save case was not re-run on a tablet.
 
+### Phone widths (20 October 2026)
+
+Found while preparing a device test, not in review: the gear in the title bar did not fit on a phone. `TitleBar.tsx` lays the bar out in one row with no wrapping, and the page container hides overflow, so anything past the right edge cannot be reached. Measured in real Electron with emulated viewports, scroll position reset, with the gear hidden by a style rule against shown:
+
+| width | bar overflow without the gear (the layout before this feature) | with the gear |
+| --- | --- | --- |
+| 360 px | 44 px | 78 px, gear at 410–438 (off screen) |
+| 375 px | 29 px | 63 px, gear off screen |
+| 412 px | 0 px | 26 px, gear at 410–438 (off screen) |
+| 450 px and wider | 0 px | 0 px, gear on screen |
+
+So on a phone at 412 px the Settings page could not be opened from the title bar at all, and at 360 and 375 px the bar was already 44 and 29 px too wide (the end of the profile pill is clipped; unchanged by this feature, and not fixed here).
+
+The gear is now hidden below 640 px (`sm`), so a phone's title bar is exactly what it was, and the mobile drawer (the “More” menu) has a “Settings” entry at the end of its list (`mobileMenuItems` in `Sidebar.tsx`; `settings.md` says so). Checked at 360, 375, 412, 450, 480, 639, 640, 700, 767, 768 and 1024 px: the bar's overflow is the same as without the gear at every width below 640 px (44, 29, 0, 0, 0, 0), the gear is on screen from 640 px up, the drawer lists Settings after Embedded SSH, tapping it opens the page and closes the drawer, and `layoutReport` is clean at 412 px with the page and with the dialog open. Looked at in screenshots at 412 px.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.
