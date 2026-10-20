@@ -22,6 +22,10 @@ A switch takes effect as soon as you click it; Done only closes the dialog. Whil
 
 Muting only stops notifications sent through your operating system. Action progress, failures and History inside BLDesk are not affected, and your operating system can still hide notifications on its own, so check the action status and [History](help:history) when an outcome matters.
 
+On Android BLDesk does not show notifications at the moment, so these switches have no effect there yet.
+
+If a change cannot be saved on the device, BLDesk shows a failure card saying so. The change still applies until BLDesk is closed, and then goes back to what was saved.
+
 ## The tray menu
 On desktop, the tray menu's Settings submenu has the same switches: Show notifications and one for each kind. A change made there shows up on this page, and the other way round. Close to tray and launch at login are set from the tray menu only.
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { NotificationSettingKey, TraySettings } from '@shared/ipc-types'
+import { NOTIFICATION_SETTING_UNSAVED } from '@shared/notifications'
 import { notifyFailure } from './failures'
 
 /**
@@ -34,4 +35,18 @@ export function useNotificationSettings(): {
   }, [])
 
   return { settings, set }
+}
+
+/**
+ * A change made from the tray menu that could not be saved has no caller to tell, so say so wherever the user is. A
+ * change made on the Settings page is told by its own result (useNotificationSettings).
+ */
+export function useTraySaveFailures(): void {
+  useEffect(
+    () =>
+      window.bldeskApi?.onTraySettingsChanged?.((_settings, unsaved) => {
+        if (unsaved) notifyFailure("Couldn't save the setting", NOTIFICATION_SETTING_UNSAVED)
+      }),
+    []
+  )
 }

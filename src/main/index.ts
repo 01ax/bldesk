@@ -12,7 +12,7 @@ import { UpdaterManager } from './updater'
 import { probeTcp, probePing, traceroute, setAllowedTargets } from './reachability'
 import { DeepLinkManager } from './deeplink'
 import { TrayManager } from './tray'
-import { NOTIFICATION_SETTING_KEYS } from '../shared/notifications'
+import { NOTIFICATION_SETTING_KEYS, NOTIFICATION_SETTING_UNSAVED } from '../shared/notifications'
 import { ChangeLogStore } from './changelog'
 import { TemplateStore } from './templates'
 import { registerHelpHandlers } from './help'
@@ -233,7 +233,7 @@ function createTray(): void {
     icon: getTrayIcon(),
     getWindow: () => mainWindow,
     showWindow: showMainWindow,
-    onSettingsChanged: (settings) => mainWindow?.webContents.send('tray:settingsChanged', settings)
+    onSettingsChanged: (settings, unsaved) => mainWindow?.webContents.send('tray:settingsChanged', settings, unsaved)
   })
 }
 
@@ -373,7 +373,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('tray:setSetting', (event, key: unknown, value: unknown) => {
     if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Notification settings are restricted to the main window.')
     if (typeof key !== 'string' || !(NOTIFICATION_SETTING_KEYS as readonly string[]).includes(key) || typeof value !== 'boolean') throw new Error('Invalid notification setting.')
-    return TrayManager.setSetting(key as (typeof NOTIFICATION_SETTING_KEYS)[number], value)
+    const { settings, saved } = TrayManager.setSetting(key as (typeof NOTIFICATION_SETTING_KEYS)[number], value, 'renderer')
+    if (!saved) throw new Error(NOTIFICATION_SETTING_UNSAVED) // the change still applies; the page shows this and reads the setting in force
+    return settings
   })
 
   // Window Controls

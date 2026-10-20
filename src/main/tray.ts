@@ -41,11 +41,14 @@ function readSettings(): TraySettings {
   return { ...DEFAULT_TRAY_SETTINGS }
 }
 
-function writeSettings(s: TraySettings): void {
+/** Whether the settings were written. A failure is logged here and reported to the user by setSetting's callers. */
+function writeSettings(s: TraySettings): boolean {
   try {
     writeOwnerFileAtomic(settingsPath(), JSON.stringify(s, null, 2))
+    return true
   } catch (err) {
     console.warn('[Tray] Failed to write settings:', err)
+    return false
   }
 }
 
@@ -64,14 +67,14 @@ export class TrayManager {
   private static summary: TrayFleetSummary | null = null
   private static getWindow: () => BrowserWindow | null = () => null
   private static showWindow: () => void = () => {}
-  private static onSettingsChanged: (settings: TraySettings) => void = () => {}
+  private static onSettingsChanged: (settings: TraySettings, unsaved: boolean) => void = () => {}
   private static hiddenToTrayNoticeShown = false
 
   static init(opts: {
     icon: NativeImage
     getWindow: () => BrowserWindow | null
     showWindow: () => void
-    onSettingsChanged?: (settings: TraySettings) => void
+    onSettingsChanged?: (settings: TraySettings, unsaved: boolean) => void
   }): void {
     this.getWindow = opts.getWindow
     this.showWindow = opts.showWindow
@@ -99,13 +102,22 @@ export class TrayManager {
     return { ...this.settings }
   }
 
-  static setSetting<K extends keyof TraySettings>(key: K, value: TraySettings[K]): TraySettings {
+  /**
+   * The change applies at once, saved or not: the settings in force are the ones in memory. `saved` says whether they
+   * reached tray.json. A change from the menu has nobody to hand that to, so the renderer is told through
+   * `onSettingsChanged`; a caller from the renderer gets it in the result and reports it itself.
+   */
+  static setSetting<K extends keyof TraySettings>(
+    key: K,
+    value: TraySettings[K],
+    source: 'menu' | 'renderer' = 'menu'
+  ): { settings: TraySettings; saved: boolean } {
     this.settings = { ...this.settings, [key]: value }
-    writeSettings(this.settings)
+    const saved = writeSettings(this.settings)
     if (key === 'launchAtLogin') this.applyLoginItem()
     this.rebuild()
-    this.onSettingsChanged(this.getSettings())
-    return this.getSettings()
+    this.onSettingsChanged(this.getSettings(), source === 'menu' && !saved)
+    return { settings: this.getSettings(), saved }
   }
 
   /** Called by the renderer whenever the fleet picture changes. */

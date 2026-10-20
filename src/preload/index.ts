@@ -71,7 +71,7 @@ const api: IpcApi = {
   getTraySettings: () => invoke('tray:getSettings'),
   setTraySetting: (key, value) => invoke('tray:setSetting', key, value),
   onTraySettingsChanged: (listener) => {
-    const handler = (_: Electron.IpcRendererEvent, settings: Parameters<typeof listener>[0]) => listener(settings)
+    const handler = (_: Electron.IpcRendererEvent, settings: Parameters<typeof listener>[0], unsaved?: boolean) => listener(settings, unsaved === true)
     ipcRenderer.on('tray:settingsChanged', handler)
     return () => ipcRenderer.removeListener('tray:settingsChanged', handler)
   },

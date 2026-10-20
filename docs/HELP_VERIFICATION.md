@@ -74,6 +74,16 @@ A Samsung Galaxy (SM-S948B, Android 16, SDK 36). A debug build of `0abbc5f` made
 
 Not tested on the phone: a real storage failure and the “could not save” message (covered with fake storage above), delivery of an Android notification (there is none to deliver), other Android versions, tablets, landscape, and the browser build in a real browser.
 
+### Saving on desktop, and the Android line (20 October 2026)
+
+Two follow-ups agreed after the review. On desktop, `writeSettings` in `tray.ts` used to log a failed write to `tray.json` and say nothing, so a change could look saved and be gone after a restart. `setSetting` now returns whether it saved. A change made on the Settings page that could not be saved rejects with the same sentence the Android bridge uses (“BLDesk could not save this setting on the device. It applies until BLDesk is closed, then goes back to what was saved.”, `NOTIFICATION_SETTING_UNSAVED` in `shared/notifications.ts`), and the page shows it as a failure card titled “Couldn't save the notification setting” (`useNotificationSettings`). A change made from the tray menu has no caller to reject to, so the main process marks the `tray:settingsChanged` event `unsaved` and `useTraySaveFailures`, mounted in `MainDashboard`, shows the card “Couldn't save the setting” wherever the user is. Either way the change applies in memory until BLDesk is closed. No help page quotes the long sentence; `settings.md` says in plain words that a failure card appears and the change applies until BLDesk is closed.
+
+`settings.md` also says “On Android BLDesk does not show notifications at the moment, so these switches have no effect there yet.” Checked on the phone: `typeof Notification` is `undefined` in the Android WebView, and `sendNotification` in `mobile-bridge.ts` builds one only when `'Notification' in window && Notification.permission === 'granted'`.
+
+- `npm run typecheck` and `npm run build`.
+- Real Electron with a folder where `tray.json` should be, so every save failed (the app started normally, with one read warning). From the Settings page: the call rejected with the sentence above; master off was in force (`getTraySettings`); three notifications of different kinds sent while it was unsaved reached the OS zero times (DBus); a click on the switch showed the card, and the switch showed the setting in force. From the tray menu (clicked over DBus): the card “Couldn't save the setting” appeared and the change was in force. After the folder was removed, the next change wrote `tray.json` with the earlier unsaved change (server state off) as well as the new one (billing off) and raised no new card. The failure card was looked at in a screenshot.
+- Not tested: a real full disk or read-only file system, and Windows and macOS.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.

@@ -261,10 +261,17 @@ export interface IpcApi extends HelpApi {
   /** Push the current fleet picture; main rebuilds the tray tooltip and menu from it. */
   updateTray: (summary: TrayFleetSummary) => Promise<void>
   getTraySettings: () => Promise<TraySettings>
-  /** Only the notification switches can be set from the renderer; returns the settings as saved. */
+  /**
+   * Only the notification switches can be set from the renderer; returns the settings in force. Rejects when the change
+   * could not be saved on the device: it still applies until BLDesk is closed.
+   */
   setTraySetting: (key: 'notificationsEnabled' | NotificationSettingKey, value: boolean) => Promise<TraySettings>
-  /** Fires when a setting changes from anywhere (the tray menu included); returns an unsubscribe. */
-  onTraySettingsChanged?: (listener: (settings: TraySettings) => void) => () => void
+  /**
+   * Fires when a setting changes from anywhere (the tray menu included); returns an unsubscribe. `unsaved` is true
+   * when a change made from the tray menu could not be saved: that has no caller to reject to. A change made through
+   * setTraySetting says so by rejecting instead, so `unsaved` is never true for it.
+   */
+  onTraySettingsChanged?: (listener: (settings: TraySettings, unsaved: boolean) => void) => () => void
   
   // Window Controls
   /** 'darwin' | 'win32' | 'linux' in Electron; 'android' | 'web' from the mobile bridge. Decides whose window chrome is drawn. */

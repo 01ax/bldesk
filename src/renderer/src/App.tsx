@@ -11,6 +11,7 @@ import { AuthModal } from './components/auth/AuthModal'
 import { CommandPalette } from './components/palette/CommandPalette'
 import { TerminalView } from './components/terminal/TerminalView'
 import { openSsh } from './lib/openSsh'
+import { useTraySaveFailures } from './lib/traySettings'
 import { openServerSsh } from './lib/openServerSsh'
 import { VpcManager } from './components/vpcs/VpcManager'
 import { DnsManager } from './components/dns/DnsManager'
@@ -96,6 +97,7 @@ function FleetWatch({
 }
 
 function MainDashboard() {
+  useTraySaveFailures()
   const [activeTab, setActiveTab] = useState<ActiveTab>('servers')
   const [helpLocation, setHelpLocation] = useState<HelpLocation>({})
   useEffect(() => {
