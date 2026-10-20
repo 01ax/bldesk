@@ -8,6 +8,7 @@ import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
 import { restartArguments } from '../shared/deeplink'
 import { shQuote } from '../shared/ssh'
+import { appendUpdaterLog } from './updaterLog'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
 const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as any).default?.autoUpdater || electronUpdater
@@ -26,6 +27,7 @@ const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as 
  */
 
 const SETTINGS_FILE = 'updater.json'
+const LOG_FILE = 'updater.log'
 /** Network-level failures that mean "couldn't reach the feed", not "no update". */
 const OFFLINE_CODES = new Set([
   'ENOTFOUND',
@@ -47,6 +49,14 @@ function settingsPath(): string {
   return join(app.getPath('userData'), SETTINGS_FILE)
 }
 
+type LogLevel = 'info' | 'warn' | 'error' | 'debug'
+
+/** The updater's one way to log: the console, as before, and `updater.log` in the user-data folder (see updaterLog.ts). */
+function log(level: LogLevel, ...parts: unknown[]): void {
+  console[level === 'info' ? 'log' : level]('[Updater]', ...parts)
+  appendUpdaterLog(join(app.getPath('userData'), LOG_FILE), level, parts)
+}
+
 function readSettings(): UpdaterSettings {
   try {
     const p = settingsPath()
@@ -55,7 +65,7 @@ function readSettings(): UpdaterSettings {
       if (parsed?.channel === 'beta' || parsed?.channel === 'stable') return { channel: parsed.channel }
     }
   } catch (err) {
-    console.warn('[Updater] Failed to read settings:', err)
+    log('warn', 'Failed to read settings:', err)
   }
   return { channel: 'stable' }
 }
@@ -64,7 +74,7 @@ function writeSettings(s: UpdaterSettings): void {
   try {
     writeOwnerFileAtomic(settingsPath(), JSON.stringify(s, null, 2))
   } catch (err) {
-    console.warn('[Updater] Failed to write settings:', err)
+    log('warn', 'Failed to write settings:', err)
   }
 }
 
@@ -153,7 +163,7 @@ function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
 
   const targetApp = process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '')
   if (!targetApp.endsWith('.app') || !existsSync(targetApp)) {
-    console.error('[Updater] Cannot locate app bundle to replace:', process.execPath)
+    log('error', 'Cannot locate app bundle to replace:', process.execPath)
     macInstalling = false
     return
   }
@@ -260,16 +270,16 @@ export class UpdaterManager {
     this.state.channel = settings.channel
 
     if (!app.isPackaged) {
-      console.log('[Updater] Not packaged; auto-update disabled (dev mode).')
+      log('info', 'Not packaged; auto-update disabled (dev mode).')
       this.setState({ status: 'idle' })
       return
     }
 
     autoUpdater.logger = {
-      info: (m: any) => console.log('[Updater]', m),
-      warn: (m: any) => console.warn('[Updater]', m),
-      error: (m: any) => console.error('[Updater]', m),
-      debug: (m: any) => console.debug('[Updater]', m)
+      info: (m: any) => log('info', m),
+      warn: (m: any) => log('warn', m),
+      error: (m: any) => log('error', m),
+      debug: (m: any) => log('debug', m)
     }
     if (isMac) {
       // Squirrel.Mac requires Developer ID signatures; bypass on macOS via direct zip update
@@ -291,7 +301,7 @@ export class UpdaterManager {
         repo: 'bldesk'
       })
     } catch (err) {
-      console.warn('[Updater] setFeedURL initialization failed:', err)
+      log('warn', 'setFeedURL initialization failed:', err)
     }
     this.applyChannel(settings.channel)
 
@@ -349,7 +359,7 @@ export class UpdaterManager {
           this.markReady(info.version)
           this.notifyReady(info.version)
         } catch (err: any) {
-          console.error('[Updater] macOS update download failed:', err)
+          log('error', 'macOS update download failed:', err)
           this.handleCheckError(err)
         } finally {
           macDownloading = false
@@ -458,9 +468,9 @@ export class UpdaterManager {
     const msg = err?.message || String(err)
     const status = isFeedUnreachable(err) ? 'check-failed' : 'error'
     if (status === 'check-failed') {
-      console.log('[Updater] Update check could not complete:', msg)
+      log('info', 'Update check could not complete:', msg)
     } else {
-      console.error('[Updater] Update check failed:', msg)
+      log('error', 'Update check failed:', msg)
     }
     if (this.held) {
       // A downloaded update is still waiting: a failed check does not take it away.
@@ -525,7 +535,7 @@ function relaunchAfterExit(): void {
       stdio: 'ignore'
     }).unref()
   } catch (err) {
-    console.error('[Updater] Could not restart BLDesk after the update:', err)
+    log('error', 'Could not restart BLDesk after the update:', err)
   }
 }
 
