@@ -13,8 +13,9 @@ const TOKEN = process.env.MOCK_TOKEN
 if (!TOKEN) throw new Error('MOCK_TOKEN is required')
 const LOG = process.env.LOG || devNull
 const S = SPEC.components.schemas
-// A stand-in installer for the update scenario: the real bytes are never installed by this harness.
-const DEB = Buffer.from('not a real package: BLDesk GUI test update payload\n')
+// A stand-in installer for the update scenario: the real bytes are never installed by this harness. MOCK_DEB names a
+// real .deb to serve instead (and list, with its real size and checksum, in the feed), for testing a real install.
+const DEB = process.env.MOCK_DEB ? readFileSync(process.env.MOCK_DEB) : Buffer.from('not a real package: BLDesk GUI test update payload\n')
 const DEB_SHA = createHash('sha512').update(DEB).digest('base64')
 const VERSION = process.env.APP_VERSION || JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
 
