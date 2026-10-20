@@ -8,7 +8,7 @@
       "url": "https://support.binarylane.com.au/support/home",
       "email": "support@binarylane.com.au"
     },
-    "version": "0.43.3",
+    "version": "0.45.0",
     "x-logo": {
       "url": "https://www.binarylane.com.au/res/images/binarylane/logo.png",
       "backgroundColor": "#000000",
@@ -81,9 +81,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -93,6 +90,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -197,9 +197,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -209,6 +206,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -279,9 +279,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -291,6 +288,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -422,9 +422,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -434,6 +431,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -625,9 +625,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -637,6 +634,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -735,9 +735,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -747,6 +744,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -785,9 +785,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -797,6 +794,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -890,9 +890,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -902,6 +899,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -970,9 +970,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -982,6 +979,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1039,9 +1039,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1051,6 +1048,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1130,9 +1130,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1142,6 +1139,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1190,9 +1190,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1202,6 +1199,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1337,9 +1337,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1349,6 +1346,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1413,9 +1413,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1425,6 +1422,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1476,9 +1476,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1488,6 +1485,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1536,9 +1536,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1548,6 +1545,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1617,9 +1617,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1629,6 +1626,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1668,9 +1668,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1680,6 +1677,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1830,9 +1830,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1842,6 +1839,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1905,9 +1905,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1917,6 +1914,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -1949,9 +1949,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -1961,6 +1958,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2165,9 +2165,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2177,6 +2174,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2232,9 +2232,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2244,6 +2241,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2301,9 +2301,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2313,6 +2310,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2368,9 +2368,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2380,6 +2377,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2492,9 +2492,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2504,6 +2501,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2556,9 +2556,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2568,6 +2565,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2623,9 +2623,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2635,6 +2632,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2743,9 +2743,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2755,6 +2752,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -2822,9 +2822,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -2834,6 +2831,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3075,9 +3075,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3087,6 +3084,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3127,9 +3127,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3139,6 +3136,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3182,9 +3182,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3194,6 +3191,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3362,9 +3362,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3374,6 +3371,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3415,9 +3415,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3427,6 +3424,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3468,9 +3468,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3480,6 +3477,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3547,9 +3547,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3559,6 +3556,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3621,9 +3621,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3633,6 +3630,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3701,9 +3701,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3713,6 +3710,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3781,9 +3781,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3793,6 +3790,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3835,9 +3835,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3847,6 +3844,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3875,9 +3875,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3887,6 +3884,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -3954,9 +3954,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -3966,6 +3963,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4007,9 +4007,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4019,6 +4016,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4070,9 +4070,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4082,6 +4079,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4411,9 +4411,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4423,6 +4420,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4488,9 +4488,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4500,6 +4497,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4564,9 +4564,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4576,6 +4573,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4609,9 +4609,6 @@
           "204": {
             "description": "No Content"
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -4631,6 +4628,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4821,9 +4821,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4833,6 +4830,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4897,9 +4897,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4909,6 +4906,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -4973,9 +4973,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -4985,6 +4982,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5049,9 +5049,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5061,6 +5058,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5125,9 +5125,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5137,6 +5134,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5201,9 +5201,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5213,6 +5210,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5277,9 +5277,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5289,6 +5286,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5353,9 +5353,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5365,6 +5362,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5429,9 +5429,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5441,6 +5438,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5505,9 +5505,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5517,6 +5514,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5581,9 +5581,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5593,6 +5590,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5657,9 +5657,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5669,6 +5666,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5733,9 +5733,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5745,6 +5742,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5809,9 +5809,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5821,6 +5818,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5885,9 +5885,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5897,6 +5894,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -5914,7 +5914,7 @@
           "ServerActions"
         ],
         "summary": "Take a Backup of a Server",
-        "description": "This creates an immediate backup of the server.",
+        "description": "This creates an immediate backup of the server. At most two temporary backups may be taken of a server in any seven day period.",
         "parameters": [
           {
             "name": "server_id",
@@ -5961,9 +5961,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -5973,6 +5970,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6037,9 +6037,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6049,6 +6046,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6113,9 +6113,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6125,6 +6122,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6189,9 +6189,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6201,6 +6198,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6265,9 +6265,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6277,6 +6274,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6341,9 +6341,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6353,6 +6350,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6417,9 +6417,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6429,6 +6426,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6493,9 +6493,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6505,6 +6502,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6569,9 +6569,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6581,6 +6578,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6645,9 +6645,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6657,6 +6654,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6721,9 +6721,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6733,6 +6730,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6797,9 +6797,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6809,6 +6806,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6873,9 +6873,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6885,6 +6882,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -6949,9 +6949,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6961,6 +6958,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7025,9 +7025,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7037,6 +7034,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7101,9 +7101,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7113,6 +7110,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7177,9 +7177,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7189,6 +7186,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7253,9 +7253,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7265,6 +7262,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7329,9 +7329,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7341,6 +7338,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7405,9 +7405,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7417,6 +7414,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7481,9 +7481,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7493,6 +7490,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7557,9 +7557,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7569,6 +7566,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7633,9 +7633,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7645,6 +7642,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7709,9 +7709,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7721,6 +7718,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7785,9 +7785,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7797,6 +7794,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7861,9 +7861,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7873,6 +7870,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -7937,9 +7937,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -7949,6 +7946,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -8013,9 +8013,6 @@
               }
             }
           },
-          "401": {
-            "description": "Unauthorized"
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -8025,6 +8022,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "x-codeSamples": [
@@ -8854,12 +8854,12 @@
           "temporary"
         ],
         "type": "string",
-        "description": "\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of seven days. |\n\n",
+        "description": "\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |\n\n",
         "x-enum-descriptions": [
           "A backup which is scheduled to be taken each day.",
           "A backup which is scheduled to be taken each week.",
           "A backup which is scheduled to be taken each month.",
-          "A backup which is created on demand and only retained for a maximum of seven days."
+          "A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image)."
         ]
       },
       "BackupWindow": {
@@ -11916,7 +11916,7 @@
             "nullable": true
           }
         },
-        "additionalProperties": {}
+        "additionalProperties": { }
       },
       "ProceedRequest": {
         "required": [
@@ -13208,7 +13208,7 @@
           },
           "disk_max": {
             "type": "integer",
-            "description": "The maximum storage in GB permitted on this size.",
+            "description": "The maximum storage in GB permitted on this size, or the server's current storage when this is a server's current size and it is not available.",
             "format": "int32"
           },
           "disk_cost_per_additional_gigabyte": {
@@ -13222,12 +13222,12 @@
               "type": "integer",
               "format": "int32"
             },
-            "description": "If this is null the normal valid values in the documentation for SizeOptionsRequest are used, otherwise only these values (in GB) are permitted.",
+            "description": "If this is null the normal valid values in the documentation for SizeOptionsRequest are used, otherwise only these values (in GB) are permitted, including the server's current storage when this is a server's current size.",
             "nullable": true
           },
           "memory_max": {
             "type": "integer",
-            "description": "The maximum memory in MB permitted on this size.",
+            "description": "The maximum memory in MB permitted on this size, or the server's current memory when this is a server's current size and it is not available.",
             "format": "int32"
           },
           "memory_cost_per_additional_megabyte": {
@@ -13237,7 +13237,7 @@
           },
           "transfer_max": {
             "type": "number",
-            "description": "The maximum transfer in TB permitted for this size. If this is the same as Size.Transfer no additional transfer is supported.",
+            "description": "The maximum transfer in TB permitted for this size, or the server's current transfer when this is a server's current size and it is not available. If this is the same as Size.Transfer no additional transfer is supported.",
             "format": "double"
           },
           "transfer_cost_per_additional_gigabyte": {
@@ -13682,7 +13682,7 @@
                 "$ref": "#/components/schemas/BackupSlot"
               }
             ],
-            "description": "If replacement_strategy is anything other than 'specified', this must be provided.\n\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of seven days. |\n\n",
+            "description": "If replacement_strategy is anything other than 'specified', this must be provided.\n\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |\n\n",
             "nullable": true
           },
           "replacement_strategy": {
@@ -14087,7 +14087,7 @@
                 "$ref": "#/components/schemas/BackupSlot"
               }
             ],
-            "description": "If replacement_strategy is anything other than 'specified', this must be provided.\n\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of seven days. |\n\n",
+            "description": "If replacement_strategy is anything other than 'specified', this must be provided.\n\n| Value | Description |\n| ----- | ----------- |\n| daily | A backup which is scheduled to be taken each day. |\n| weekly | A backup which is scheduled to be taken each week. |\n| monthly | A backup which is scheduled to be taken each month. |\n| temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |\n\n",
             "nullable": true
           },
           "replacement_strategy": {
@@ -14209,7 +14209,7 @@
             "nullable": true
           }
         },
-        "additionalProperties": {}
+        "additionalProperties": { }
       },
       "VideoDevice": {
         "enum": [
@@ -14408,7 +14408,7 @@
   },
   "security": [
     {
-      "apiToken": []
+      "apiToken": [ ]
     }
   ],
   "tags": [

@@ -5087,7 +5087,7 @@ export interface paths {
         put?: never;
         /**
          * Take a Backup of a Server
-         * @description This creates an immediate backup of the server.
+         * @description This creates an immediate backup of the server. At most two temporary backups may be taken of a server in any seven day period.
          */
         post: {
             parameters: {
@@ -7680,7 +7680,7 @@ export interface components {
          *     | daily | A backup which is scheduled to be taken each day. |
          *     | weekly | A backup which is scheduled to be taken each week. |
          *     | monthly | A backup which is scheduled to be taken each month. |
-         *     | temporary | A backup which is created on demand and only retained for a maximum of seven days. |
+         *     | temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |
          * @enum {string}
          */
         BackupSlot: "daily" | "weekly" | "monthly" | "temporary";
@@ -9597,7 +9597,7 @@ export interface components {
             disk_min: number;
             /**
              * Format: int32
-             * @description The maximum storage in GB permitted on this size.
+             * @description The maximum storage in GB permitted on this size, or the server's current storage when this is a server's current size and it is not available.
              */
             disk_max: number;
             /**
@@ -9605,11 +9605,11 @@ export interface components {
              * @description The additional cost per GB per month for additional storage space.
              */
             disk_cost_per_additional_gigabyte: number;
-            /** @description If this is null the normal valid values in the documentation for SizeOptionsRequest are used, otherwise only these values (in GB) are permitted. */
+            /** @description If this is null the normal valid values in the documentation for SizeOptionsRequest are used, otherwise only these values (in GB) are permitted, including the server's current storage when this is a server's current size. */
             restricted_disk_values?: number[] | null;
             /**
              * Format: int32
-             * @description The maximum memory in MB permitted on this size.
+             * @description The maximum memory in MB permitted on this size, or the server's current memory when this is a server's current size and it is not available.
              */
             memory_max: number;
             /**
@@ -9619,7 +9619,7 @@ export interface components {
             memory_cost_per_additional_megabyte: number;
             /**
              * Format: double
-             * @description The maximum transfer in TB permitted for this size. If this is the same as Size.Transfer no additional transfer is supported.
+             * @description The maximum transfer in TB permitted for this size, or the server's current transfer when this is a server's current size and it is not available. If this is the same as Size.Transfer no additional transfer is supported.
              */
             transfer_max: number;
             /**
@@ -9845,7 +9845,7 @@ export interface components {
              *     | daily | A backup which is scheduled to be taken each day. |
              *     | weekly | A backup which is scheduled to be taken each week. |
              *     | monthly | A backup which is scheduled to be taken each month. |
-             *     | temporary | A backup which is created on demand and only retained for a maximum of seven days. |
+             *     | temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |
              */
             backup_type?: components["schemas"]["BackupSlot"] | null;
             /**
@@ -10051,7 +10051,7 @@ export interface components {
              *     | daily | A backup which is scheduled to be taken each day. |
              *     | weekly | A backup which is scheduled to be taken each week. |
              *     | monthly | A backup which is scheduled to be taken each month. |
-             *     | temporary | A backup which is created on demand and only retained for a maximum of seven days. |
+             *     | temporary | A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image). |
              */
             backup_type?: components["schemas"]["BackupSlot"] | null;
             /**
