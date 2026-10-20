@@ -1,23 +1,20 @@
 export type BackupSlot = 'temporary' | 'daily' | 'weekly' | 'monthly'
 
-type BackupRetention =
-  | { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null }
-  | null
-  | undefined
-
 /**
- * The backup slots a server can take a backup into right now.
+ * The backup types permitted by a server's current retention, not free capacity.
  *
  * The API rejects a slot the server has no retention for ("Validation of
  * pre_action_backup.backup_type, pre_action_backup.replacement_strategy
  * failed"), and it is the server's *current* retention that counts: a
- * pre-action backup is taken before any new options apply. Temporary is
- * on-demand and always available.
+ * pre-action backup is taken before any new options apply. Temporary needs no
+ * scheduled retention, but its one slot may already be occupied.
  *
  * Shared by the Backup Manager's slot picker and Change Plan's pre-action
  * backup so the two cannot disagree about what the server can hold.
  */
-export function availableBackupSlots(options: BackupRetention): BackupSlot[] {
+export function availableBackupSlots(
+  options: { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null } | null | undefined
+): BackupSlot[] {
   const out: BackupSlot[] = ['temporary']
   if ((options?.daily_backups ?? 0) > 0) out.push('daily')
   if ((options?.weekly_backups ?? 0) > 0) out.push('weekly')
@@ -41,6 +38,14 @@ export interface ExistingBackup {
 
 type SlottedBackup = ExistingBackup & { backup_info: { type: BackupSlot } }
 
+/** Named replacement cannot use a locked, attached or unknown-type image. */
+export function replaceableBackups(existing: ExistingBackup[], attachedId?: number | null): SlottedBackup[] {
+  return existing.filter((backup): backup is SlottedBackup =>
+    !!backup.backup_info?.type && Object.hasOwn(BACKUP_SLOT_LABELS, backup.backup_info.type) &&
+    !backup.backup_info.locked && backup.id !== attachedId
+  )
+}
+
 /**
  * The slots that are not just permitted but actually *empty*.
  *
@@ -55,7 +60,10 @@ type SlottedBackup = ExistingBackup & { backup_info: { type: BackupSlot } }
  * The single temporary slot is free only when no temporary backup is held.
  */
 export function freeBackupSlots(
-  options: BackupRetention,
+  options:
+    | { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null }
+    | null
+    | undefined,
   existing: ExistingBackup[]
 ): BackupSlot[] {
   const held = (t: string): number => existing.filter((b) => b.backup_info?.type === t).length
@@ -64,29 +72,6 @@ export function freeBackupSlots(
   if ((options?.weekly_backups ?? 0) - held('weekly') > 0) out.push('weekly')
   if ((options?.monthly_backups ?? 0) - held('monthly') > 0) out.push('monthly')
   return out
-}
-
-/** A pre-action backup needs capacity now and retention after the change. */
-export function preActionBackupChoices(
-  current: BackupRetention,
-  pending: BackupRetention,
-  existing: ExistingBackup[]
-): { freeSlots: BackupSlot[]; replacementBackups: SlottedBackup[]; removedSlots: BackupSlot[] } {
-  const retained = availableBackupSlots(pending)
-  return {
-    freeSlots: freeBackupSlots(current, existing).filter((slot) => retained.includes(slot)),
-    replacementBackups: existing.filter(
-      (backup): backup is SlottedBackup => retained.some((slot) => slot === backup.backup_info?.type)
-    ),
-    removedSlots: availableBackupSlots(current).filter((slot) => !retained.includes(slot))
-  }
-}
-
-/** Scheduled types whose configured retention is being reduced. */
-export function reducedBackupSlots(current: BackupRetention, pending: BackupRetention): BackupSlot[] {
-  return (['daily', 'weekly', 'monthly'] as const).filter(
-    (slot) => (pending?.[`${slot}_backups`] ?? 0) < (current?.[`${slot}_backups`] ?? 0)
-  )
 }
 
 /**
@@ -102,7 +87,7 @@ export function reducedBackupSlots(current: BackupRetention, pending: BackupRete
  */
 export function replacedByOldest(
   slot: BackupSlot,
-  options: BackupRetention,
+  options: { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null } | null | undefined,
   existing: ExistingBackup[],
   attachedId?: number | null
 ): { backup: ExistingBackup; certain: boolean } | null {

@@ -244,14 +244,6 @@ function backupPlan(s, body) {
   const replace = strategy === 'oldest' ? candidates[0] : candidates.at(-1)
   return replace ? { type, replace } : { error: `No replaceable ${type} backups.` }
 }
-function resizeBackupPlan(s, body) {
-  const plan = backupPlan(s, body.pre_action_backup)
-  if (plan.error) return plan
-  if (plan.type !== 'temporary' && body.options?.[`${plan.type}_backups`] === 0) {
-    return { error: `Cannot take a pre-action backup into ${plan.type} backups while disabling that type.` }
-  }
-  return plan
-}
 const invoices = Array.from({ length: 27 }, (_, i) => mk('InvoicesResponse', 'invoices', {
   // The account's tax code (GET /v2/account), not the generator's placeholder.
   tax_code: { name: 'GST', type: 'scalar', fixed_percent: 10 },
@@ -266,17 +258,8 @@ function newAction(type, server, body) {
   // `interaction` makes reboots, shutdowns and power cycles stop and ask a question (UserInteractionType) until it is answered at POST /v2/actions/{id}/proceed.
   const id = nextId++, a = { id, type, server_id: server?.id, body, startedAt: Date.now(), ms: cfg.actionMs, outcome: cfg.actionOutcome, waiting: cfg.interaction && ['reboot', 'shutdown', 'power_cycle'].includes(type) ? cfg.interaction : null }
   actions.set(id, a)
-  scheduleAction(a, server)
+  setTimeout(() => applyAction(a, server), a.ms)
   return id
-}
-function scheduleAction(a, server) {
-  clearTimeout(a.timer)
-  a.completedAt = null
-  a.timer = setTimeout(() => {
-    if (a.waiting) return
-    // A terminal status is only valid after mutations or error handling finish.
-    try { applyAction(a, server) } finally { a.completedAt = Date.now() }
-  }, a.ms)
 }
 function applyAction(a, server) {
   if (a.waiting || a.outcome !== 'completed' || !server || !servers.includes(server)) return
@@ -285,22 +268,10 @@ function applyAction(a, server) {
   if (['shutdown', 'power_off'].includes(a.type)) server.status = 'off'
   if (a.type === 'resize') {
     if (b.pre_action_backup) {
-      const plan = resizeBackupPlan(server, b)
+      const plan = backupPlan(server, b.pre_action_backup)
       if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
       setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.pre_action_backup.label || 'Pre-action backup')])
     }
-    for (const type of ['daily', 'weekly', 'monthly']) {
-      const key = `${type}_backups`
-      if (b.options?.[key] != null) {
-        server.selected_size_options[key] = b.options[key]
-        const held = backupsFor(server).filter((image) => image.backup_info.type === type)
-          .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id)
-        // Retention trimming, unlike slot replacement, does not protect locked or attached images.
-        const removed = new Set(held.slice(0, Math.max(0, held.length - b.options[key])).map((image) => image.id))
-        setBackups(server, backupsFor(server).filter((image) => !removed.has(image.id)))
-      }
-    }
-    if (b.options?.offsite_backups != null) server.selected_size_options.offsite_backups = b.options.offsite_backups
     if (b.size) { server.size_slug = b.size; server.size = sizeBySlug(b.size); server.vcpus = server.size.vcpus; server.memory = server.size.memory; server.disk = server.size.disk }
     if (b.options?.memory) server.memory = b.options.memory
     if (b.options?.disk) server.disk = b.options.disk
@@ -315,12 +286,12 @@ function applyAction(a, server) {
   if (a.type === 'change_advanced_firewall_rules') fwOverride.set(server.id, b.firewall_rules || [])
 }
 function actionView(a) {
-  const done = !a.waiting && a.completedAt != null, server = servers.find((s) => s.id === a.server_id)
+  const done = !a.waiting && Date.now() - a.startedAt >= a.ms, server = servers.find((s) => s.id === a.server_id)
   const status = !done ? 'in-progress' : a.outcome === 'errored' ? 'errored' : 'completed'
   const base = mk('ActionsResponse', 'actions', {
-    id: a.id, status, type: a.type, started_at: new Date(a.startedAt).toISOString(), completed_at: done ? new Date(a.completedAt).toISOString() : null,
+    id: a.id, status, type: a.type, started_at: new Date(a.startedAt).toISOString(), completed_at: done ? new Date(a.startedAt + a.ms).toISOString() : null,
     resource_type: 'server', resource_id: a.server_id ?? 0, region: server?.region, region_slug: server?.region?.slug, title: a.type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()),
-    reason: 'Your request is being processed', progress: { current_step: done ? '' : 'Working', current_step_detail: null, percent_complete: done ? 100 : Math.min(90, Math.round((Date.now() - a.startedAt) / Math.max(1, a.ms) * 100)), completed_steps: done ? ['Working'] : [] },
+    reason: 'Your request is being processed', progress: { current_step: done ? '' : 'Working', current_step_detail: null, percent_complete: done ? 100 : Math.min(90, Math.round((Date.now() - a.startedAt) / a.ms * 100)), completed_steps: done ? ['Working'] : [] },
     error_message: done && a.outcome === 'errored' ? a.error || 'The simulated action failed (mock server).' : null, result_data: null, blocking_invoice_id: null, user_interaction_required: a.waiting ? { interaction_type: a.waiting } : null
   })
   return base
@@ -352,7 +323,7 @@ async function handleApi(req, res, u, body) {
     const a = actions.get(+mt[1]); if (!a) return json(res, 404, { id: 'not_found', message: 'Action not found' })
     // Answering lets the action carry on (true) or stops it (false); either way it settles shortly after.
     a.waiting = null; a.startedAt = Date.now(); a.ms = 400; a.outcome = body?.proceed ? 'completed' : 'errored'; a.error = body?.proceed ? null : 'Stopped: the answer was no.'
-    scheduleAction(a, servers.find((s) => s.id === a.server_id))
+    setTimeout(() => applyAction(a, servers.find((s) => s.id === a.server_id)), a.ms)
     return json(res, 204)
   }
   if ((mt = p.match(/^\/v2\/actions\/(\d+)$/)) && m === 'GET') { const a = actions.get(+mt[1]); return a ? json(res, 200, { action: actionView(a) }) : json(res, 404, { id: 'not_found', message: 'Action not found' }) }
@@ -427,7 +398,7 @@ async function handleApi(req, res, u, body) {
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'resize' && body.pre_action_backup) {
-        const plan = resizeBackupPlan(s, body)
+        const plan = backupPlan(s, body.pre_action_backup)
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { availableBackupSlots, freeBackupSlots, preActionBackupChoices, reducedBackupSlots } from '../src/renderer/src/lib/backupSlots.ts'
+import { availableBackupSlots, freeBackupSlots, replaceableBackups } from '../src/renderer/src/lib/backupSlots.ts'
 
 const none = { daily_backups: 0, weekly_backups: 0, monthly_backups: 0 }
 const image = (id, type) => ({ id, backup_info: { type } })
@@ -47,53 +47,23 @@ test('backups beyond retention do not produce a free slot or alter the input', (
   assert.deepEqual(existing.map((b) => b.id), [1, 2, 3])
 })
 
-for (const slot of ['daily', 'weekly', 'monthly']) {
-  test(`disabling ${slot} excludes both its free capacity and named backups from Backup first`, () => {
-    const current = { ...none, [`${slot}_backups`]: 2 }
-    const existing = [image(1, 'temporary'), image(2, slot)]
-    assert.deepEqual(freeBackupSlots(current, existing), [slot])
-    assert.deepEqual(preActionBackupChoices(current, none, existing), {
-      freeSlots: [], replacementBackups: [existing[0]], removedSlots: [slot]
-    })
-  })
-}
-
-test('empty temporary capacity survives disabling every scheduled slot', () => {
-  const current = { daily_backups: 2, weekly_backups: 2, monthly_backups: 2 }
-  const existing = ['daily', 'weekly', 'monthly'].map((slot, i) => image(i + 1, slot))
-  assert.deepEqual(preActionBackupChoices(current, none, existing), {
-    freeSlots: ['temporary'], replacementBackups: [], removedSlots: ['daily', 'weekly', 'monthly']
-  })
+test('named replacements exclude locked, attached and unknown-type images', () => {
+  const valid = [image(1, 'temporary'), image(2, 'daily')]
+  const locked = { ...image(3, 'weekly'), backup_info: { type: 'weekly', locked: true } }
+  const existing = [...valid, locked, image(4, 'monthly'), image(5, 'unknown'), { id: 6 }]
+  assert.deepEqual(replaceableBackups(existing, 4), valid)
+  assert.equal(existing.length, 6)
 })
 
-test('newly purchased scheduled slots cannot be used before the change', () => {
-  assert.deepEqual(preActionBackupChoices(none, { daily_backups: 2 }, [image(1, 'temporary')]), {
-    freeSlots: [], replacementBackups: [image(1, 'temporary')], removedSlots: []
-  })
+test('an image becoming locked or attached is no longer a replacement', () => {
+  const held = image(1, 'daily')
+  assert.deepEqual(replaceableBackups([held]), [held])
+  assert.deepEqual(replaceableBackups([{ ...held, backup_info: { type: 'daily', locked: true } }]), [])
+  assert.deepEqual(replaceableBackups([held], held.id), [])
 })
 
-test('retained scheduled slots remain available independently of a disabled slot', () => {
-  const current = { daily_backups: 2, weekly_backups: 2, monthly_backups: 2 }
-  const pending = { daily_backups: 0, weekly_backups: 1, monthly_backups: 2 }
-  const existing = [image(1, 'temporary'), image(2, 'daily'), image(3, 'monthly')]
-  assert.deepEqual(preActionBackupChoices(current, pending, existing), {
-    freeSlots: ['weekly', 'monthly'], replacementBackups: [existing[0], existing[2]], removedSlots: ['daily']
-  })
-})
-
-test('every scheduled retention reduction is identified, including positive limits', () => {
-  const current = { daily_backups: 3, weekly_backups: 2, monthly_backups: 1 }
-  assert.deepEqual(reducedBackupSlots(current, { daily_backups: 1, weekly_backups: 1, monthly_backups: 0 }), ['daily', 'weekly', 'monthly'])
-  assert.deepEqual(reducedBackupSlots(current, current), [])
-  assert.deepEqual(reducedBackupSlots(none, current), [])
-})
-
-test('a positive retention reduction still permits a pre-action backup in current free capacity', () => {
-  const current = { daily_backups: 3, weekly_backups: 0, monthly_backups: 0 }
-  const pending = { ...current, daily_backups: 1 }
-  const existing = [image(1, 'temporary'), image(2, 'daily')]
-  assert.deepEqual(preActionBackupChoices(current, pending, existing), {
-    freeSlots: ['daily'], replacementBackups: existing, removedSlots: []
-  })
-  assert.deepEqual(reducedBackupSlots(current, pending), ['daily'])
+test('no eligible named replacements does not make an occupied slot free', () => {
+  const existing = [image(1, 'temporary')]
+  assert.deepEqual(replaceableBackups(existing, 1), [])
+  assert.deepEqual(freeBackupSlots(none, existing), [])
 })
