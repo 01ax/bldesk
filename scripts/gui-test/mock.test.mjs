@@ -263,6 +263,22 @@ test('proceed replaces the original timer before applying an action', async () =
   assert.equal((await server()).status, 'off')
 })
 
+test('answering after the original timer fired keeps the action pending until the resumed action settles', async () => {
+  const before = await server()
+  await request('/__mock/config', { actionMs: 15, interaction: 'continue-after-ping-failure' })
+  const queued = await request('/v2/servers/8100/actions', { type: 'shutdown' })
+  await sleep(60) // The original timer has fired while the action is waiting.
+  assert.equal((await request(`/v2/actions/${queued.action.id}`)).action.status, 'in-progress')
+  await request(`/v2/actions/${queued.action.id}/proceed`, { proceed: true }, 'POST', 204)
+  await sleep(100) // The resumed action takes 400 ms.
+  const pending = (await request(`/v2/actions/${queued.action.id}`)).action
+  assert.equal(pending.status, 'in-progress')
+  assert.equal(pending.completed_at, null)
+  assert.equal((await server()).status, before.status)
+  await completed(queued)
+  assert.equal((await server()).status, 'off')
+})
+
 test('an action can stop and ask a question, and is answered at /proceed', async () => {
   await request('/__mock/config', { actionMs: 15, interaction: 'continue-after-ping-failure' })
   const { action } = await request('/v2/servers/8100/actions', { type: 'reboot' }, 'POST')
