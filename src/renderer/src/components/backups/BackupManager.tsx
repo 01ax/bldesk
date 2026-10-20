@@ -593,10 +593,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           {!weeklyOrMonthlyOnly && <button
             onClick={handleToggleAuto}
             disabled={toggleAutomatedBackups.isPending}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition border whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-medium rounded transition border whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed ${
               isAutoBackupEnabled
                 ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
-                : 'text-[#017cb6] bg-[#017cb6]/10 border-[#017cb6]/30 hover:bg-[#017cb6]/20'
+                : 'bg-[#017cb6] hover:bg-[#016594] text-white border-transparent shadow-sm'
             }`}
           >
             {isAutoBackupEnabled ? 'Remove Daily Backups' : 'Enable Daily Backups'}
