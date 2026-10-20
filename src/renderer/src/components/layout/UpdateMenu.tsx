@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownToLine, CheckCircle2, CloudOff, Loader2, RefreshCw, AlertTriangle, RotateCw, ChevronDown } from 'lucide-react'
 import { UpdateChannel, UpdaterState } from '@shared/ipc-types'
 import { renderHelpMarkdown } from '../../lib/helpMarkdown'
+import { notifyFailure } from '../../lib/failures'
 
 /*
  * Release notes, rendered without innerHTML. Desktop notes are GitHub-rendered
@@ -102,6 +103,12 @@ export const UpdateMenu: React.FC = () => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
+  // The Restart button stands in for the menu while an update is ready, so a Restart that did not install is reported
+  // where the user is looking, not in the menu.
+  useEffect(() => {
+    if (state.installError) notifyFailure("Couldn't install the update", state.installError)
+  }, [state.installError])
+
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
@@ -153,6 +160,9 @@ export const UpdateMenu: React.FC = () => {
           className="relative flex items-center gap-1.5 px-2 py-0.5 text-xs text-slate-300 hover:text-white bg-black/25 hover:bg-black/40 border border-white/10 hover:border-white/20 rounded-md transition shadow-inner font-mono"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f1ca00]" /> : <span>v{state.currentVersion}</span>}
+          {state.status === 'installing' && state.installPhase && (
+            <span className="font-sans">{state.installPhase === 'authorising' ? 'Waiting for password' : 'Installing'}</span>
+          )}
           <ChevronDown className="w-3 h-3 opacity-60" />
           {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#343a40]" />}
           {state.status === 'up-to-date' && <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-emerald-400" />}
@@ -186,7 +196,11 @@ export const UpdateMenu: React.FC = () => {
 
           {state.status === 'installing' && (
             <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
-              Installing BLDesk {state.availableVersion}. This window may not respond for a few seconds, and BLDesk restarts when it is done.
+              {state.installPhase === 'authorising'
+                ? `Waiting for you to approve the install of BLDesk ${state.availableVersion} in the system's password prompt. BLDesk stays open until you do, and closing the prompt leaves it as it is.`
+                : state.installPhase === 'installing'
+                  ? `Password accepted. BLDesk is closing to install ${state.availableVersion}, and opens again by itself when it is done.`
+                  : `Installing BLDesk ${state.availableVersion}. This window may not respond for a few seconds, and BLDesk restarts when it is done.`}
             </div>
           )}
 

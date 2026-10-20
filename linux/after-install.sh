@@ -29,6 +29,16 @@ fi
 hash update-mime-database 2>/dev/null && update-mime-database /usr/share/mime || true
 hash update-desktop-database 2>/dev/null && update-desktop-database /usr/share/applications || true
 
+# --- Update installer ---
+# pkexec runs install-update.sh as root, so only root may write to it or to the policy that names it, whatever umask the
+# package was built under (a packaging machine with umask 002 makes them group-writable).
+if [ -d "$APP_DIR/resources/linux" ]; then
+  chmod 0755 "$APP_DIR/resources/linux" "$APP_DIR"/resources/linux/*.sh
+fi
+if [ -f /usr/share/polkit-1/actions/com.termau.bldesk.policy ]; then
+  chmod 0644 /usr/share/polkit-1/actions/com.termau.bldesk.policy
+fi
+
 # --- Sandbox ---
 restricted="$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)"
 profile_loaded=0

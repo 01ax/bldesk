@@ -132,6 +132,102 @@ function installOrderProblems(template) {
   return problems
 }
 
+// 8. Installing a Linux package update. The library's own install (`pkexec /bin/bash -c 'dpkg -i <file>'`) froze the
+// window for about ten seconds, asked for permission to run a shell, and installed a file from a folder the user can write
+// to. BLDesk's own helper replaces it, and these checks keep the pieces that make it safe in place and in agreement. Like
+// check 7 they read the text of the scripts, so they cannot follow the logic: the behaviour is in
+// scripts/test-linux-update-scripts.mjs.
+const linuxDir = resolve(root, 'linux')
+const helperText = readFileSync(resolve(linuxDir, 'update/install-update.sh'), 'utf8')
+const sessionText = readFileSync(resolve(linuxDir, 'update/update-session.sh'), 'utf8')
+const policyText = readFileSync(resolve(linuxDir, 'com.termau.bldesk.policy'), 'utf8')
+const afterInstallText = readFileSync(resolve(linuxDir, 'after-install.sh'), 'utf8')
+const linuxInstallText = readFileSync(resolve(root, 'src/main/linuxInstall.ts'), 'utf8')
+const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+const shellCode = (text) => text.split('\n').map((l) => l.replace(/(^|\s)#.*$/, '')).join('\n')
+
+for (const [name, text, shell] of [
+  ['linux/update/install-update.sh', helperText, ['sh', 'dash']],
+  ['linux/update/update-session.sh', sessionText, ['sh', 'dash']],
+  ['linux/after-install.sh', afterInstallText, ['bash']]
+]) {
+  for (const sh of shell) {
+    try {
+      execFileSync(sh, ['-n'], { input: text, stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (err) {
+      if (err.code !== 'ENOENT') failures.push(`${name} failed the ${sh} syntax check: ${String(err.stderr || err.message).trim()}`)
+    }
+  }
+}
+
+const helperCode = shellCode(helperText)
+if (!/\bset -eu\b/.test(helperCode)) failures.push('install-update.sh: must run under `set -eu`')
+if (/\bdpkg\s+-i\b|\bbash\s+-c\b|\bsh\s+-c\b|\beval\b/.test(helperCode)) {
+  failures.push('install-update.sh: runs as root, so it must not run a shell command string, eval, or `dpkg -i` (apt-get installs, and resolves dependencies)')
+}
+const at = (re) => helperCode.search(re)
+const order = [
+  ['the copy into the root-owned folder', /cat -- "\$PACKAGE" > "\$COPY"/],
+  ['the checksum comparison', /"\$ACTUAL" = "\$WANT"/],
+  ['the package-name check', /Package 2>\/dev\/null\)" = bldesk/],
+  ['say AUTHORIZED', /say AUTHORIZED/],
+  ['the wait for BLDesk to exit', /kill -0 "\$APP_PID"/],
+  ['the install', /"\$APT_GET" install/]
+]
+let previous = -1
+for (const [label, re] of order) {
+  const index = at(re)
+  if (index < 0) failures.push(`install-update.sh: ${label} is missing`)
+  else if (index < previous) failures.push(`install-update.sh: ${label} is out of order: the file is copied, then checked, then authorised, then BLDesk is waited for, then installed`)
+  else previous = index
+}
+if (!/sha512sum/.test(helperCode)) failures.push('install-update.sh: must check the package against its SHA-512 checksum')
+
+// Where the helper ends up must be where the policy names it: the app's folder (APP_DIR in after-install.sh), then
+// resources/linux, which is where build.linux.extraResources (checked below) and updateScriptPaths put it. The session
+// script finds the helper beside itself.
+const appDir = afterInstallText.match(/^APP_DIR='([^']+)'$/m)?.[1]
+const policyPath = policyText.match(/org\.freedesktop\.policykit\.exec\.path">([^<]+)</)?.[1]
+if (!appDir) failures.push('after-install.sh: APP_DIR was not found, so the helper\'s installed path cannot be checked against the policy')
+if (!policyPath) failures.push('com.termau.bldesk.policy: the exec.path annotation was not found')
+if (appDir && policyPath && policyPath !== `${appDir}/resources/linux/install-update.sh`) {
+  failures.push(`com.termau.bldesk.policy names ${policyPath}, but the package installs the helper at ${appDir}/resources/linux/install-update.sh`)
+}
+if (!/^HELPER=\$\{0%\/\*\}\/install-update\.sh$/m.test(sessionText)) {
+  failures.push('update-session.sh: HELPER must be `${0%/*}/install-update.sh`, the helper beside the script')
+}
+if (!/helper: join\(resourcesPath, 'linux', 'install-update\.sh'\)/.test(linuxInstallText) || !/session: join\(resourcesPath, 'linux', 'update-session\.sh'\)/.test(linuxInstallText)) {
+  failures.push('linuxInstall.ts: updateScriptPaths must name resources/linux/install-update.sh and update-session.sh, where the package puts them')
+}
+const privileged = shellCode(sessionText).split('\n').filter((l) => /^\s*pkexec\b/.test(l))
+if (privileged.length !== 1 || !/pkexec --disable-internal-agent "\$HELPER"/.test(privileged[0])) {
+  failures.push('update-session.sh: its one pkexec call must run "$HELPER" and nothing else')
+}
+if (!/<allow_active>auth_admin<\/allow_active>/.test(policyText) || /<allow_(any|inactive|active)>(yes|auth_self)</.test(policyText)) {
+  failures.push('com.termau.bldesk.policy: installing an update must need an administrator\'s password (auth_admin), never yes or auth_self')
+}
+
+// The package ships all of it, to the paths the scripts use.
+const linuxBuild = packageJson.build?.linux?.extraResources ?? []
+if (!linuxBuild.some((r) => r.from === 'linux/update' && r.to === 'linux')) {
+  failures.push('package.json: build.linux.extraResources must copy linux/update to the resources folder\'s linux/ (the helper\'s path)')
+}
+if (!(packageJson.build?.deb?.fpm ?? []).includes('linux/com.termau.bldesk.policy=/usr/share/polkit-1/actions/com.termau.bldesk.policy')) {
+  failures.push('package.json: build.deb.fpm must install linux/com.termau.bldesk.policy to /usr/share/polkit-1/actions/')
+}
+if (!/chmod 0755 "\$APP_DIR\/resources\/linux"/.test(afterInstallText) || !/chmod 0644 \/usr\/share\/polkit-1\/actions\/com\.termau\.bldesk\.policy/.test(afterInstallText)) {
+  failures.push('after-install.sh: must make the helper and its folder writable by root alone (0755) and the policy 0644, whatever umask the package was built under')
+}
+
+// updater.ts: a Linux package never reaches the library's blocking install.
+if (!codeOnly.includes('autoUpdater.autoInstallOnAppQuit=!isLinuxPackage')) {
+  failures.push('updater.ts: autoInstallOnAppQuit must be off for a Linux package (`= !isLinuxPackage`), or quitting installs through the library\'s blocking pkexec flow')
+}
+const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{this\.installLinuxPackage\(\);?return\}/)
+if (linuxBranch < 0 || linuxBranch > codeOnly.indexOf('quitAndInstall(')) {
+  failures.push('updater.ts: install() must hand a Linux package to installLinuxPackage() before it reaches autoUpdater.quitAndInstall')
+}
+
 if (failures.length > 0) {
   console.error('Updater guards failed:\n' + failures.map((f) => `  - ${f}`).join('\n'))
   process.exit(1)
