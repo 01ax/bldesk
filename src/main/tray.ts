@@ -151,11 +151,13 @@ export class TrayManager {
     return this.settings.closeToTray && this.tray !== null
   }
 
-  /** The window was just hidden instead of closed; say so the first time. */
+  /**
+   * The window was just hidden instead of closed; say so the first time. A notice that muting (or the OS) stopped has
+   * not been seen, so it only counts once it was shown, and is owed again the next time the window hides.
+   */
   static onHiddenToTray(): void {
     if (this.hiddenToTrayNoticeShown) return
-    this.hiddenToTrayNoticeShown = true
-    this.notify({
+    this.hiddenToTrayNoticeShown = this.notify({
       title: 'BLDesk is still running',
       body:
         process.platform === 'darwin'

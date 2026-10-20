@@ -89,8 +89,8 @@ export interface ConsoleWindowOptions {
 }
 
 /**
- * What a notification is about, so the user can mute a category from the tray
- * menu. Omitted → 'general', which is never filtered.
+ * What a notification is about, so the user can mute a category from Settings
+ * or the tray menu. Omitted → 'general', which has its own switch like the rest.
  */
 export type NotificationKind = 'general' | 'server-state' | 'action' | 'balance' | 'update'
 
