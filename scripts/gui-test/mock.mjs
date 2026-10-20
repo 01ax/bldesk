@@ -244,6 +244,14 @@ function backupPlan(s, body) {
   const replace = strategy === 'oldest' ? candidates[0] : candidates.at(-1)
   return replace ? { type, replace } : { error: `No replaceable ${type} backups.` }
 }
+function resizeBackupPlan(s, body) {
+  const plan = backupPlan(s, body.pre_action_backup)
+  if (plan.error) return plan
+  if (plan.type !== 'temporary' && body.options?.[`${plan.type}_backups`] === 0) {
+    return { error: `Cannot take a pre-action backup into ${plan.type} backups while disabling that type.` }
+  }
+  return plan
+}
 const invoices = Array.from({ length: 27 }, (_, i) => mk('InvoicesResponse', 'invoices', {
   // The account's tax code (GET /v2/account), not the generator's placeholder.
   tax_code: { name: 'GST', type: 'scalar', fixed_percent: 10 },
@@ -277,7 +285,7 @@ function applyAction(a, server) {
   if (['shutdown', 'power_off'].includes(a.type)) server.status = 'off'
   if (a.type === 'resize') {
     if (b.pre_action_backup) {
-      const plan = backupPlan(server, b.pre_action_backup)
+      const plan = resizeBackupPlan(server, b)
       if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
       setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.pre_action_backup.label || 'Pre-action backup')])
     }
@@ -419,7 +427,7 @@ async function handleApi(req, res, u, body) {
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'resize' && body.pre_action_backup) {
-        const plan = backupPlan(s, body.pre_action_backup)
+        const plan = resizeBackupPlan(s, body)
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })

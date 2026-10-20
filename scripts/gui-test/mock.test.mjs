@@ -186,13 +186,35 @@ test('a slot filled after resize validation refuses the pre-action backup before
 })
 
 for (const slot of ['daily', 'weekly', 'monthly']) {
-  test(`resize retention zero removes even the newly taken ${slot} pre-action replacement`, async () => {
+  for (const strategy of ['none', 'specified']) {
+    test(`resize rejects a ${strategy} ${slot} pre-action backup when disabling that type`, async () => {
+      const images = await backups(), otherBefore = await backups(8101)
+      const target = images.find((b) => b.backup_info.type === slot)
+      if (strategy === 'none') {
+        const held = images.filter((b) => b.backup_info.type === slot).length
+        if ((await server()).selected_size_options[`${slot}_backups`] <= held) {
+          await completed(await request('/v2/servers/8100/actions', { type: 'resize', options: { [`${slot}_backups`]: held + 1 } }))
+        }
+      }
+      const before = await server()
+      const rejected = await request('/v2/servers/8100/actions', {
+        type: 'resize', options: { memory: before.memory + 1024, [`${slot}_backups`]: 0 },
+        pre_action_backup: {
+          type: 'take_backup', backup_type: slot, replacement_strategy: strategy,
+          ...(strategy === 'specified' ? { backup_id_to_replace: target.id } : {})
+        }
+      }, 'POST', 400)
+      assert.match(rejected.message, /pre-action backup.*disabl/i)
+      assert.deepEqual(await server(), before)
+      assert.deepEqual(await backups(), images)
+      assert.deepEqual(await backups(8101), otherBefore)
+    })
+  }
+
+  test(`resize retention zero without a pre-action backup still removes existing ${slot} images`, async () => {
     const before = await backups()
-    const replace = before.find((b) => b.backup_info.type === slot)
-    assert.ok(replace)
     await completed(await request('/v2/servers/8100/actions', {
-      type: 'resize', options: { [`${slot}_backups`]: 0 },
-      pre_action_backup: { type: 'take_backup', backup_type: slot, replacement_strategy: 'specified', backup_id_to_replace: replace.id }
+      type: 'resize', options: { [`${slot}_backups`]: 0 }
     }))
     assert.equal((await server()).selected_size_options[`${slot}_backups`], 0)
     assert.deepEqual(await backups(), before.filter((b) => b.backup_info.type !== slot))

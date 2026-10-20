@@ -297,7 +297,7 @@ export const ChangePlanPanel: React.FC<{
   /*
    * Which slots a pre-action backup can use: the server's *current* retention,
    * because the backup is taken before the new options apply. Scheduled slots
-   * being disabled must also be excluded: the change deletes that new backup.
+   * being disabled must also be excluded: the API rejects that combination.
    */
   const backupsQuery = useServerBackups(client, server.id)
   const existingBackups = useMemo(() => (backupsQuery.data ?? []) as any[], [backupsQuery.data])
@@ -1247,7 +1247,7 @@ export const ChangePlanPanel: React.FC<{
         )}
         {preBackup !== 'off' && backupChoices.removedSlots.length > 0 && (
           <p className="sm:col-span-2 text-[11px] text-amber-700 dark:text-amber-400" role="status">
-            Scheduled slots being disabled are not offered under Backup will: this plan change would delete the new backup too.
+            Scheduled slots being disabled are not offered under Backup will. The API rejects a pre-action backup into a type this change disables.
             Keep retention for that slot, use a temporary backup, or download a backup and retain a separate copy before changing plans.
           </p>
         )}

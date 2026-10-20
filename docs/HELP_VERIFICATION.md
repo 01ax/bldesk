@@ -39,7 +39,7 @@ The built Electron app was checked again with an isolated profile and fictitious
 
 Native Electron windows at 1024x680 and 1280x840 were checked at 80%, 125% and 150% through `webContents.sendInputEvent`; the actual zoom factor was verified. The retention warning fitted, the form's final button was reachable, and both confirmation buttons stayed visible. Native screenshots were inspected. The isolated app and mock were stopped. `npm run typecheck` (including all guards and the helper tests), `npm run build`, the helper suite and the mock suite passed. The updater's Bash checks required Git Bash on the process PATH; no machine or repository setting was changed. The follow-up was not rerun on physical Android, and no new live guest change was made.
 
-### Final retention clarification and device checks
+### Historical retention clarification and device checks (19 October 2026)
 
 Source boundary: the vendored Resize reference says the pre-action backup precedes other actions and explicitly describes weekly retention zero removing all weekly backups. BinaryLane confirmed on 19 October 2026 that a scheduled pre-action image is also removed when that same change sets its retention to zero; the API does not prevent the combination. This includes daily and monthly, which the reference does not explicitly describe. BinaryLane also confirmed that reductions to a positive limit trim the oldest images of that type until the new count is met, without protecting locked or attached images. Slot replacement skips those images; retention trimming does not. These are product confirmations, not additional live tests or conclusions inferred from fixtures.
 
@@ -58,6 +58,18 @@ The QA app was uninstalled, its two USB mappings removed, and both final fixture
 After the final review of 8a7638a, corrected the GUI-test mock only: terminal status and completed_at now follow the action callback, including its failure returns, rather than elapsed time. Waiting actions remain in progress; proceeding replaces the pending timer. Checked the harness README against scheduleAction, actionView and the new regression assertions. No production component, request body or bundled help text changed.
 
 Both zero-delay success/failure regressions failed against the old mock and passed after the fix. The 15 helper and 30 mock cases pass. Twenty additional runs each passed the formerly intermittent competing-slot case and both zero-delay cases. Trimming assertions now check other slot types and another server, a limit above the held-image count, and a reduction without a pre-action backup. Typecheck with all guards and the full build passed. No live API, Electron or Android run was repeated for this harness-only follow-up; the earlier device checks remain the product-code verification.
+
+### Disabled-type rejection update (20 October 2026)
+
+BinaryLane confirmed on 20 October that a resize now rejects a pre-action backup into a backup type that the same resize disables. This supersedes the historical 19 October combined-request behaviour recorded above; it does not change the separate confirmation about trimming existing images. The supplied OpenAPI v0.44.0 differs from the vendored v0.43.3 only in two retired-plan memory/storage limit descriptions and its version, so the rejection confirmation is a separate source, not a new statement found in that spec. No new live API test or exact error-response observation is claimed.
+
+Checked the revised Change Plan warning and `docs/help/server-change-plan.md` against `preActionBackupChoices`, the unchanged selection/summary/guard/payload wiring, and the retention-reduction confirmation. The guard still excludes disabled scheduled types. The warning/help now explain rejection instead of predicting deletion of a newly taken image. Setting retention to zero without that pre-action combination still removes existing images, and temporary backups and positive retained counts are unchanged. The quoted retention-reduction confirmation remains verbatim.
+
+The mock uses the same disabled-type check at request validation and completion. Its existing 400 validation envelope is a fixture choice, not a claim about the newly confirmed live response. Six free-slot/named-replacement daily/weekly/monthly rejection regressions failed before the mock update and pass after it, checking that server options and images are unchanged. Separate cases retain zero-without-pre-action deletion coverage. All 15 helper and 36 mock cases pass; the competing-slot refusal and both zero-delay completion cases passed 20 further runs.
+
+Fresh native Electron checks passed at 1024x680 and 1280x840, each at 80%, 125% and 150% with actual zoom verified. The revised warning fitted and both confirmation buttons remained visible; native screenshots were inspected. Disabled schedules still block free/named choices, positive counts remain usable, loading/failed-read Retry works, and seven cancellations sent no resize. One confirmed fixture request used temporary/specified with all scheduled counts zero; its actual received body passed schema validation. No renderer exceptions occurred. The isolated app and mock were stopped and their listeners checked absent.
+
+Typecheck/all guards, the full build and focused regression suites passed. No physical Android or live-account test was repeated for this wording/mock update; the dated 19 October Android observations remain historical coverage, not a fresh device run.
 
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
