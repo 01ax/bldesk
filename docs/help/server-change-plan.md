@@ -12,11 +12,13 @@ Choosing another base size changes the included transfer allowance shown in the 
 
 Use a free slot lists only empty slots in the server's current backup setup, not retention you are about to buy. A server without scheduled backups can use its empty temporary slot. If it already holds a temporary backup and has no other free slots, choose Replace an existing backup and select the backup to replace; the chosen backup is deleted to make room. Locked and attached images are not offered for replacement. If a selected image becomes unavailable, choose again before applying. While the backup list is loading or its first read has failed, BLDesk cannot offer a free slot. Retry a failed read before continuing with that choice.
 
+Scheduled pre-action backup types must have capacity before the resize and remain enabled afterwards. A type being disabled is excluded from both the free-slot picker and named replacements. If a selected replacement becomes unavailable, choose again before applying. Use a type that remains enabled so the pre-action backup can be kept, or download a backup and retain a separate copy before changing plans.
+
 The summary rows, including Monthly (before tax), are before tax. Billing then shows Monthly Change and Monthly Total on the account's tax: with the tax added they say so (for example incl. GST), and while the tax cannot be worked out they say before tax.
 
-Setting weekly backups to 0 removes all of the server's weekly backups, as the API reference says for a resize. The confirmation carries this note, and is at least a destructive one (a reinstall or a released address makes it irreversible, which also asks for the server's name):
+Reducing scheduled retention deletes the oldest backups above the new limit, including locked or attached images. Setting a count to 0 removes all existing backups of that type. Slot replacement is different: it skips locked or attached images. The confirmation for any retention reduction is at least destructive (a reinstall or released address makes it irreversible and asks for the server's name):
 
-“Setting weekly backups to 0 removes all of this server's weekly backups. They will no longer be available.”
+“Reducing scheduled backup retention deletes the oldest backups above the new limits. Setting a count to 0 removes all backups of that type. Locked or attached backups can be deleted too.”
 
 Keeping the image preserves it; choosing to reinstall destroys the disks. Do not confuse reinstall with an in-place upgrade. BinaryLane controls plan eligibility and address allocation; see [changing a plan](https://support.binarylane.com.au/support/solutions/articles/1000015174-can-i-change-my-plan-).
 

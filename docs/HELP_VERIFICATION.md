@@ -12,6 +12,16 @@ Retention warnings/disabled-type handling and the mock-completion timing fix hav
 
 Fresh 20 October checks of the narrowed code passed: 10 slot-helper and 19 mock cases, typecheck/all guards and build. Native Electron checks at 1024x680 and 1280x840, each at 80%, 125% and 150%, verified visible Cancel/Resize controls and six cancellations without a resize. A confirmed temporary/specified resize, locked/attached picker exclusions, failed-read Retry and scheduled fallback passed; actual fixture request bodies passed schema validation. Native screenshots were inspected. No renderer exceptions occurred. Test processes were stopped; no new Android or live-account check is claimed.
 
+## Change Plan backup retention (20 October 2026)
+
+Checked `docs/help/server-change-plan.md` against `ChangePlanPanel.tsx`, `retainedBackupTypes`, `reducedBackupSlots`, the picker/selection guards, typed resize body and confirmation. Scheduled types being disabled cannot be selected as free or named pre-action backups; positive retained counts remain usable when there is current capacity. Any retention reduction adds the quoted deletion warning and destructive severity, preserving stronger reinstall/address-release confirmation.
+
+The vendored Resize reference describes a pre-action backup before other changes and weekly-zero deletion. BinaryLane confirmed on 19 October that positive reductions trim oldest-first and retention trimming can delete locked or attached images; replacement skips those images. The independent PR #315 review reports a 20 October live daily 2-to-1 reduction deleting the locked oldest image. These confirmations are presented for maintainer review, not as extra tests by this author or explicit statements newly found in OpenAPI.
+
+The reported rejection fix does not establish its deployment: the same independent review reports live daily/none plus daily-zero acceptance followed by deletion. Guidance therefore requires a type that remains enabled so the backup can be kept, without predicting rejection versus acceptance. The mock is unchanged and is not evidence of deployed retention behaviour. Temporary-slot occupancy and protected named-replacement filtering remain in separate PR #315; the mock-timing fix is separate too.
+
+Fresh verification: all 9 retention-helper and 17 unchanged mock tests passed, as did typecheck/all guards and build. Native Electron checks at 1024x680 and 1280x840, each at 80%, 125% and 150%, verified the warning fitted and confirmation controls stayed visible. Daily/weekly/monthly named choices were cleared and blocked when disabled, a positive daily reduction retained the free choice and showed the deletion warning, and seven cancellations sent no resize. One confirmed temporary/specified request with scheduled counts zero passed schema validation. Screenshots were inspected and no renderer exceptions occurred. Test processes were stopped. No new Android or live-account test is claimed.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.

@@ -1,5 +1,23 @@
 export type BackupSlot = 'temporary' | 'daily' | 'weekly' | 'monthly'
 
+type BackupRetention =
+  | { daily_backups?: number | null; weekly_backups?: number | null; monthly_backups?: number | null }
+  | null
+  | undefined
+
+/** Pre-action backup types need retention both before and after the resize. */
+export function retainedBackupTypes(current: BackupRetention, pending: BackupRetention): BackupSlot[] {
+  const retained = availableBackupSlots(pending)
+  return availableBackupSlots(current).filter((slot) => retained.includes(slot))
+}
+
+/** Scheduled types whose configured retention is being reduced. */
+export function reducedBackupSlots(current: BackupRetention, pending: BackupRetention): BackupSlot[] {
+  return (['daily', 'weekly', 'monthly'] as const).filter(
+    (slot) => (pending?.[`${slot}_backups`] ?? 0) < (current?.[`${slot}_backups`] ?? 0)
+  )
+}
+
 /**
  * The backup types permitted by a server's current retention, not free capacity.
  *
