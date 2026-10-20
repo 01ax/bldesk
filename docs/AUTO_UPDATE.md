@@ -18,7 +18,7 @@ A push of a `v*` tag runs `.github/workflows/release.yml`:
 
 `src/main/updater.ts` (`UpdaterManager`) wraps `electron-updater`:
 
-- Checks 15 seconds after launch and every 6 hours, and when "Check now" is pressed.
+- Checks 15 seconds after launch and then every hour, when "Check now" is pressed, and when the window gets focus or the computer wakes (15 seconds after waking, so the network is back), as long as no check started in the last 15 minutes.
 - Windows and Linux download automatically (`autoDownload = true`) and install on quit (`autoInstallOnAppQuit = true`). A native notification says once per version that an update is ready.
 - A downloaded update stays ready until it is installed, the channel is changed or a newer version starts to download: a later check that finds nothing newer or fails does not clear it. On Windows and Linux it is dropped when a different version is announced, because `electron-updater` deletes the downloaded installer then.
 - The channel choice is saved in `<userData>/updater.json`. Stable sets `channel = latest` and `allowPrerelease = false`; Beta sets `channel = beta` and `allowPrerelease = true`. `allowDowngrade` is false.

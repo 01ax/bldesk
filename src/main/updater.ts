@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net, powerMonitor } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
 import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
@@ -9,6 +9,7 @@ import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
 import { restartArguments } from '../shared/deeplink'
 import { shQuote } from '../shared/ssh'
 import { appendUpdaterLog } from './updaterLog'
+import { CHECK_INTERVAL_MS, dueForCheck, MIN_GAP_BETWEEN_EVENT_CHECKS_MS, RESUME_CHECK_DELAY_MS } from './updaterSchedule'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
 const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as any).default?.autoUpdater || electronUpdater
@@ -38,7 +39,6 @@ const OFFLINE_CODES = new Set([
   'ENETUNREACH',
   'EHOSTUNREACH'
 ])
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h
 const INITIAL_DELAY_MS = 15 * 1000 // let the UI settle before hitting GitHub
 
 interface UpdaterSettings {
@@ -237,6 +237,8 @@ export class UpdaterManager {
   }
   private static timer: NodeJS.Timeout | null = null
   private static initialised = false
+  /** When the last check started (ms since the epoch), for the focus and wake-up checks; null before the first. */
+  private static lastCheckStartedAt: number | null = null
   /**
    * The update that has been downloaded and is waiting for a restart. It stays until it is installed or a newer one has
    * finished downloading: a later check (every few hours, or the Check button) that finds nothing, fails because the
@@ -395,6 +397,13 @@ export class UpdaterManager {
 
     setTimeout(() => this.check(), INITIAL_DELAY_MS)
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS)
+    // Also when the window gets focus and when the computer wakes, so a release published while nobody was looking is
+    // seen soon, and before it is a restart that installs an older version. See updaterSchedule.ts.
+    const checkIfDue = () => {
+      if (dueForCheck(this.lastCheckStartedAt, Date.now(), MIN_GAP_BETWEEN_EVENT_CHECKS_MS)) void this.check()
+    }
+    app.on('browser-window-focus', checkIfDue)
+    powerMonitor.on('resume', () => setTimeout(checkIfDue, RESUME_CHECK_DELAY_MS))
   }
 
   static getState(): UpdaterState {
@@ -404,6 +413,7 @@ export class UpdaterManager {
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
     if (this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'installing') return this.getState()
+    this.lastCheckStartedAt = Date.now()
     if (!this.held) this.setState({ status: 'checking', error: undefined })
     try {
       await autoUpdater.checkForUpdates()
