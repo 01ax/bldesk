@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.30] - 2026-10-21
+
+**A server with no scheduled backups says what that means**
+
+### Added
+- **A warning on a server that keeps no scheduled backups** (#314). Under the Backups banner, an amber line says BinaryLane keeps backups of a server only on a backup schedule, so apart from one you take by hand (kept for up to 48 hours) it holds no copy of the server's data, and anything lost from the server is lost for good. The empty state adds that a backup taken now is a temporary one, and points at Enable Daily Backups and the Backups section of Change Plan. The banner's text now also says offsite backups are set in Change Plan. It follows the server's backup settings, not the backups it holds, so a server with only a temporary backup still shows it, and a server with daily, weekly or monthly backups is unchanged. BinaryLane confirmed the statement; the API reference does not give it.
+
+### Fixed
+- **Change Plan no longer says to replace a named backup when there is none** (#314). On a server whose only free slot is the temporary one, the hint under Backup slot now mentions replacing a backup only when the server holds one.
+
 ## [1.0.62-beta.29] - 2026-10-21
 
 **A Settings page to mute notifications, and Change Plan's backup-first option follows the backup limits**
