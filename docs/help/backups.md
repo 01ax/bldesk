@@ -90,7 +90,15 @@ A server with weekly or monthly backups and no daily ones reads:
 
 A server with no backups in its options reads the text below, and its one button enables daily backups and keeps two of them:
 
-“Automated backups are currently turned off for this server. The button enables daily backups and keeps two of them; weekly and monthly backups are set in the Backups section of the server's Change Plan.”
+“Automated backups are currently turned off for this server. The button enables daily backups and keeps two of them; weekly, monthly and offsite backups are set in the Backups section of the server's Change Plan.”
+
+Under it, in amber, the banner says what that means:
+
+“This server has no scheduled backups. BinaryLane keeps backups of a server only on a backup schedule: apart from one you take by hand, which is kept for up to 48 hours, it holds no copy of this server's data. Anything lost from the server, such as deleted, overwritten or corrupted data, is lost for good.”
+
+The warning follows the server's options, not the backups it holds, so a server that has only a temporary backup still shows it. A server with daily, weekly or monthly backups does not. When such a server holds no backups at all, the empty state adds a line under “Take a backup before making configuration changes, so there is something to roll back to.”:
+
+“A backup taken now is a temporary one, kept for up to 48 hours. Enable Daily Backups above, or use the Backups section of Change Plan, to keep scheduled backups.”
 
 “Remove Daily Backups” is not a pause, and it is the banner's button only while the server has daily backups. BinaryLane's API reference calls the action destructive and says it asks for no further confirmation, so the dialog is your only check. The dialog title is “Remove daily backups”. Its button is red but asks for no typed name, so read the summary before you confirm. The request is recorded in History.
 

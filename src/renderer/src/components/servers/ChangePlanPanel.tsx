@@ -1248,7 +1248,7 @@ export const ChangePlanPanel: React.FC<{
             ) : backupSlots.length === 1 && backupSlots[0] === 'temporary' ? (
               <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
                 Only a temporary slot is free. A scheduled slot needs free capacity now and a type that stays enabled after
-                the change, so this server has none - replace a named backup instead.
+                the change, so this server has none{replacementBackups.length > 0 && ' - replace a named backup instead'}.
               </p>
             ) : null}
             {backupsLoaded && chosenPreBackupSlot === 'temporary' && (

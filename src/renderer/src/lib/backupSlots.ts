@@ -48,6 +48,17 @@ export function availableBackupSlots(
 export const TEMPORARY_BACKUP_TERMS =
   'A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.'
 
+/**
+ * Shown on a server that keeps no daily, weekly or monthly backups. Not in the API reference: BinaryLane confirmed on 21
+ * October 2026 that it keeps backups of a server only on a backup schedule. A backup taken by hand is the one exception,
+ * and its 48 hours is the reference's (see TEMPORARY_BACKUP_TERMS).
+ */
+export const NO_SCHEDULED_BACKUPS_WARNING =
+  "This server has no scheduled backups. BinaryLane keeps backups of a server only on a backup schedule: apart from one you take by hand, which is kept for up to 48 hours, it holds no copy of this server's data. Anything lost from the server, such as deleted, overwritten or corrupted data, is lost for good."
+
+export const NO_SCHEDULED_BACKUPS_EMPTY =
+  'A backup taken now is a temporary one, kept for up to 48 hours. Enable Daily Backups above, or use the Backups section of Change Plan, to keep scheduled backups.'
+
 export const BACKUP_SLOT_LABELS: Record<BackupSlot, string> = {
   temporary: 'Temporary (kept up to 48 hours)',
   daily: 'Daily',

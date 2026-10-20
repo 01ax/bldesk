@@ -35,7 +35,15 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import type { FieldChange } from '../../lib/diff'
-import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest, TEMPORARY_BACKUP_TERMS } from '../../lib/backupSlots'
+import {
+  availableBackupSlots,
+  BACKUP_SLOT_LABELS,
+  describeBackup,
+  NO_SCHEDULED_BACKUPS_EMPTY,
+  NO_SCHEDULED_BACKUPS_WARNING,
+  replacedByOldest,
+  TEMPORARY_BACKUP_TERMS
+} from '../../lib/backupSlots'
 import { notifyFailure } from '../../lib/failures'
 import {
   FORMATTERS,
@@ -154,6 +162,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   const weeklyOrMonthlyOnly =
     !isAutoBackupEnabled &&
     ((activeServer?.selected_size_options?.weekly_backups ?? 0) > 0 || (activeServer?.selected_size_options?.monthly_backups ?? 0) > 0)
+
+  // No daily, weekly or monthly backups at all: nothing is kept for this server except what is taken by hand.
+  const noSchedule = !isAutoBackupEnabled && !weeklyOrMonthlyOnly
 
   // When the server's scheduled backups run, from the app's server list (`backup_settings`). Only what applies to what the
   // server keeps is shown and changed: nothing while it keeps no daily, weekly or monthly backups, the weekday only with weekly
@@ -569,8 +580,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                   ? "BinaryLane takes automated daily backups. The Backup Schedule below shows when they run. Weekly and monthly backups are set in the Backups section of the server's Change Plan."
                   : weeklyOrMonthlyOnly
                     ? "This server keeps weekly or monthly backups and no daily ones. Daily, weekly and monthly backups are set in the Backups section of the server's Change Plan."
-                    : "Automated backups are currently turned off for this server. The button enables daily backups and keeps two of them; weekly and monthly backups are set in the Backups section of the server's Change Plan."}
+                    : "Automated backups are currently turned off for this server. The button enables daily backups and keeps two of them; weekly, monthly and offsite backups are set in the Backups section of the server's Change Plan."}
               </p>
+              {noSchedule && (
+                <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400 mt-1.5" role="note">
+                  {NO_SCHEDULED_BACKUPS_WARNING}
+                </p>
+              )}
             </div>
           </div>
 
@@ -696,6 +712,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             <p className="text-[#6c757d] max-w-sm mx-auto text-[11px]">
               Take a backup before making configuration changes, so there is something to roll back to.
             </p>
+            {noSchedule && <p className="text-[#6c757d] max-w-sm mx-auto text-[11px]">{NO_SCHEDULED_BACKUPS_EMPTY}</p>}
             <button
               onClick={() => setIsTakingBackup(true)}
               className="mt-2 px-3.5 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition shadow-sm"

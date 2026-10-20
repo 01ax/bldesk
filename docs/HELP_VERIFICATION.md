@@ -1,5 +1,15 @@
 # Help verification
 
+## Servers with no scheduled backups (21 October 2026, #314)
+
+`BackupManager.tsx` shows `NO_SCHEDULED_BACKUPS_WARNING` under the banner when the server's options keep no daily, weekly or monthly backups (the banner's Disabled state), and `NO_SCHEDULED_BACKUPS_EMPTY` in the empty state of such a server. The banner's Disabled text now also says offsite backups are set in Change Plan (`offsite_backups` is a resize option in the reference, and Change Plan's Backups section sets it). `docs/help/backups.md` quotes all three.
+
+The public reference does not say that BinaryLane keeps backups only on a backup schedule. BinaryLane confirmed it on 21 October 2026, and the warning is worded around the one exception, a backup taken by hand, whose 48 hours is the reference's (see the next entry). The warning keys on the server's options, so a server holding only a temporary backup still shows it, and a server with daily, weekly or monthly backups does not. #314 asked for the empty-state line to state no lifetime; the reference now gives one, so it does.
+
+Checked in the GUI harness on a server with no backups (the warning and the empty-state line show) and one with daily, weekly and monthly backups (neither shows). Not checked against a live account.
+
+Change Plan's hint on a server whose only free slot is temporary no longer says "replace a named backup instead" when there is no backup to replace.
+
 ## Temporary backup terms (21 October 2026, API reference 0.45.0)
 
 `openapi.json` is now the live 0.45.0 reference (it was 0.43.3; descriptions only, see the commit). Two sentences in it are new: the `temporary` row of BackupSlot reads “A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image)” (it said seven days), and Take Backup reads “At most two temporary backups may be taken of a server in any seven day period.” `BACKUP_SLOT_LABELS.temporary` now says “Temporary (kept up to 48 hours)”, and `TEMPORARY_BACKUP_TERMS` is shown under the slot when Temporary is chosen in `BackupManager.tsx` (Take Backup) and in `ChangePlanPanel.tsx` (Backup first). `docs/help/backups.md` and `docs/help/server-change-plan.md` quote them.
