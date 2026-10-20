@@ -5,6 +5,23 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.29] - 2026-10-21
+
+**A Settings page to mute notifications, and Change Plan's backup-first option follows the backup limits**
+
+### Added
+- **A Settings page for notifications** (#320, #316). The gear in the title bar (More, then Settings, on a phone) opens it. "Show notifications" mutes everything at once, and "Choose kinds" has a switch for server state changes, action results, billing, changes you make, and BLDesk updates. The confirmations that had no switch, and the "is ready" notice for an update, are now covered. The tray menu has the same switches and stays in step with the page. Muting stops only the operating system's notifications: action progress, failures and History inside BLDesk are unchanged. A change that cannot be saved on the device says so and applies until BLDesk is closed. On Android the choices are saved, but BLDesk does not show notifications there yet, so they have no effect.
+
+### Fixed
+- **Change Plan no longer offers a temporary slot that is already taken** (#315, #312). Backup first lists only slots that are empty now: a server without scheduled backups can use its empty temporary slot, and one that already holds a temporary backup is asked to choose a backup to replace. Locked and attached backups are not offered for replacement. While the backup list is loading, or could not be read, no free slot is offered, and a failed read has a Retry.
+- **Change Plan warns when reducing backup retention deletes backups, and keeps the backup-first backup out of a type it turns off** (#319). Any reduction of daily, weekly or monthly backups now asks for the destructive confirmation, which says the oldest backups above the new limits are deleted and that locked or attached backups can be deleted too. A pre-action backup cannot use a type the change sets to 0.
+- **The "BLDesk is still running" notice is not lost when notifications are muted.** It is offered again the next time the window is hidden to the tray, instead of being counted as shown.
+
+### Changed
+- **Temporary backups are described as the API reference now does** (API reference 0.45.0). The slot reads "Temporary (kept up to 48 hours)" rather than 7 days, and Take Backup and Change Plan add that at most two can be taken of a server in any seven day period. BLDesk has not yet been tried against a live account for the limit, and a refused backup is shown like any other failure.
+- **The vendored API reference is 0.45.0** (it was 0.43.3). Only descriptions changed.
+- **vite is updated from 7.3.6 to 7.3.7** (#321). It is used only while BLDesk is being built and is not part of the app you run.
+
 ## [1.0.62-beta.28] - 2026-10-14
 
 **Add a Cloud Server no longer needs a hostname**
