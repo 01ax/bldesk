@@ -46,11 +46,11 @@ async function request(path, body, method = body === undefined ? 'GET' : 'POST',
 const backups = async (id = 8100) => (await request(`/v2/servers/${id}/backups?per_page=100`)).backups
 const server = async (id = 8100) => (await request(`/v2/servers/${id}`)).server
 const take = (body, id = 8100, status = 200) => request(`/v2/servers/${id}/actions`, { type: 'take_backup', ...body }, 'POST', status)
-async function completed(response) {
+async function completed(response, outcome = 'completed') {
   const deadline = Date.now() + 3000
   while (Date.now() < deadline) {
     const { action } = await request(`/v2/actions/${response.action.id}`)
-    if (action.status !== 'in-progress') { assert.equal(action.status, 'completed', action.error_message); return action }
+    if (action.status !== 'in-progress') { assert.equal(action.status, outcome, action.error_message); return action }
     await sleep(10)
   }
   assert.fail('Mock action did not finish')
@@ -231,12 +231,45 @@ test('firewall writes are checked against the rule schema, and a write lands whe
   assert.deepEqual((await write([], 200)).action.type, 'change_advanced_firewall_rules')
 })
 
+for (const outcome of ['completed', 'errored']) {
+  test(`a zero-delay ${outcome} action remains pending until its callback settles`, async () => {
+    const before = await server()
+    await request('/__mock/config', { actionMs: 0, actionOutcome: outcome })
+    const queued = await request('/v2/servers/8100/actions', { type: 'power_off' })
+    assert.equal(queued.action.status, 'in-progress')
+    assert.equal(queued.action.completed_at, null)
+    assert.equal(queued.action.error_message, null)
+    assert.ok(Number.isFinite(queued.action.progress.percent_complete))
+    assert.ok(queued.action.progress.percent_complete < 100)
+    const settled = await completed(queued, outcome)
+    assert.ok(Date.parse(settled.completed_at) >= Date.parse(settled.started_at))
+    assert.equal(settled.progress.percent_complete, 100)
+    assert.equal((await server()).status, outcome === 'completed' ? 'off' : before.status)
+    if (outcome === 'errored') assert.match(settled.error_message, /simulated action failed/)
+  })
+}
+
+test('proceed replaces the original timer before applying an action', async () => {
+  const before = await server()
+  await request('/__mock/config', { actionMs: 30, interaction: 'continue-after-ping-failure' })
+  const queued = await request('/v2/servers/8100/actions', { type: 'shutdown' })
+  await request(`/v2/actions/${queued.action.id}/proceed`, { proceed: true }, 'POST', 204)
+  await sleep(80)
+  const pending = (await request(`/v2/actions/${queued.action.id}`)).action
+  assert.equal(pending.status, 'in-progress')
+  assert.equal(pending.completed_at, null)
+  assert.equal((await server()).status, before.status)
+  await completed(queued)
+  assert.equal((await server()).status, 'off')
+})
+
 test('an action can stop and ask a question, and is answered at /proceed', async () => {
   await request('/__mock/config', { actionMs: 15, interaction: 'continue-after-ping-failure' })
   const { action } = await request('/v2/servers/8100/actions', { type: 'reboot' }, 'POST')
   await sleep(60)
   const waiting = (await request(`/v2/actions/${action.id}`)).action
   assert.equal(waiting.status, 'in-progress')
+  assert.equal(waiting.completed_at, null)
   assert.equal(waiting.user_interaction_required.interaction_type, 'continue-after-ping-failure')
   // Other actions are not asked anything.
   const rename = await request('/v2/servers/8100/actions', { type: 'rename', name: 'x' }, 'POST')
