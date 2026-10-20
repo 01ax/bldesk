@@ -14,6 +14,9 @@ import {
 import { LinkOut, TOS_URL, REFUND_URL } from '../ui/LinkOut'
 import {
   freeBackupSlots,
+  availableBackupSlots,
+  retainedBackupTypes,
+  reducedBackupSlots,
   describeBackup,
   BACKUP_SLOT_LABELS,
   type BackupSlot
@@ -295,8 +298,8 @@ export const ChangePlanPanel: React.FC<{
 
   /*
    * Which slots a pre-action backup can use: the server's *current* retention,
-   * not what this form is about to set, because the backup is taken before the
-   * new options apply. See `availableBackupSlots`.
+   * because the backup is taken before new options apply. A type being disabled
+   * cannot retain that pre-action backup, regardless of API deployment.
    */
   const backupsQuery = useServerBackups(client, server.id)
   const existingBackups = useMemo(() => (backupsQuery.data ?? []) as any[], [backupsQuery.data])
@@ -306,7 +309,16 @@ export const ChangePlanPanel: React.FC<{
    * so offering a permitted-but-full slot is a predictable 400 - which is why
    * this uses `freeBackupSlots` rather than `availableBackupSlots`.
    */
-  const backupSlots = useMemo(() => freeBackupSlots(current, existingBackups), [current, existingBackups])
+  const retainedTypes = useMemo(() => retainedBackupTypes(current, {
+    daily_backups: dailyBackups, weekly_backups: weeklyBackups, monthly_backups: monthlyBackups
+  }), [current, dailyBackups, weeklyBackups, monthlyBackups])
+  const disabledTypes = availableBackupSlots(current).filter((slot) => !retainedTypes.includes(slot))
+  const backupSlots = useMemo(
+    () => freeBackupSlots(current, existingBackups).filter((slot) => retainedTypes.includes(slot)),
+    [current, existingBackups, retainedTypes]
+  )
+  const replacementBackups = existingBackups.filter((backup) => retainedTypes.some((slot) => slot === backup.backup_info?.type))
+  const chosenReplacementBackup = replacementBackups.find((backup) => backup.id === replaceBackupId)
 
   const ipOpts = selected?.options ?? server.size?.options
   /*
@@ -361,13 +373,12 @@ export const ChangePlanPanel: React.FC<{
     if (!backupSlots.includes(preBackupSlot)) setPreBackupSlot('temporary')
   }, [backupSlots, preBackupSlot])
 
-  // A named backup that has since gone (or a list that arrived later) must not
-  // stay selected, or the payload would reference an id the API will reject.
+  // A missing image or one whose retention is disabled cannot remain selected.
   useEffect(() => {
-    if (replaceBackupId !== null && !existingBackups.some((b) => b.id === replaceBackupId)) {
+    if (replaceBackupId !== null && !chosenReplacementBackup) {
       setReplaceBackupId(null)
     }
-  }, [existingBackups, replaceBackupId])
+  }, [chosenReplacementBackup, replaceBackupId])
 
   /*
    * What memory and storage start at for a plan: the server's own figures on its
@@ -548,12 +559,12 @@ export const ChangePlanPanel: React.FC<{
     // The pre-action backup and the cost are consequences of the rows above, so
     // they only belong here once something else has changed.
     if (changed.length) {
-      if (preBackup === 'free' || (preBackup === 'specified' && replaceBackupId !== null)) {
+      if (preBackup === 'free' || (preBackup === 'specified' && chosenReplacementBackup)) {
         changed.push({
           label: 'Backup first',
           to:
-            preBackup === 'specified'
-              ? `replacing ${describeBackup(existingBackups.find((b) => b.id === replaceBackupId) ?? { id: 0 })}`
+            preBackup === 'specified' && chosenReplacementBackup
+              ? `replacing ${describeBackup(chosenReplacementBackup)}`
               : `${preBackupSlot} slot`
         })
       }
@@ -603,8 +614,9 @@ export const ChangePlanPanel: React.FC<{
     licencesReady &&
     !licenceError &&
     missingGroups.length === 0 &&
-    // "Replace an existing backup" without saying which one would 400.
-    !(preBackup === 'specified' && replaceBackupId === null)
+    !(preBackup === 'free' && !backupSlots.includes(preBackupSlot)) &&
+    // A named replacement must remain eligible for the pending retention.
+    !(preBackup === 'specified' && !chosenReplacementBackup)
 
   /*
    * Two shapes of resize are not undoable, so both confirm like a rebuild -
@@ -614,9 +626,10 @@ export const ChangePlanPanel: React.FC<{
    * may be reassigned, and anything pointing at it breaks. Reinstalling is the
    * worse one this change adds, because it destroys the disks outright.
    */
-  // The API reference says that reducing weekly backups to 0 removes all of them, which "4 → 0" in the table does not.
-  const weeklyRemoved = weeklyBackups === 0 && ((current.weekly_backups as number) ?? 0) > 0
-  const WEEKLY_REMOVED_NOTE = "Setting weekly backups to 0 removes all of this server's weekly backups. They will no longer be available."
+  const retentionReduced = reducedBackupSlots(current, {
+    daily_backups: dailyBackups, weekly_backups: weeklyBackups, monthly_backups: monthlyBackups
+  }).length > 0
+  const RETENTION_REDUCED_NOTE = 'Reducing scheduled backup retention deletes the oldest backups above the new limits. Setting a count to 0 removes all backups of that type. Locked or attached backups can be deleted too.'
   const confirmExtra =
     reinstalling || ipsToRemove.length
       ? {
@@ -638,14 +651,14 @@ export const ChangePlanPanel: React.FC<{
                     `Replacing ${ipsToRemove.join(', ')} with ${replacing === 1 ? 'a new address' : 'new addresses'}. The old ${replacing === 1 ? 'one goes' : 'ones go'} back to the pool; update DNS and any allow-lists first.`
                   ]
                 : []),
-            ...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []),
+            ...(retentionReduced ? [RETENTION_REDUCED_NOTE] : []),
             ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])
           ]
         }
-      : storageChanging || weeklyRemoved
+      : storageChanging || retentionReduced
         ? {
-            ...(weeklyRemoved ? { severity: 'destructive' as const } : {}),
-            notes: [...(weeklyRemoved ? [WEEKLY_REMOVED_NOTE] : []), ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])]
+            ...(retentionReduced ? { severity: 'destructive' as const } : {}),
+            notes: [...(retentionReduced ? [RETENTION_REDUCED_NOTE] : []), ...(storageChanging ? [STORAGE_CHANGE_NOTE] : [])]
           }
         : undefined
 
@@ -1177,13 +1190,13 @@ export const ChangePlanPanel: React.FC<{
           <div>
             <label className={labelClass}>Backup to replace</label>
             <select
-              value={replaceBackupId ?? ''}
+              value={chosenReplacementBackup?.id ?? ''}
               onChange={(e) => setReplaceBackupId(e.target.value ? Number(e.target.value) : null)}
               disabled={busy}
               className={selectClass}
             >
               <option value="">Choose a backup...</option>
-              {existingBackups.map((b) => (
+              {replacementBackups.map((b) => (
                 <option key={b.id} value={b.id}>
                   {describeBackup(b)}
                 </option>
@@ -1211,13 +1224,19 @@ export const ChangePlanPanel: React.FC<{
             </select>
             {backupSlots.length === 1 && (
               <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">
-                Only a temporary slot is free. Scheduled slots are either not kept by this server or already full -
-                replace a named backup instead.
+                Scheduled pre-action backups need free capacity now and a type that remains enabled after the change.
               </p>
             )}
           </div>
         )}
       </div>
+
+      {preBackup !== 'off' && disabledTypes.length > 0 && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400" role="status">
+          Use a backup type that remains enabled after the plan change so the pre-action backup can be kept.
+          Keep retention for that type, or download a backup and retain a separate copy before changing plans.
+        </p>
+      )}
 
       {selected && !unchanged && (
         <div className="border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
@@ -1307,6 +1326,7 @@ export const ChangePlanPanel: React.FC<{
           disabled={busy || !canApply}
           onClick={() =>
             selected &&
+            canApply &&
             onApply(
               {
                 type: 'resize',
@@ -1349,13 +1369,13 @@ export const ChangePlanPanel: React.FC<{
                         replacement_strategy: 'none'
                       }
                     }
-                  : preBackup === 'specified' && replaceBackupId !== null
+                  : preBackup === 'specified' && chosenReplacementBackup
                     ? {
                         pre_action_backup: {
                           type: 'take_backup',
-                          backup_type: existingBackups.find((b) => b.id === replaceBackupId)?.backup_info?.type,
+                          backup_type: chosenReplacementBackup.backup_info.type,
                           replacement_strategy: 'specified',
-                          backup_id_to_replace: replaceBackupId
+                          backup_id_to_replace: chosenReplacementBackup.id
                         }
                       }
                     : {})
