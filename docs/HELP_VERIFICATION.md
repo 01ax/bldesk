@@ -1,5 +1,11 @@
 # Help verification
 
+## Temporary backup terms (21 October 2026, API reference 0.45.0)
+
+`openapi.json` is now the live 0.45.0 reference (it was 0.43.3; descriptions only, see the commit). Two sentences in it are new: the `temporary` row of BackupSlot reads “A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image)” (it said seven days), and Take Backup reads “At most two temporary backups may be taken of a server in any seven day period.” `BACKUP_SLOT_LABELS.temporary` now says “Temporary (kept up to 48 hours)”, and `TEMPORARY_BACKUP_TERMS` is shown under the slot when Temporary is chosen in `BackupManager.tsx` (Take Backup) and in `ChangePlanPanel.tsx` (Backup first). `docs/help/backups.md` and `docs/help/server-change-plan.md` quote them.
+
+Not checked against a live account: that the limit is enforced as described, what a refusal reads like, and whether a pre-action backup or a replacement counts toward it (the reference does not say, so the help says only what it says). The command palette's `backup` still has no note about the limit and shows the API's refusal as it does any other failure; that, and the live check, are tracked in the issues for temporary-backup wording (#313) and for the live check (#312). The GUI mock refuses a third temporary backup in seven days (`temporaryLimit`) and does not expire them.
+
 ## Notification settings (20 October 2026, after 1.0.62-beta.28)
 
 Branch: `feat/notification-settings`. No new runtime dependencies. One help page added (`settings`), one changed (`tray`); `docs/DEEP_LINKS.md`, `docs/HELP_SPEC.md` and `FEATURES.md` each gained a line.

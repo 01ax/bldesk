@@ -25,6 +25,8 @@ For temporary backups, the Take Backup dialog retains conditional wording becaus
 
 “If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.”
 
+The reference also limits how long a temporary backup lives and how often one can be taken: a temporary backup is retained for a maximum of 48 hours (seven days for an uploaded .iso image), and at most two temporary backups may be taken of a server in any seven day period. BLDesk does not upload images, so the seven-day case does not apply to a backup taken here. The slot is listed as “Temporary (kept up to 48 hours)”, and while Temporary is chosen the dialog adds under the slot: “A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.”
+
 Choosing a backup under “Replace Existing Image” replaces exactly that backup, and the dialog says:
 
 “This backup replaces the backup you chose. The replaced backup will no longer be available.”

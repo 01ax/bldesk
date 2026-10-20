@@ -130,6 +130,7 @@ test('a newly created server starts empty and its requested retention controls s
 })
 
 test('a temporary slot with no scheduled backups needs a replacement strategy once occupied', async () => {
+  await request('/__mock/config', { temporaryLimit: 99 }) // this is about the slot, not the two-in-seven-days limit below
   const options = (await server(9003)).selected_size_options
   await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'First' }, 9003))
   const first = await backups(9003)
@@ -165,6 +166,23 @@ test('resize backs up into an empty temporary slot, then requires explicit repla
   assert.equal(replaced.length, 1)
   assert.notEqual(replaced[0].id, first[0].id)
   assert.deepEqual((await server(9003)).selected_size_options, before.selected_size_options)
+})
+
+test('a third temporary backup in seven days is refused however it is asked for; scheduled slots and other servers are not limited', async () => {
+  const before = await server(8100)
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'One' }))
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'oldest', label: 'Two' }))
+  const held = await backups()
+  const temporary = held.find((b) => b.backup_info.type === 'temporary')
+  await take({ backup_type: 'temporary', replacement_strategy: 'oldest' }, 8100, 400)
+  await take({ backup_type: 'temporary', replacement_strategy: 'specified', backup_id_to_replace: temporary.id }, 8100, 400)
+  await request('/v2/servers/8100/actions', {
+    type: 'resize', options: { memory: before.memory + 1024 }, pre_action_backup: { type: 'take_backup', backup_type: 'temporary', replacement_strategy: 'oldest' }
+  }, 'POST', 400)
+  assert.equal((await server()).memory, before.memory)
+  assert.deepEqual(await backups(), held)
+  await completed(await take({ backup_type: 'daily', replacement_strategy: 'oldest', label: 'Daily is not limited' }))
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Another server' }, 9003))
 })
 
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {

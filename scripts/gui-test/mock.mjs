@@ -145,6 +145,7 @@ function mkServer(o) {
 }
 const IPB = ['203.0.113', '198.51.100', '192.0.2']
 let servers, actions, nextId, keys, domains, lbs, vpcs, records, serverBackups, fails, cfg
+const temporaryTakes = new Map() // server id -> when each temporary backup was taken (see backupPlan)
 function reset() {
   servers = []
   for (let i = 0; i < 18; i++) {
@@ -163,7 +164,7 @@ function reset() {
     mkServer({ id: 9009, name: 'multi-ip-v6-01', size_slug: 'std-4vcpu', region: 'mel', image: 'almalinux-9', vpc_id: 903, ip: '192.0.2.98', extra_ips: ['192.0.2.99', '192.0.2.100'], v6: true, failover: ['192.0.2.150'] }),
     mkServer({ id: 9010, name: 'cpanel-host-01', size_slug: 'std-6vcpu', region: 'syd', image: 'cpanel-whm-rocky-8', vpc_id: 901, ip: '203.0.113.101' })
   )
-  actions = new Map(); nextId = 50000; serverBackups = new Map(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', latencyMs: 0, interaction: null, extraToken: null, feedStatus: null, consoleUrl: null }
+  actions = new Map(); nextId = 50000; serverBackups = new Map(); temporaryTakes.clear(); fails = []; cfg = { updateVersion: null, empty: false, rejectAuth: false, unpaid: false, actionMs: 2500, actionOutcome: 'completed', temporaryLimit: 2, latencyMs: 0, interaction: null, extraToken: null, feedStatus: null, consoleUrl: null }
   servers.forEach((s, index) => {
     const list = s.next_backup_window ? [
       ['temporary', 'Before database upgrade', 1], ['daily', 'Nightly production baseline', 2],
@@ -222,7 +223,17 @@ function setBackups(s, list) { serverBackups.set(s.id, list); s.backup_ids = lis
 const backupsFor = (s) => serverBackups.get(s.id) || []
 const backupImage = (id) => [...serverBackups.values()].flat().find((b) => b.id === id)
 const isAttached = (id) => servers.some((s) => s.attached_backup?.id === id)
+// The reference (0.45.0): "At most two temporary backups may be taken of a server in any seven day period." Modelled as takes,
+// not images held, and counting a replacement and a pre-action backup (the reference is silent on both). Counted when a backup
+// is made, so a refused one is not.
+const recentTemporaryTakes = (s) => (temporaryTakes.get(s.id) || []).filter((at) => Date.now() - at < 7 * 86400000).length
+const noteTemporaryTake = (s) => temporaryTakes.set(s.id, [...(temporaryTakes.get(s.id) || []), Date.now()])
 function backupPlan(s, body) {
+  const plan = planBackup(s, body)
+  if (!plan.error && plan.type === 'temporary' && recentTemporaryTakes(s) >= cfg.temporaryLimit) return { error: 'At most two temporary backups may be taken of a server in any seven day period.' }
+  return plan
+}
+function planBackup(s, body) {
   const list = backupsFor(s), strategy = body.replacement_strategy
   const replaceable = (b) => !b.backup_info.locked && !isAttached(b.id)
   if (strategy === 'specified') {
@@ -280,6 +291,7 @@ function applyAction(a, server) {
       const plan = backupPlan(server, b.pre_action_backup)
       if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
       setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.pre_action_backup.label || 'Pre-action backup')])
+      if (plan.type === 'temporary') noteTemporaryTake(server)
     }
     if (b.size) { server.size_slug = b.size; server.size = sizeBySlug(b.size); server.vcpus = server.size.vcpus; server.memory = server.size.memory; server.disk = server.size.disk }
     if (b.options?.memory) server.memory = b.options.memory
@@ -289,6 +301,7 @@ function applyAction(a, server) {
     const plan = backupPlan(server, b)
     if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
     setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.label || 'Manual backup')])
+    if (plan.type === 'temporary') noteTemporaryTake(server)
   }
   if (a.type === 'attach_backup') server.attached_backup = { id: b.image, disk_identifiers: ['sdb'], attached_at: nowIso(), attachment_expires: null }
   if (a.type === 'detach_backup') server.attached_backup = null

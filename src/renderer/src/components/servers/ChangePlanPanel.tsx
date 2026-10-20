@@ -20,6 +20,7 @@ import {
   reducedBackupSlots,
   describeBackup,
   BACKUP_SLOT_LABELS,
+  TEMPORARY_BACKUP_TERMS,
   type BackupSlot
 } from '../../lib/backupSlots'
 import {
@@ -1250,6 +1251,9 @@ export const ChangePlanPanel: React.FC<{
                 the change, so this server has none - replace a named backup instead.
               </p>
             ) : null}
+            {backupsLoaded && chosenPreBackupSlot === 'temporary' && (
+              <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">{TEMPORARY_BACKUP_TERMS}</p>
+            )}
           </div>
         )}
       </div>

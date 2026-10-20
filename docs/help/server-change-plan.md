@@ -10,6 +10,8 @@ Use Change Plan to review the current server beside its proposed plan, memory, s
 ## Before applying
 Choosing another base size changes the included transfer allowance shown in the Data row. Check it alongside the resource and licence rows. Required licence groups must have a valid selection. Optional pre-action backups need an available slot or an explicitly selected backup to replace.
 
+When the temporary slot is the one used, the same note as in Take Backup appears under the slot picker: “A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.”
+
 Use a free slot lists only empty slots in the server's current backup setup, not retention you are about to buy. A server without scheduled backups can use its empty temporary slot. If it already holds a temporary backup and has no other free slots, choose Replace an existing backup and select the backup to replace; the chosen backup is deleted to make room. Locked and attached images are not offered for replacement. If a selected image becomes unavailable, choose again before applying. While the backup list is loading or its first read has failed, BLDesk cannot offer a free slot. Retry a failed read before continuing with that choice.
 
 Scheduled pre-action backup types must have capacity before the resize and remain enabled afterwards. A type being disabled is excluded from both the free-slot picker and named replacements. If a selected replacement becomes unavailable, choose again before applying. Use a type that remains enabled so the pre-action backup can be kept, or download a backup and retain a separate copy before changing plans.

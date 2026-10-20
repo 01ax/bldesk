@@ -35,7 +35,7 @@ import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { useConfirm } from '../../context/ConfirmContext'
 import { recordChange, updateChange } from '../../lib/changelog'
 import type { FieldChange } from '../../lib/diff'
-import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest } from '../../lib/backupSlots'
+import { availableBackupSlots, BACKUP_SLOT_LABELS, describeBackup, replacedByOldest, TEMPORARY_BACKUP_TERMS } from '../../lib/backupSlots'
 import { notifyFailure } from '../../lib/failures'
 import {
   FORMATTERS,
@@ -899,6 +899,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                   </optgroup>
                 )}
               </select>
+              {chosenSlot === 'temporary' && (
+                <p className="mt-1 text-[11px] text-[#6c757d] dark:text-slate-400">{TEMPORARY_BACKUP_TERMS}</p>
+              )}
             </div>
 
             <div>
