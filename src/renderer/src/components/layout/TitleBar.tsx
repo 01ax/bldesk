@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Minus, Square, Copy, X, Search, Key, ShieldCheck, Menu } from 'lucide-react'
+import { Minus, Square, Copy, X, Search, Key, ShieldCheck, Menu, Settings } from 'lucide-react'
 import { AccountProfile } from '@shared/ipc-types'
 import iconLogo from '../../assets/icon-logo-binarylane.png'
 import { UpdateMenu } from './UpdateMenu'
@@ -10,6 +10,8 @@ interface TitleBarProps {
   onSwitchProfile: (id: string) => void
   onOpenAuth: () => void
   onOpenCommandPalette: () => void
+  onOpenSettings: () => void
+  settingsActive: boolean
   onToggleMobileDrawer?: () => void
 }
 
@@ -19,6 +21,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onSwitchProfile,
   onOpenAuth,
   onOpenCommandPalette,
+  onOpenSettings,
+  settingsActive,
   onToggleMobileDrawer
 }) => {
   const [isMaximized, setIsMaximized] = useState(false)
@@ -145,6 +149,19 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             <span>Connect</span>
           </button>
         )}
+
+        {/* Settings */}
+        <button
+          onClick={onOpenSettings}
+          title="Settings"
+          aria-label="Settings"
+          aria-pressed={settingsActive}
+          className={`w-7 h-7 flex items-center justify-center rounded transition ${
+            settingsActive ? 'text-[#f1ca00] bg-white/10' : 'text-slate-300 hover:text-white hover:bg-white/10'
+          }`}
+        >
+          <Settings className="w-3.5 h-3.5" />
+        </button>
 
         {/* Window controls — only where the OS frame is gone (Windows, Linux) */}
         {ownsControls && (

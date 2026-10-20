@@ -2,13 +2,15 @@ import { Preferences } from '@capacitor/preferences'
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { HELP_API_ORIGIN, HELP_TIMEOUT_MS, helpQuestion, helpFeedbackBody, readHelpAnswer, readHelpSuggestions } from '@shared/help-api'
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
-import { AccountProfile, IpcApi, SaveProfileResult, UpdateChannel, UpdaterState } from '@shared/ipc-types'
+import { AccountProfile, IpcApi, SaveProfileResult, TraySettings, UpdateChannel, UpdaterState } from '@shared/ipc-types'
+import { NOTIFICATION_SETTING_KEYS, normaliseTraySettings, notificationAllowed } from '@shared/notifications'
 import { formatSshCommand, sshUriHost, validateSshTarget } from '@shared/ssh'
 
 const PROFILES_KEY = 'bldesk_profiles_v1'
 const APK_URL = /^https:\/\/github\.com\/termau\/bldesk\/releases\/(?:download\/v[0-9][0-9A-Za-z.+-]*|latest\/download)\/[A-Za-z0-9._-]+\.apk$/
 const ACTIVE_PROFILE_KEY = 'bldesk_active_profile_id_v1'
 const UPDATE_CHANNEL_KEY = 'bldesk_update_channel_v1'
+const NOTIFICATION_SETTINGS_KEY = 'bldesk_notification_settings_v1'
 
 /** The update channel chosen earlier, or stable. Kept across launches, as the desktop app keeps it in its settings. */
 async function readSavedChannel(): Promise<UpdateChannel> {
@@ -31,6 +33,43 @@ async function saveChannel(channel: UpdateChannel): Promise<void> {
   } catch {
     try {
       localStorage.setItem(UPDATE_CHANNEL_KEY, channel)
+    } catch {
+      // not saved: the choice holds until the app is closed
+    }
+  }
+}
+
+/**
+ * The notification switches, kept across launches the way the desktop app keeps them in tray.json. There is no tray
+ * here, so the launch-at-login and close-to-tray settings read as off.
+ */
+async function readNotificationSettings(): Promise<TraySettings> {
+  let value: string | null = null
+  try {
+    value = (await Preferences.get({ key: NOTIFICATION_SETTINGS_KEY })).value
+  } catch {
+    try {
+      value = localStorage.getItem(NOTIFICATION_SETTINGS_KEY)
+    } catch {
+      value = null
+    }
+  }
+  let parsed: unknown = null
+  try {
+    parsed = value ? JSON.parse(value) : null
+  } catch {
+    // unreadable: every notification stays on, as it was before there was a switch
+  }
+  return { ...normaliseTraySettings(parsed), launchAtLogin: false, closeToTray: false }
+}
+
+async function saveNotificationSettings(settings: TraySettings): Promise<void> {
+  const value = JSON.stringify(settings)
+  try {
+    await Preferences.set({ key: NOTIFICATION_SETTINGS_KEY, value })
+  } catch {
+    try {
+      localStorage.setItem(NOTIFICATION_SETTINGS_KEY, value)
     } catch {
       // not saved: the choice holds until the app is closed
     }
@@ -431,6 +470,7 @@ export async function initMobileBridge(): Promise<void> {
     },
     sendNotification: async (opts) => {
       console.log(`[Notification] ${opts.title}: ${opts.body}`)
+      if (!notificationAllowed(await readNotificationSettings(), opts.kind)) return
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(opts.title, { body: opts.body })
       }
@@ -449,13 +489,13 @@ export async function initMobileBridge(): Promise<void> {
     templatesReveal: undefined as any,
     // No tray on Android; the summary has nowhere to go.
     updateTray: async () => {},
-    getTraySettings: async () => ({
-      launchAtLogin: false,
-      closeToTray: false,
-      notifyServerState: true,
-      notifyActions: true,
-      notifyBalance: true
-    }),
+    getTraySettings: readNotificationSettings,
+    setTraySetting: async (key, value) => {
+      if (!NOTIFICATION_SETTING_KEYS.includes(key) || typeof value !== 'boolean') throw new Error('Invalid notification setting.')
+      const next = { ...(await readNotificationSettings()), [key]: value }
+      await saveNotificationSettings(next)
+      return next
+    },
     platform: (window as any).Capacitor?.isNativePlatform?.() ? 'android' : 'web',
     minimizeWindow: async () => {},
     maximizeWindow: async () => {},

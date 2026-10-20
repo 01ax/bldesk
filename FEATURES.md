@@ -57,7 +57,7 @@ Implemented: fleet comparison, audit flags, groups/tags, ruleset copying with pe
 
 ### 3. A tray / menu bar that earns its spot
 
-Implemented on desktop: fleet summary, server Open/Copy IP/SSH shortcuts, notifications, close-to-tray, and supported-platform launch at login. No tray power-action controls.
+Implemented on desktop: fleet summary, server Open/Copy IP/SSH shortcuts, notifications (muted all at once or by kind from the tray menu or the Settings view), close-to-tray, and supported-platform launch at login. No tray power-action controls.
 
 ### 4. Verb-first command palette
 

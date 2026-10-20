@@ -38,6 +38,7 @@ export type ActiveTab =
   | 'map'
   | 'heatmap'
   | 'terminal'
+  | 'settings'
 
 export type ServerSubTab =
   | 'overview'

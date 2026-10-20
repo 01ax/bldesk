@@ -69,6 +69,12 @@ const api: IpcApi = {
   // Tray / menu bar
   updateTray: (summary) => invoke('tray:update', summary),
   getTraySettings: () => invoke('tray:getSettings'),
+  setTraySetting: (key, value) => invoke('tray:setSetting', key, value),
+  onTraySettingsChanged: (listener) => {
+    const handler = (_: Electron.IpcRendererEvent, settings: Parameters<typeof listener>[0]) => listener(settings)
+    ipcRenderer.on('tray:settingsChanged', handler)
+    return () => ipcRenderer.removeListener('tray:settingsChanged', handler)
+  },
 
   // Window Controls
   platform: process.platform,

@@ -348,7 +348,8 @@ export const ServerDetails: React.FC<ServerDetailsProps> = ({
       })
       window.bldeskApi?.sendNotification?.({
         title: `Server Action: ${describeActionType(actionType)}`,
-        body: `Action initiated successfully.`
+        body: `Action initiated successfully.`,
+        kind: 'action'
       })
       if (res) track(res, describeActionType(actionType), server.name, changeId)
     } catch (err: any) {

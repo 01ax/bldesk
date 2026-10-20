@@ -14,7 +14,7 @@ This also covers the "usability polish" items from FEATURES.md #12 that sit on t
 | `bldesk://server/<id>/<subtab>` | Open a sub-tab: `overview`, `remote-access`, `usage`, `cloud-init`, `network`, `backups`, `firewall`, `settings`, `recovery`, `change-plan`, `cancel` |
 | `bldesk://console/<id>` | Open the server, then pop the out-of-band rescue console window |
 | `bldesk://ssh/<id>` | Open SSH to `root@<primary IPv4>` using the embedded/native preference |
-| `bldesk://tab/<name>` | Jump to a top-level tab: `servers`, `templates`, `vpcs`, `firewall`, `loadbalancers`, `dns`, `backups`, `keys`, `billing`, `account`, `history`, `help`, `map`, `heatmap`, `terminal` |
+| `bldesk://tab/<name>` | Jump to a top-level tab: `servers`, `templates`, `vpcs`, `firewall`, `loadbalancers`, `dns`, `backups`, `keys`, `billing`, `account`, `history`, `help`, `map`, `heatmap`, `terminal`, `settings` |
 | `bldesk://help/<slug>#<heading>` | Open bundled help, optionally at a heading; no account lookup or profile switch |
 | `bldesk://home` (or bare `bldesk://`) | Just bring the window to the front |
 

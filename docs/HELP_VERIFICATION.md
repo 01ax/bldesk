@@ -1,5 +1,39 @@
 # Help verification
 
+## Notification settings (20 October 2026, after 1.0.62-beta.28)
+
+Branch: `feat/notification-settings`. No new runtime dependencies. One help page added (`settings`), one changed (`tray`); `docs/DEEP_LINKS.md`, `docs/HELP_SPEC.md` and `FEATURES.md` each gained a line.
+
+Before this change, desktop notifications could be muted only from the tray menu's Settings submenu, and only the kinds `server-state`, `action` and `balance`. Anything sent without a kind (the confirmations after a backup, firewall, DNS, VPC, load balancer, SSH-key or network change) was never gated, and the updater's “is ready” notification called Electron's `Notification` directly, so neither could be muted. Android and the browser build had no gate at all. All notifications now pass one gate (`notificationAllowed` in `src/shared/notifications.ts`), and the new Settings view edits the same switches the tray menu does.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| `settings.md`, “Show notifications”, “Notify me about”, “Choose kinds”, “Done” | `SettingsView.tsx`: the master `Setting` label, the “Notify me about” row label and `Modal` title, the button, the dialog footer button | New. |
+| `settings.md`, “Server state changes”, “Action results”, “Billing”, “Changes you make”, “BLDesk updates”, and the sentence after each | `CATEGORIES` in `SettingsView.tsx` (the labels and descriptions are the same strings the dialog shows) | New. |
+| “a server appears, changes state or is no longer listed” | `fleetWatch.ts`: `kind: 'server-state'` for “appeared”, “is now …” and “is gone” | New. |
+| “a server action is requested, finishes, fails, or pauses to ask you a question” | `kind: 'action'` in `ActionTrackerContext.tsx` (“completed”, “failed”, “needs an answer”, and the server-is-off or still-running verdict), and “Action requested successfully” / “Action initiated successfully” in `ServerList.tsx` and `ServerDetails.tsx` | Changed in `ServerDetails.tsx`: its notice had no kind, so it was a “Changes you make” notification while the same notice from the server list was an action one. It is now `action` in both. |
+| “prepaid credit runs low, or an invoice payment fails” | `fleetWatch.ts`: `kind: 'balance'` for “Prepaid credit is running low” and “An invoice payment failed” | New. |
+| “confirmations after you change something in BLDesk, such as starting a backup, editing firewall rules or adding an SSH key, and the one-time note that BLDesk is still running in the tray” | The `sendNotification` calls with no kind in `BackupManager`, `FirewallManager`, `SshKeysManager`, `LoadBalancerManager`, `DnsManager`, `VpcManager` and `ServerNetwork`; `onHiddenToTray` in `tray.ts` | New. |
+| “a new version has finished downloading and is ready to install” | `UpdaterManager.notifyReady` in `updater.ts` (“BLDesk <version> is ready”), now sent as `kind: 'update'` | Changed: it bypassed the settings before. Clicking it now also brings the window back, as the other notifications do. |
+| “Action progress, failures and History inside BLDesk are not affected” | The gate is `TrayManager.notify` and the bridge's `sendNotification`; in-app action cards, `notifyFailure` and History never call either | New. |
+| “Nothing here is saved to your BinaryLane account” | `SettingsView.tsx` and `lib/traySettings.ts` import no API client and make no request; the values go to `tray.json` (desktop) or app preferences (Android) | New. |
+| `tray.md`, the tray menu's Settings submenu has “Show notifications” and one switch per kind | `NOTIFY_MENU_LABEL` and the menu template in `tray.ts` (main-process text, so not curly-quoted) | Changed: the three existing labels are unchanged; two kinds and the master switch were added, and the kinds are disabled while the master switch is off (checked on the live menu, see below). |
+| `tray.md`, “close-to-tray and launch at login only from the tray menu” | The `tray:setSetting` handler in `index.ts` accepts only `NOTIFICATION_SETTING_KEYS` | New. |
+| Gear button in the title bar | `TitleBar.tsx`: `title="Settings"`, left of the window controls | New. |
+
+### Checks performed
+
+- `npm run typecheck` (with the guard scripts and the new `test:notification-settings`, 8 tests) and `npm run build`. Removing the master-switch check from `notificationAllowed` made the master-switch test fail, and restoring it made it pass.
+- Real Electron against the GUI mock with isolated user data (nothing sent to BinaryLane), run with `--no-sandbox` because the unpacked Electron had no SUID helper, driven over the debugging port, with the session's `org.freedesktop.Notifications` `Notify` calls watched on DBus:
+  - Master switch off: five notifications sent from the page (one of each kind, one with no kind) reached the OS zero times, `tray.json` showed `notificationsEnabled: false` with the five kind switches unchanged, and the dialog's switches were disabled with the explanatory line.
+  - Master on, “Changes you make” off: two notifications of that kind (explicit and no kind) reached the OS zero times; one each of `action`, `server-state`, `balance` and `update` all reached it. The summary read “4 of 5 kinds are on.”, survived a reload, and read “All 5 kinds are on.” after switching it back.
+  - The `tray:setSetting` handler refused `launchAtLogin`, `closeToTray`, a non-boolean value and `__proto__`; a change made with it reached `onTraySettingsChanged` listeners as `[false, true]`.
+  - The command palette's `go settings` opened the page; Escape, the close button, Done and a backdrop click each closed the dialog; none left a dialog in the DOM.
+  - Tray menu, read and clicked over DBus (the app's StatusNotifierItem `com.canonical.dbusmenu`, same build, GNOME): Settings lists “Keep running in tray when window is closed”, then Show notifications, the three original labels unchanged, “Notify about changes you make in BLDesk”, “Notify when a BLDesk update is ready”, and “All settings…”. With Show notifications unchecked, the five kinds read disabled and kept their checks. A click on Show notifications wrote `notificationsEnabled: false` to `tray.json`; “All settings…” from the Servers tab opened Settings; with Settings open, a tray click moved its master switch and summary (“Muted: Show notifications is off.”, “All 5 kinds are on.”, “4 of 5 kinds are on.”) and, with the dialog open, the dialog's switch, none of it needing a reload. The menu was rendered by a shell extension in a screenshot of the installed 1.0.62-beta.25, which shows the old three-checkbox menu; the new one was not screenshotted, only read over DBus.
+  - Gear button visible and no layout issues reported at 1024×680 and 1280×840 at 80%, 125% and 150% (emulated viewports; see the harness README), in the dark theme. The page and the dialog were also looked at in the light theme, at one size (1920×1200).
+
+Not tested: the tray menu on Windows and macOS (it was checked over DBus on Linux only), and Windows and macOS generally; the Android and browser bridge (`mobile-bridge.ts` is type-checked and its gate is the same function, but it was not run); a real update download for the updater's notification; whether another desktop environment shows the notification at all.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.

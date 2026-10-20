@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { installAndroidBackButton } from './lib/androidBack'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TitleBar } from './components/layout/TitleBar'
+import { SettingsView } from './components/settings/SettingsView'
 import { Sidebar, ActiveTab, ServerSubTab } from './components/layout/Sidebar'
 import { BottomNav } from './components/layout/BottomNav'
 import { ServerList } from './components/servers/ServerList'
@@ -335,6 +336,8 @@ function MainDashboard() {
           onSwitchProfile={handleSwitchProfile}
           onOpenAuth={() => setIsAuthOpen(true)}
           onOpenCommandPalette={() => setIsPaletteOpen(true)}
+          onOpenSettings={() => handleSelectTab('settings')}
+          settingsActive={activeTab === 'settings'}
           onToggleMobileDrawer={() => setIsMobileDrawerOpen((prev) => !prev)}
         />
 
@@ -459,6 +462,8 @@ function MainDashboard() {
             {activeTab === 'account' && (
               <AccountOverview client={client} />
             )}
+
+            {activeTab === 'settings' && <SettingsView />}
 
             {activeTab === 'map' && (
               <NetworkMap

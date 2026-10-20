@@ -13,7 +13,7 @@ const GROUPS: Array<[string, (slug: string) => boolean]> = [
   ['Servers', s => s === 'servers' || s.startsWith('server-')],
   ['Fleet', s => ['templates', 'vpcs', 'firewall', 'loadbalancers', 'dns', 'backups', 'keys', 'map', 'heatmap', 'terminal'].includes(s)],
   ['Account', s => ['billing', 'account', 'history'].includes(s)],
-  ['Reference', s => ['palette', 'shortcuts', 'confirm-and-history', 'tray', 'deep-links', 'troubleshooting'].includes(s)]
+  ['Reference', s => ['settings', 'palette', 'shortcuts', 'confirm-and-history', 'tray', 'deep-links', 'troubleshooting'].includes(s)]
 ]
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, c => c.toUpperCase()).replace(/\bIpv([46])\b/gi, 'IPv$1').replace(/\bApi\b/g, 'API')
 

@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net, Notification } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
 import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
@@ -234,6 +234,13 @@ export class UpdaterManager {
    */
   private static held: { version: string } | null = null
 
+  /** Shows a notification. Set by init(), so the app's notification settings decide whether "is ready" is shown. */
+  private static notify: (title: string, body: string) => void = () => {}
+
+  private static notifyReady(version: string): void {
+    this.notify(`BLDesk ${version} is ready`, 'Restart BLDesk to finish installing the update.')
+  }
+
   private static markReady(version: string): void {
     this.held = { version }
     this.setState({ status: 'ready', availableVersion: version, progress: 100 })
@@ -244,9 +251,10 @@ export class UpdaterManager {
     if (this.held) this.setState({ status: 'ready', availableVersion: this.held.version, progress: 100, error: undefined })
   }
 
-  static init(): void {
+  static init(notify: (title: string, body: string) => void): void {
     if (this.initialised) return
     this.initialised = true
+    this.notify = notify
 
     const settings = readSettings()
     this.state.channel = settings.channel
@@ -323,12 +331,7 @@ export class UpdaterManager {
           if (existsSync(destPath) && !(await zipMismatch(destPath, listed))) {
             macPendingZipPath = destPath
             this.markReady(info.version)
-            if (Notification.isSupported()) {
-              new Notification({
-                title: `BLDesk ${info.version} is ready`,
-                body: 'Restart BLDesk to finish installing the update.'
-              }).show()
-            }
+            this.notifyReady(info.version)
             return
           }
 
@@ -344,12 +347,7 @@ export class UpdaterManager {
 
           macPendingZipPath = destPath
           this.markReady(info.version)
-          if (Notification.isSupported()) {
-            new Notification({
-              title: `BLDesk ${info.version} is ready`,
-              body: 'Restart BLDesk to finish installing the update.'
-            }).show()
-          }
+          this.notifyReady(info.version)
         } catch (err: any) {
           console.error('[Updater] macOS update download failed:', err)
           this.handleCheckError(err)
@@ -372,12 +370,7 @@ export class UpdaterManager {
       // electron-updater reports a download it already holds again on every check: say "is ready" once.
       const repeat = this.held?.version === info.version
       this.markReady(info.version)
-      if (!repeat && Notification.isSupported()) {
-        new Notification({
-          title: `BLDesk ${info.version} is ready`,
-          body: 'Restart BLDesk to finish installing the update.'
-        }).show()
-      }
+      if (!repeat) this.notifyReady(info.version)
     })
     autoUpdater.on('error', (err: Error) => {
       if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return

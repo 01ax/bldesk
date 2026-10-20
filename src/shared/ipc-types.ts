@@ -92,7 +92,7 @@ export interface ConsoleWindowOptions {
  * What a notification is about, so the user can mute a category from the tray
  * menu. Omitted → 'general', which is never filtered.
  */
-export type NotificationKind = 'general' | 'server-state' | 'action' | 'balance'
+export type NotificationKind = 'general' | 'server-state' | 'action' | 'balance' | 'update'
 
 export interface SystemNotificationOptions {
   title: string
@@ -133,10 +133,18 @@ export interface TraySettings {
   launchAtLogin: boolean
   /** Closing the window hides to the tray instead of quitting. */
   closeToTray: boolean
+  /** Master switch: off mutes every notification, whatever the categories below say. */
+  notificationsEnabled: boolean
   notifyServerState: boolean
   notifyActions: boolean
   notifyBalance: boolean
+  /** Confirmations of changes made in BLDesk, and anything else sent without a more specific kind. */
+  notifyGeneral: boolean
+  notifyUpdates: boolean
 }
+
+/** The per-category switches of TraySettings; see NOTIFICATION_SETTING in shared/notifications.ts. */
+export type NotificationSettingKey = Extract<keyof TraySettings, `notify${string}`>
 
 export interface LocalSshKey {
   name: string
@@ -253,6 +261,10 @@ export interface IpcApi extends HelpApi {
   /** Push the current fleet picture; main rebuilds the tray tooltip and menu from it. */
   updateTray: (summary: TrayFleetSummary) => Promise<void>
   getTraySettings: () => Promise<TraySettings>
+  /** Only the notification switches can be set from the renderer; returns the settings as saved. */
+  setTraySetting: (key: 'notificationsEnabled' | NotificationSettingKey, value: boolean) => Promise<TraySettings>
+  /** Fires when a setting changes from anywhere (the tray menu included); returns an unsubscribe. */
+  onTraySettingsChanged?: (listener: (settings: TraySettings) => void) => () => void
   
   // Window Controls
   /** 'darwin' | 'win32' | 'linux' in Electron; 'android' | 'web' from the mobile bridge. Decides whose window chrome is drawn. */
