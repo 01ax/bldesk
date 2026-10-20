@@ -13,11 +13,15 @@ case "$1" in
     if [ "$(readlink /usr/bin/bldesk)" = /opt/BLDesk/bldesk ]; then
       rm -f /usr/bin/bldesk
     fi
+    # The AppArmor profile goes only with the package, for the same reason. On an upgrade this script runs from the
+    # old version, and after-install.sh of the new one writes and reloads the profile again at the end: removing it
+    # here left BLDesk with no profile for however long the install took (about six seconds), and on Ubuntu 23.10+
+    # a BLDesk started in that gap is refused the user namespaces its sandbox needs.
+    if [ -f /etc/apparmor.d/bldesk ]; then
+      apparmor_parser -R /etc/apparmor.d/bldesk 2>/dev/null || true
+      rm -f /etc/apparmor.d/bldesk
+    fi
     ;;
 esac
 
-if [ -f /etc/apparmor.d/bldesk ]; then
-  apparmor_parser -R /etc/apparmor.d/bldesk 2>/dev/null || true
-  rm -f /etc/apparmor.d/bldesk
-fi
 update-desktop-database /usr/share/applications 2>/dev/null || true
