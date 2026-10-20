@@ -10,6 +10,8 @@ Use Change Plan to review the current server beside its proposed plan, memory, s
 ## Before applying
 Choosing another base size changes the included transfer allowance shown in the Data row. Check it alongside the resource and licence rows. Required licence groups must have a valid selection. Optional pre-action backups need an available slot or an explicitly selected backup to replace.
 
+Use a free slot lists only empty slots in the server's current backup setup, not retention you are about to buy. A server without scheduled backups can use its empty temporary slot. If it already holds a temporary backup and has no other free slots, choose Replace an existing backup and select the backup to replace; the chosen backup is deleted to make room. Locked and attached images are not offered for replacement. If a selected image becomes unavailable, choose again before applying. While the backup list is loading or its first read has failed, BLDesk cannot offer a free slot. Retry a failed read before continuing with that choice.
+
 The summary rows, including Monthly (before tax), are before tax. Billing then shows Monthly Change and Monthly Total on the account's tax: with the tax added they say so (for example incl. GST), and while the tax cannot be worked out they say before tax.
 
 Setting weekly backups to 0 removes all of the server's weekly backups, as the API reference says for a resize. The confirmation carries this note, and is at least a destructive one (a reinstall or a released address makes it irreversible, which also asks for the server's name):

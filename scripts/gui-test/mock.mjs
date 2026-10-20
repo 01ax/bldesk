@@ -234,8 +234,8 @@ function backupPlan(s, body) {
   if (!['none', 'oldest', 'newest'].includes(strategy)) return { error: 'Invalid backup replacement strategy.' }
   const type = body.backup_type
   if (!S.BackupSlot.enum.includes(type)) return { error: 'A valid backup_type is required.' }
-  // Temporary backups have no configurable retention count. Scheduled slots use this server's options, not plan inclusions.
-  const capacity = type === 'temporary' ? Infinity : s.selected_size_options[`${type}_backups`]
+  // There is one temporary slot; scheduled capacity uses this server's options, not plan inclusions.
+  const capacity = type === 'temporary' ? 1 : s.selected_size_options[`${type}_backups`]
   if (!(capacity > 0)) return { error: `No ${type} backup slots are configured.` }
   const held = list.filter((b) => b.backup_info.type === type)
   if (held.length < capacity) return { type }
@@ -276,6 +276,11 @@ function applyAction(a, server) {
   if (['power_on', 'reboot', 'power_cycle', 'boot'].includes(a.type)) server.status = 'active'
   if (['shutdown', 'power_off'].includes(a.type)) server.status = 'off'
   if (a.type === 'resize') {
+    if (b.pre_action_backup) {
+      const plan = backupPlan(server, b.pre_action_backup)
+      if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
+      setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.pre_action_backup.label || 'Pre-action backup')])
+    }
     if (b.size) { server.size_slug = b.size; server.size = sizeBySlug(b.size); server.vcpus = server.size.vcpus; server.memory = server.size.memory; server.disk = server.size.disk }
     if (b.options?.memory) server.memory = b.options.memory
     if (b.options?.disk) server.disk = b.options.disk
@@ -399,6 +404,10 @@ async function handleApi(req, res, u, body) {
     if (sub === '/actions' && m === 'POST') {
       if (body?.type === 'take_backup') {
         const plan = backupPlan(s, body)
+        if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
+      }
+      if (body?.type === 'resize' && body.pre_action_backup) {
+        const plan = backupPlan(s, body.pre_action_backup)
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })

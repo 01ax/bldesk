@@ -1,5 +1,17 @@
 # Help verification
 
+## Temporary backup availability and Change Plan (19-20 October 2026, #312)
+
+Checked `docs/help/server-change-plan.md` against `ChangePlanPanel.tsx`, `freeBackupSlots` and `replaceableBackups`; checked `docs/help/backups.md` against `BackupManager.tsx` and `replacedByOldest`. Current retention permits a backup type but does not prove free capacity. Named replacements exclude locked, attached and unknown-type images, and an invalidated selection cannot submit.
+
+Live CLI checks on a disposable Ubuntu server on 19 October observed one temporary slot with no scheduled retention: an empty-slot take succeeded, another `none` was refused, and explicit replacement succeeded. A memory increase and return using temporary/specified pre-action backups succeeded; occupied temporary/none was refused without a resize. These are bounded observations, not a temporary-capacity guarantee in the public reference. The independent review on 20 October reports the same occupancy/refusal behaviour.
+
+Earlier Electron checks covered empty/full slots, scheduled fallback, loading/failed reads and Retry, Cancel versus confirmed payloads, and both required window sizes at 80%, 125% and 150%. Physical Android landscape checks on 19 October used an isolated app and fictitious data; portrait was not checked. Those checks predate the final named-replacement filtering change and are not represented as fresh coverage of it.
+
+Retention warnings/disabled-type handling and the mock-completion timing fix have been removed from this PR for separate review. No assertion that the reported rejection fix is deployed remains here.
+
+Fresh 20 October checks of the narrowed code passed: 10 slot-helper and 19 mock cases, typecheck/all guards and build. Native Electron checks at 1024x680 and 1280x840, each at 80%, 125% and 150%, verified visible Cancel/Resize controls and six cancellations without a resize. A confirmed temporary/specified resize, locked/attached picker exclusions, failed-read Retry and scheduled fallback passed; actual fixture request bodies passed schema validation. Native screenshots were inspected. No renderer exceptions occurred. Test processes were stopped; no new Android or live-account check is claimed.
+
 ## README install instructions (13 October 2026, after 1.0.62-beta.25)
 
 Branch: `docs/readme-install-instructions`. Only `README.md` changed (a new Install section, and the Node prerequisite under Getting Started); no in-app text and no help page changed.
