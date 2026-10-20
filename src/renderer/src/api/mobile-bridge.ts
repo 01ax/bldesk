@@ -47,13 +47,11 @@ async function saveChannel(channel: UpdateChannel): Promise<void> {
 const notificationSettings = createNotificationSettingsStore(
   {
     get: async (key) => (await Preferences.get({ key })).value,
-    set: (key, value) => Preferences.set({ key, value }),
-    remove: (key) => Preferences.remove({ key })
+    set: (key, value) => Preferences.set({ key, value })
   },
   {
     get: async (key) => localStorage.getItem(key),
-    set: async (key, value) => localStorage.setItem(key, value),
-    remove: async (key) => localStorage.removeItem(key)
+    set: async (key, value) => localStorage.setItem(key, value)
   },
   NOTIFICATION_SETTINGS_KEY
 )

@@ -88,7 +88,8 @@ function memoryStorage({ delay = 5 } = {}) {
   }
 }
 const storeOver = (primary, fallback) => createNotificationSettingsStore(primary, fallback, KEY)
-const saved = (storage) => (storage.data.has(KEY) ? JSON.parse(storage.data.get(KEY)) : null)
+const saved = (storage) => (storage.data.has(KEY) ? JSON.parse(storage.data.get(KEY)).settings : null)
+const versionOf = (storage) => JSON.parse(storage.data.get(KEY)).v
 
 test('two changes made together are both kept, in memory and in storage, and after a restart', async () => {
   const primary = memoryStorage(), fallback = memoryStorage()
@@ -169,7 +170,7 @@ test('a failed save does not hold up the changes made after it', async () => {
   assert.equal(now.notifyBalance, false)
 })
 
-test('a fallback copy outranks an older app-preferences copy, and a later good save clears it', async () => {
+test('a newer fallback copy outranks an older app-preferences copy, and a later good save outranks the fallback', async () => {
   const primary = memoryStorage(), fallback = memoryStorage()
   await storeOver(primary, fallback).set('notifyActions', false) // saved to the primary
   primary.fail.set = true
@@ -179,21 +180,56 @@ test('a fallback copy outranks an older app-preferences copy, and a later good s
   assert.equal(restarted.notifyActions, false)
   assert.equal(restarted.notifyBalance, false, 'the older primary copy came back')
   primary.fail.set = false
-  await store.set('notifyGeneral', false)
-  assert.equal(fallback.data.has(KEY), false, 'the fallback copy was left behind')
-  assert.deepEqual([saved(primary).notifyActions, saved(primary).notifyBalance, saved(primary).notifyGeneral], [false, false, false])
+  await store.set('notifyGeneral', false) // the primary works again; the older fallback copy is left where it is
+  const again = await storeOver(primary, fallback).get()
+  assert.deepEqual([again.notifyActions, again.notifyBalance, again.notifyGeneral], [false, false, false], 'the older fallback copy outranked the newer primary one')
+  assert.ok(versionOf(primary) > versionOf(fallback))
 })
 
-test('a stale fallback copy that cannot be removed is made the same as the new save', async () => {
+test('a saved change is not undone by an older copy that can be neither removed nor rewritten', async () => {
+  // The review's case: master on is saved to the fallback while the primary refuses; the primary then works again but the
+  // fallback stays readable and every write to it fails; master off is saved to the primary.
   const primary = memoryStorage(), fallback = memoryStorage()
+  await storeOver(primary, fallback).set('notificationsEnabled', false) // master off in the primary
   primary.fail.set = true
-  await storeOver(primary, fallback).set('notifyActions', false) // now only the fallback holds anything
+  await storeOver(primary, fallback).set('notificationsEnabled', true) // master on, saved to the fallback
   primary.fail.set = false
-  fallback.fail.remove = true
-  await storeOver(primary, fallback).set('notifyBalance', false)
-  const restarted = await storeOver(primary, fallback).get()
-  assert.equal(restarted.notifyActions, false)
-  assert.equal(restarted.notifyBalance, false)
+  fallback.fail.set = true; fallback.fail.remove = true // the fallback copy is now untouchable
+  const store = storeOver(primary, fallback)
+  assert.equal((await store.set('notificationsEnabled', false)).notificationsEnabled, false) // reported saved: it was, in the primary
+  assert.equal(saved(fallback).notificationsEnabled, true, 'the test did not leave the older copy in the fallback')
+  const restarted = storeOver(primary, fallback)
+  assert.equal((await restarted.get()).notificationsEnabled, false, 'the older fallback copy undid the saved change')
+  assert.equal(notificationAllowed(await restarted.get(), 'action'), false)
+})
+
+test('versions keep rising across restarts, so the newest save always wins', async () => {
+  const primary = memoryStorage(), fallback = memoryStorage()
+  await storeOver(primary, fallback).set('notifyActions', false) // v1, primary
+  primary.fail.set = true
+  await storeOver(primary, fallback).set('notifyBalance', false) // v2, fallback
+  primary.fail.set = false
+  await storeOver(primary, fallback).set('notifyUpdates', false) // v3, primary
+  assert.deepEqual([versionOf(primary), versionOf(fallback)], [3, 2])
+  const now = await storeOver(primary, fallback).get()
+  assert.deepEqual([now.notifyActions, now.notifyBalance, now.notifyUpdates], [false, false, false])
+})
+
+test('on equal versions the app preferences copy is the one used', async () => {
+  const primary = memoryStorage(), fallback = memoryStorage()
+  primary.data.set(KEY, JSON.stringify({ v: 5, settings: { ...DEFAULT_TRAY_SETTINGS, notifyActions: false } }))
+  fallback.data.set(KEY, JSON.stringify({ v: 5, settings: { ...DEFAULT_TRAY_SETTINGS, notifyBalance: false } }))
+  const now = await storeOver(primary, fallback).get()
+  assert.deepEqual([now.notifyActions, now.notifyBalance], [false, true])
+})
+
+test('a copy saved before versions existed is older than a versioned one, and still loads on its own', async () => {
+  const primary = memoryStorage(), fallback = memoryStorage()
+  primary.data.set(KEY, JSON.stringify({ ...DEFAULT_TRAY_SETTINGS, notifyActions: false })) // a bare settings object
+  assert.equal((await storeOver(primary, fallback).get()).notifyActions, false, 'a lone unversioned copy was ignored')
+  fallback.data.set(KEY, JSON.stringify({ v: 1, settings: { ...DEFAULT_TRAY_SETTINGS, notifyActions: true, notifyBalance: false } }))
+  const both = await storeOver(primary, fallback).get()
+  assert.deepEqual([both.notifyActions, both.notifyBalance], [true, false], 'the unversioned copy outranked a versioned one')
 })
 
 test('storage that cannot be read or holds rubbish gives the defaults, and is only read once', async () => {

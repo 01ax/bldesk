@@ -55,11 +55,29 @@ export function normaliseTraySettings(raw: unknown): TraySettings {
 export interface SettingsStorage {
   get(key: string): Promise<string | null>
   set(key: string, value: string): Promise<void>
-  remove(key: string): Promise<void>
 }
 
 export const NOTIFICATION_SETTING_UNSAVED =
   'BLDesk could not save this setting on the device. It applies until BLDesk is closed, then goes back to what was saved.'
+
+interface StoredSettings {
+  version: number
+  settings: TraySettings
+}
+
+/** What a store holds, or null when it holds nothing usable. */
+function parseStored(raw: string | null): StoredSettings | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && 'settings' in parsed) {
+      return { version: Number.isSafeInteger(parsed.v) && parsed.v >= 0 ? parsed.v : 0, settings: normaliseTraySettings(parsed.settings) }
+    }
+    return { version: 0, settings: normaliseTraySettings(parsed) } // a bare settings object, from before versions: older than any versioned copy
+  } catch {
+    return null // unreadable: treated as absent
+  }
+}
 
 /**
  * The settings in force, saved to `primary` (app preferences) and, when that fails, to `fallback` (localStorage).
@@ -68,39 +86,33 @@ export const NOTIFICATION_SETTING_UNSAVED =
  *   cannot leave the gate disagreeing with what the screen shows.
  * - Changes apply in the order they were made, each on top of the last, and saves run one at a time. Each save writes
  *   everything changed so far, so two changes made together cannot overwrite each other.
- * - `fallback` holds a value only while `primary` could not be written, so when it has one it is the newer copy; a
- *   successful save to `primary` clears it.
+ * - Every save carries a version one higher than any copy seen so far, and a load takes the highest version from either
+ *   store (a tie goes to `primary`). So an older copy left in either store, even one that can be neither removed nor
+ *   overwritten, can never outrank a newer one after a restart.
  * - A change that could not be saved anywhere still applies, and `set` then rejects with NOTIFICATION_SETTING_UNSAVED.
  */
 export function createNotificationSettingsStore(primary: SettingsStorage, fallback: SettingsStorage, key: string) {
   let inForce: Promise<TraySettings> | null = null
   let saves: Promise<unknown> = Promise.resolve()
+  let version = 0
 
-  const stored = async (from: SettingsStorage): Promise<string | null> => {
+  const stored = async (from: SettingsStorage): Promise<StoredSettings | null> => {
     try {
-      return await from.get(key)
+      return parseStored(await from.get(key))
     } catch {
       return null
     }
   }
   const load = async (): Promise<TraySettings> => {
-    const raw = (await stored(fallback)) ?? (await stored(primary))
-    try {
-      return normaliseTraySettings(raw ? JSON.parse(raw) : null)
-    } catch {
-      return normaliseTraySettings(null) // unreadable: every notification stays on, as it was before there was a switch
-    }
+    const [first, second] = [await stored(primary), await stored(fallback)]
+    const newest = first && second ? (second.version > first.version ? second : first) : (first ?? second)
+    version = newest?.version ?? 0
+    return newest?.settings ?? normaliseTraySettings(null) // nothing saved: every notification is on, as it was before there was a switch
   }
-  const save = async (settings: TraySettings): Promise<boolean> => {
-    const text = JSON.stringify(settings)
+  const save = async (settings: TraySettings, saveVersion: number): Promise<boolean> => {
+    const text = JSON.stringify({ v: saveVersion, settings })
     try {
       await primary.set(key, text)
-      // Nothing may outrank what was just saved: drop the fallback copy, or make it the same if it will not go.
-      try {
-        await fallback.remove(key)
-      } catch {
-        await fallback.set(key, text).catch(() => {})
-      }
       return true
     } catch {
       try {
@@ -120,7 +132,7 @@ export function createNotificationSettingsStore(primary: SettingsStorage, fallba
       inForce = next
       const saved = saves.then(async () => {
         const settings = await next
-        if (!(await save(settings))) throw new Error(NOTIFICATION_SETTING_UNSAVED)
+        if (!(await save(settings, ++version))) throw new Error(NOTIFICATION_SETTING_UNSAVED)
         return { ...settings }
       })
       saves = saved.catch(() => {})
