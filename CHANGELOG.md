@@ -5,6 +5,13 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.31] - 2026-10-21
+
+**Enable Daily Backups looks like a button you can press**
+
+### Fixed
+- **Enable Daily Backups no longer looks disabled** (#314). On a server with no scheduled backups the button was blue text on a faint blue fill, which read as greyed out. It now uses the same solid blue as Take Backup. Remove Daily Backups keeps its red style, and nothing else on the page changed.
+
 ## [1.0.62-beta.30] - 2026-10-21
 
 **A server with no scheduled backups says what that means**
