@@ -45,6 +45,8 @@ const SESSION_OUT = 'session.out'
 const SESSION_POLL_MS = 250
 /** After the password is accepted, BLDesk's window says it is closing for this long before it does. */
 const CLOSE_DELAY_MS = 600
+/** How long Restart waits for the last look at the feed before it installs what was downloaded. */
+const RECHECK_BEFORE_INSTALL_MS = 6 * 1000
 /** Network-level failures that mean "couldn't reach the feed", not "no update". */
 const OFFLINE_CODES = new Set([
   'ENOTFOUND',
@@ -265,6 +267,9 @@ export class UpdaterManager {
   private static pendingPackage: { version: string; file: string; sha512: string | undefined } | null = null
   /** The Linux install in progress: update-session.sh, started by Restart (polled here) or at quit (nothing is left to poll). */
   private static linuxSession: { outPath: string; timer: NodeJS.Timeout | null; closing: boolean } | null = null
+  /** Restart was chosen, and the look at the feed just before the install found a newer version: install that one once it is downloaded. */
+  private static restartWhenReady = false
+  private static rechecking = false
 
   /** Shows a notification. Set by init(), so the app's notification settings decide whether "is ready" is shown. */
   private static notify: (title: string, body: string) => void = () => {}
@@ -409,7 +414,13 @@ export class UpdaterManager {
       // electron-updater reports a download it already holds again on every check: say "is ready" once.
       const repeat = this.held?.version === info.version
       this.markReady(info.version)
-      if (!repeat) this.notifyReady(info.version)
+      if (this.restartWhenReady && isLinuxPackage) {
+        // The user chose Restart and a newer release turned up first: this is the one to install, without another click.
+        this.restartWhenReady = false
+        this.install()
+      } else if (!repeat) {
+        this.notifyReady(info.version)
+      }
     })
     autoUpdater.on('error', (err: Error) => {
       if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return
@@ -434,6 +445,10 @@ export class UpdaterManager {
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
     if (this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'installing') return this.getState()
+    return this.checkNow()
+  }
+
+  private static async checkNow(): Promise<UpdaterState> {
     this.lastCheckStartedAt = Date.now()
     if (!this.held) this.setState({ status: 'checking', error: undefined })
     try {
@@ -451,7 +466,7 @@ export class UpdaterManager {
       return
     }
     if (isLinuxPackage) {
-      this.installLinuxPackage()
+      void this.installLinuxPackage()
       return
     }
     // The install runs synchronously and blocks this process for several seconds, so
@@ -472,8 +487,32 @@ export class UpdaterManager {
    * (The library's install blocks this process for about ten seconds, with the window frozen, and replaces the files
    * under the running app.)
    */
-  private static installLinuxPackage(): void {
-    if (this.linuxSession) return
+  private static async installLinuxPackage(): Promise<void> {
+    if (this.linuxSession || this.rechecking) return
+    // A download can be hours old: the update check runs hourly, so a release published since may not have been seen
+    // yet, and installing the old one would mean a second download, password and restart to catch up. So look at the feed
+    // once more first. A newer release replaces the download (the library deletes the old file), and is then installed
+    // as soon as it has downloaded. If the feed cannot be read quickly, the download is installed as it is.
+    const heldVersion = this.held?.version
+    this.rechecking = true
+    this.setState({ status: 'installing', installPhase: 'checking', installError: undefined })
+    try {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, RECHECK_BEFORE_INSTALL_MS)
+        void this.checkNow().finally(() => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+    } finally {
+      this.rechecking = false
+    }
+    if (this.held?.version !== heldVersion) {
+      log('info', `A newer version, ${this.state.availableVersion}, was published after ${heldVersion} was downloaded; it will be installed once it has downloaded.`)
+      this.restartWhenReady = true
+      this.setState({ installPhase: undefined })
+      return
+    }
     const pending = this.pendingPackage
     if (!pending || !existsSync(pending.file)) {
       // Deleted from under us (cache cleaned, or a newer download started): nothing to install, so fetch it again.
@@ -482,6 +521,7 @@ export class UpdaterManager {
       this.setState({
         status: 'idle',
         availableVersion: undefined,
+        installPhase: undefined,
         installError: 'The downloaded update has gone missing, so BLDesk is downloading it again.'
       })
       void this.check()
@@ -490,7 +530,7 @@ export class UpdaterManager {
     const problem = this.startLinuxSession(true)
     if (problem) {
       log('error', 'Could not start the update installer:', problem)
-      this.setState({ installError: problem })
+      this.setState({ status: 'ready', installPhase: undefined, installError: problem })
       return
     }
     this.setState({ status: 'installing', installPhase: 'authorising', installError: undefined })
@@ -630,6 +670,7 @@ export class UpdaterManager {
     this.applyChannel(channel)
     this.held = null
     this.pendingPackage = null
+    this.restartWhenReady = false
     this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined, installError: undefined })
     if (app.isPackaged) void this.check()
     return this.getState()
@@ -664,6 +705,7 @@ export class UpdaterManager {
       if (this.state.status !== 'installing') this.restoreHeld()
       return
     }
+    this.restartWhenReady = false
     this.setState({
       status,
       availableVersion: undefined,

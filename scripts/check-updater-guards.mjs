@@ -223,9 +223,14 @@ if (!/chmod 0755 "\$APP_DIR\/resources\/linux"/.test(afterInstallText) || !/chmo
 if (!codeOnly.includes('autoUpdater.autoInstallOnAppQuit=!isLinuxPackage')) {
   failures.push('updater.ts: autoInstallOnAppQuit must be off for a Linux package (`= !isLinuxPackage`), or quitting installs through the library\'s blocking pkexec flow')
 }
-const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{this\.installLinuxPackage\(\);?return\}/)
+const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{(?:void)?this\.installLinuxPackage\(\);?return\}/)
 if (linuxBranch < 0 || linuxBranch > codeOnly.indexOf('quitAndInstall(')) {
   failures.push('updater.ts: install() must hand a Linux package to installLinuxPackage() before it reaches autoUpdater.quitAndInstall')
+}
+
+// Restart looks at the feed once more before it asks for the password (see installLinuxPackage).
+if (!/installLinuxPackage\(\):Promise<void>\{[\s\S]*?this\.checkNow\(\)[\s\S]*?this\.startLinuxSession\(true\)/.test(codeOnly)) {
+  failures.push('updater.ts: installLinuxPackage() must call checkNow() (the last look at the feed) before startLinuxSession(true)')
 }
 
 if (failures.length > 0) {

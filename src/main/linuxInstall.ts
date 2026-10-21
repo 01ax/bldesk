@@ -57,7 +57,9 @@ export function describeFailure(result: SessionOutcome | null): string | null {
 
 /**
  * The SHA-512 (base64) the release's feed lists for the downloaded file. electron-updater names the file after the
- * entry's URL, decoded, so that is what the two are matched on.
+ * entry's URL, decoded, so that is what the two are matched on. It can also hand back a file it already holds under
+ * another name, when its checksum is the one listed for this release; then the checksum is the release's only .deb entry's,
+ * and with more than one (one per architecture) there is no telling which, so none is returned.
  */
 export function listedChecksum(
   files: ReadonlyArray<{ url: string; sha512?: string }> | undefined,
@@ -65,6 +67,7 @@ export function listedChecksum(
 ): string | undefined {
   const name = downloadedFile?.split('/').pop()
   if (!name) return undefined
+  const debs: Array<{ sha512?: string }> = []
   for (const file of files ?? []) {
     let path = file.url
     try {
@@ -73,8 +76,9 @@ export function listedChecksum(
       /* a URL that does not parse is compared as written */
     }
     if (path.split('/').pop() === name) return file.sha512
+    if (/\.deb$/i.test(path)) debs.push(file)
   }
-  return undefined
+  return debs.length === 1 && /\.deb$/i.test(name) ? debs[0].sha512 : undefined
 }
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/

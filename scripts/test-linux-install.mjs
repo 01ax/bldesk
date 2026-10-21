@@ -109,12 +109,21 @@ test('the checksum is the one listed for the file that was downloaded, not for a
   assert.equal(listedChecksum(FILES, '/x/BLDesk-1.0.62-beta.31-linux-x86_64.AppImage'), 'appimage-sum')
 })
 
+test('a package the library already held under another name gets the checksum of the release\'s one .deb', () => {
+  assert.equal(listedChecksum(FILES, '/c/BLDesk-1.0.62-beta.31-linux-amd64.deb'.replace('beta.31', 'beta.30')), 'deb-sum')
+  // not for a file that is not a .deb, and not when the release lists a .deb for each of two architectures
+  assert.equal(listedChecksum(FILES, '/c/other.AppImage'), undefined)
+  const TWO = [...FILES, { url: 'BLDesk-1.0.62-beta.31-linux-arm64.deb', sha512: 'arm-sum' }]
+  assert.equal(listedChecksum(TWO, '/c/BLDesk-1.0.62-beta.30-linux-amd64.deb'), undefined)
+  assert.equal(listedChecksum(TWO, '/c/BLDesk-1.0.62-beta.31-linux-arm64.deb'), 'arm-sum')
+})
+
 test('the checksum lookup copes with a full URL, a URL-encoded name, and nothing to find', () => {
   assert.equal(
     listedChecksum([{ url: 'https://github.com/termau/bldesk/releases/download/v1/BLDesk%20test.deb', sha512: 's' }], '/c/BLDesk test.deb'),
     's'
   )
-  assert.equal(listedChecksum(FILES, '/c/other.deb'), undefined)
+  assert.equal(listedChecksum([{ url: 'a.AppImage', sha512: 'x' }, { url: 'b.deb', sha512: 'y' }, { url: 'c.deb', sha512: 'z' }], '/c/other.deb'), undefined)
   assert.equal(listedChecksum(FILES, undefined), undefined)
   assert.equal(listedChecksum(undefined, '/c/a.deb'), undefined)
   assert.equal(listedChecksum([{ url: 'a.deb' }], '/c/a.deb'), undefined)

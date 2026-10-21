@@ -161,7 +161,7 @@ export const UpdateMenu: React.FC = () => {
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f1ca00]" /> : <span>v{state.currentVersion}</span>}
           {state.status === 'installing' && state.installPhase && (
-            <span className="font-sans">{state.installPhase === 'authorising' ? 'Waiting for password' : 'Installing'}</span>
+            <span className="font-sans">{state.installPhase === 'checking' ? 'Checking' : state.installPhase === 'authorising' ? 'Waiting for password' : 'Installing'}</span>
           )}
           <ChevronDown className="w-3 h-3 opacity-60" />
           {state.status === 'error' && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#343a40]" />}
@@ -196,7 +196,9 @@ export const UpdateMenu: React.FC = () => {
 
           {state.status === 'installing' && (
             <div className="text-[11px] text-[#6c757d] dark:text-[#adb5bd]">
-              {state.installPhase === 'authorising'
+              {state.installPhase === 'checking'
+                ? `Checking whether a newer version than ${state.availableVersion} has been published before installing.`
+                : state.installPhase === 'authorising'
                 ? `Waiting for you to approve the install of BLDesk ${state.availableVersion} in the system's password prompt. BLDesk stays open until you do, and closing the prompt leaves it as it is.`
                 : state.installPhase === 'installing'
                   ? `Password accepted. BLDesk is closing to install ${state.availableVersion}, and opens again by itself when it is done.`

@@ -184,8 +184,8 @@ export interface UpdaterState {
   /** 0-100 while downloading. */
   progress?: number
   error?: string
-  /** While `installing` on a Linux package: waiting for the password (BLDesk stays open), or closing for the install. */
-  installPhase?: 'authorising' | 'installing'
+  /** While `installing` on a Linux package: last look at the feed, waiting for the password (BLDesk stays open), or closing for the install. */
+  installPhase?: 'checking' | 'authorising' | 'installing'
   /** Why the last Restart did not install the update (prompt cancelled, checksum mismatch, installer failed). */
   installError?: string
   lastCheckedAt?: string
