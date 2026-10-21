@@ -15,6 +15,12 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+// The scripts need GNU coreutils, /proc and polkit, so there is nothing to run on another system.
+if (process.platform !== 'linux') {
+  console.log('skipped: the Linux update scripts are only tested on Linux')
+  process.exit(0)
+}
+
 const helperPath = process.env.INSTALL_UPDATE ?? new URL('../linux/update/install-update.sh', import.meta.url).pathname
 const sessionPath = process.env.UPDATE_SESSION ?? new URL('../linux/update/update-session.sh', import.meta.url).pathname
 const helperSource = readFileSync(helperPath, 'utf8')
@@ -332,7 +338,7 @@ test('the scratch folder is created for root alone while the package is copied i
 // update-session.sh, with a fake pkexec in place of the real one.
 
 /** A scratch folder with a fake pkexec that behaves as `pkexec` says, and the session script beside where its helper would be. */
-function sessionBox({ helperLines = [], pkexecStatus = 0 } = {}) {
+function sessionBox({ helperLines = [], pkexecStatus = 0, transform = (text) => text, pathDirs = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'bldesk-update-session-'))
   mkdirSync(join(dir, 'bin'))
   const calls = join(dir, 'pkexec-calls.log')
@@ -346,7 +352,7 @@ exit ${pkexecStatus}
 `
   )
   chmodSync(join(dir, 'bin', 'pkexec'), 0o755)
-  writeFileSync(join(dir, 'update-session.sh'), sessionSource, { mode: 0o755 })
+  writeFileSync(join(dir, 'update-session.sh'), transform(sessionSource), { mode: 0o755 })
   // What the relaunch runs: records that it ran, with its arguments.
   writeFileSync(join(dir, 'relaunch.sh'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${join(dir, 'relaunch.log')}"\n`, { mode: 0o755 })
   return {
@@ -357,9 +363,9 @@ exit ${pkexecStatus}
     relaunched: () => (existsSync(join(dir, 'relaunch.log')) ? readFileSync(join(dir, 'relaunch.log'), 'utf8').trim() : null),
     run(appPid, relaunch, extra = ['--flag', 'two words']) {
       const r = spawnSync(
-        'sh',
+        '/bin/sh', // by full path: a test may give the script a PATH without sh on it
         [join(dir, 'update-session.sh'), this.log, this.out, String(appPid), '/home/u/.cache/a b.deb', 'c2hhNTEy', relaunch, join(dir, 'relaunch.sh'), ...extra],
-        { env: { PATH: `${join(dir, 'bin')}:/usr/bin:/bin` }, encoding: 'utf8' }
+        { env: { PATH: pathDirs ? pathDirs(dir) : `${join(dir, 'bin')}:/usr/bin:/bin` }, encoding: 'utf8' }
       )
       return { status: r.status, stderr: r.stderr }
     },
@@ -486,3 +492,56 @@ test('session: it is a script for the user, run by sh, with no way to run anythi
   assert.equal(privileged.length, 1)
   assert.match(privileged[0], /pkexec --disable-internal-agent "\$HELPER" /)
 })
+
+/** A PATH that has the few tools the wrapper itself uses but no pkexec, as on a Plasma install without the pkexec package. */
+function pathWithoutPkexec(dir) {
+  const bin = join(dir, 'bare')
+  mkdirSync(bin, { recursive: true })
+  for (const tool of ['date', 'grep', 'sed', 'tail']) symlinkSync(`/usr/bin/${tool}`, join(bin, tool))
+  return bin
+}
+
+test('session: a system with no pkexec is told so before any prompt, and it is not called a cancelled prompt', () => {
+  const box = sessionBox({ pathDirs: pathWithoutPkexec })
+  try {
+    const app = spawn('sleep', ['5'], { stdio: 'ignore' })
+    try {
+      box.run(app.pid, '1')
+    } finally {
+      app.kill()
+    }
+    assert.deepEqual(outLines(box), ['RESULT unavailable pkexec (part of polkit)'])
+    assert.equal(box.pkexecCalls().length, 0)
+    assert.equal(box.relaunched(), null)
+    assert.match(readFileSync(box.log, 'utf8'), /RESULT unavailable pkexec \(part of polkit\)/)
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('session: a missing apt-get or dpkg-deb is reported by name, with pkexec never called', () => {
+  const box = sessionBox({
+    transform: (text) => text.replace('APT_GET=/usr/bin/apt-get', 'APT_GET=/nonexistent/apt-get').replace('DPKG_DEB=/usr/bin/dpkg-deb', 'DPKG_DEB=/nonexistent/dpkg-deb')
+  })
+  try {
+    box.run(DEAD_PID, '0')
+    assert.deepEqual(outLines(box), ['RESULT unavailable apt-get, dpkg-deb'])
+    assert.equal(box.pkexecCalls().length, 0)
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('session: everything missing is listed in one line', () => {
+  const box = sessionBox({
+    pathDirs: pathWithoutPkexec,
+    transform: (text) => text.replace('APT_GET=/usr/bin/apt-get', 'APT_GET=/nonexistent/apt-get').replace('DPKG_DEB=/usr/bin/dpkg-deb', 'DPKG_DEB=/nonexistent/dpkg-deb')
+  })
+  try {
+    box.run(DEAD_PID, '0')
+    assert.deepEqual(outLines(box), ['RESULT unavailable pkexec (part of polkit), apt-get, dpkg-deb'])
+  } finally {
+    box.cleanup()
+  }
+})
+

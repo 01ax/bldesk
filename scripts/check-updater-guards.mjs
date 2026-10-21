@@ -203,6 +203,10 @@ const privileged = shellCode(sessionText).split('\n').filter((l) => /^\s*pkexec\
 if (privileged.length !== 1 || !/pkexec --disable-internal-agent "\$HELPER"/.test(privileged[0])) {
   failures.push('update-session.sh: its one pkexec call must run "$HELPER" and nothing else')
 }
+const sessionCode = shellCode(sessionText)
+if (!/command -v pkexec(?![\w-])/.test(sessionCode) || !/RESULT unavailable/.test(sessionCode) || sessionCode.search(/command -v pkexec(?![\w-])/) > sessionCode.search(/^\s*pkexec\b/m)) {
+  failures.push('update-session.sh: must check that pkexec, apt-get and dpkg-deb exist, and report `RESULT unavailable`, before it calls pkexec')
+}
 if (!/<allow_active>auth_admin<\/allow_active>/.test(policyText) || /<allow_(any|inactive|active)>(yes|auth_self)</.test(policyText)) {
   failures.push('com.termau.bldesk.policy: installing an update must need an administrator\'s password (auth_admin), never yes or auth_self')
 }

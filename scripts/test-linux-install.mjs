@@ -55,6 +55,18 @@ test('the last result wins', () => {
   assert.deepEqual(parseSessionOutput('RESULT cancelled\nRESULT installed\n').result, { outcome: 'installed' })
 })
 
+test('a session that found a tool missing is reported as that', () => {
+  const r = parseSessionOutput('RESULT unavailable pkexec (part of polkit), apt-get\n').result
+  assert.deepEqual(r, { outcome: 'unavailable', needs: 'pkexec (part of polkit), apt-get' })
+  assert.equal(
+    describeFailure(r),
+    "BLDesk can't install updates on this system: it needs pkexec (part of polkit), apt-get, which could not be found."
+  )
+  assert.doesNotMatch(describeFailure(r), /Restart to try again/)
+  assert.match(describeFailure({ outcome: 'unavailable', needs: '' }), /the tools that install packages/)
+  assert.equal(leftoverNotice('RESULT unavailable apt-get\n'), describeFailure({ outcome: 'unavailable', needs: 'apt-get' }))
+})
+
 test('messages: none for an install or a session still running, one for each way it can fail', () => {
   assert.equal(describeFailure(null), null)
   assert.equal(describeFailure({ outcome: 'installed' }), null)

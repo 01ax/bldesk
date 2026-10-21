@@ -57,7 +57,9 @@ The two scripts are packaged to `/opt/BLDesk/resources/linux/` (`build.linux.ext
 
 **What this does not do.** The package is trusted because its checksum came from the same GitHub release the update check read: the releases are not signed, so a compromise of that release could still serve a package that matches. The helper closes the gap between checking the download and installing it, and removes the arbitrary root shell, but it cannot authenticate where the file came from. An APT repository or a signature BLDesk checks would.
 
-With no polkit agent running (an SSH session, say) `pkexec` exits 127, and BLDesk reports that as the prompt having been closed or the password not accepted.
+With no polkit agent running (an SSH session, say) `pkexec` exits 127, and BLDesk reports that as the prompt having been closed or the password not accepted. KDE's agent also gives 127 when the prompt is cancelled, where GNOME's gives 126.
+
+Before it asks for a password, `update-session.sh` checks that `pkexec` (from polkit), `apt-get` and `dpkg-deb` exist, and if one does not it writes `RESULT unavailable <what is missing>`; BLDesk then says it can't install updates on that system. A plain KDE Plasma install has no `pkexec`, for example, because Ubuntu ships it as its own package. Without the check the shell's "not found" is exit status 127 too, and looked like a dismissed prompt.
 
 An update from a version before this one still runs the old install, once: the new flow starts with the version that contains it.
 

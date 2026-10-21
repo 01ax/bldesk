@@ -610,7 +610,7 @@ export class UpdaterManager {
     this.linuxSession = null
     rmSync(this.sessionPaths().dir, { recursive: true, force: true })
     const failure = describeFailure(result)
-    log(failure ? 'warn' : 'info', `Update session ended: ${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : ''}.`)
+    log(failure ? 'warn' : 'info', `Update session ended: ${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : result.outcome === 'unavailable' ? ` (${result.needs})` : ''}.`)
     if (!failure) {
       // Installed while this process is still up: the package is replaced, so close and let the installer reopen it.
       app.quit()

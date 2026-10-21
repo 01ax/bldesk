@@ -21,7 +21,12 @@ export const MAX_PACKAGE_BYTES = 500 * 1024 * 1024
 export const CANCELLED_MESSAGE =
   'The update was not installed: the password prompt was closed, or the password was not accepted. Choose Restart to try again.'
 
-export type SessionOutcome = { outcome: 'installed' } | { outcome: 'cancelled' } | { outcome: 'failed'; why: string }
+export type SessionOutcome =
+  | { outcome: 'installed' }
+  | { outcome: 'cancelled' }
+  | { outcome: 'failed'; why: string }
+  /** pkexec, apt-get or dpkg-deb is not on this system, so nobody was asked for a password. */
+  | { outcome: 'unavailable'; needs: string }
 
 export interface SessionProgress {
   /** The password was accepted and the package checked out, so BLDesk may close. */
@@ -44,6 +49,7 @@ export function parseSessionOutput(text: string): SessionProgress {
     else if (line === 'RESULT installed') result = { outcome: 'installed' }
     else if (line === 'RESULT cancelled') result = { outcome: 'cancelled' }
     else if (line.startsWith('RESULT failed')) result = { outcome: 'failed', why: line.slice('RESULT failed'.length).trim() }
+    else if (line.startsWith('RESULT unavailable')) result = { outcome: 'unavailable', needs: line.slice('RESULT unavailable'.length).trim() }
   }
   return { authorised, result }
 }
@@ -52,6 +58,9 @@ export function parseSessionOutput(text: string): SessionProgress {
 export function describeFailure(result: SessionOutcome | null): string | null {
   if (!result || result.outcome === 'installed') return null
   if (result.outcome === 'cancelled') return CANCELLED_MESSAGE
+  if (result.outcome === 'unavailable') {
+    return `BLDesk can't install updates on this system: it needs ${result.needs || 'the tools that install packages'}, which could not be found.`
+  }
   return `The update was not installed: ${result.why || 'the installer failed'}. Choose Restart to try again.`
 }
 
