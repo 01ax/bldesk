@@ -57,6 +57,8 @@ The two scripts are packaged to `/opt/BLDesk/resources/linux/` (`build.linux.ext
 
 **What this does not do.** The package is trusted because its checksum came from the same GitHub release the update check read: the releases are not signed, so a compromise of that release could still serve a package that matches. The helper closes the gap between checking the download and installing it, and removes the arbitrary root shell, but it cannot authenticate where the file came from. An APT repository or a signature BLDesk checks would.
 
+With no polkit agent running (an SSH session, say) `pkexec` exits 127, and BLDesk reports that as the prompt having been closed or the password not accepted.
+
 An update from a version before this one still runs the old install, once: the new flow starts with the version that contains it.
 
 ## The title bar
