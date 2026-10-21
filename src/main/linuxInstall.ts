@@ -1,4 +1,4 @@
-import { join } from 'path'
+import { posix } from 'path'
 
 /**
  * The parts of installing a Linux package update that need no Electron: what the privileged helper reports, the checks on
@@ -12,7 +12,8 @@ import { join } from 'path'
  * helper still runs, but the password prompt is pkexec's generic one.
  */
 export function updateScriptPaths(resourcesPath: string): { helper: string; session: string } {
-  return { helper: join(resourcesPath, 'linux', 'install-update.sh'), session: join(resourcesPath, 'linux', 'update-session.sh') }
+  // posix: these are Linux paths whatever system this module is loaded on (the tests load it everywhere)
+  return { helper: posix.join(resourcesPath, 'linux', 'install-update.sh'), session: posix.join(resourcesPath, 'linux', 'update-session.sh') }
 }
 
 /** The largest package install-update.sh accepts, in bytes. BLDesk's is about 100 MB. */
@@ -27,6 +28,8 @@ export type SessionOutcome =
   | { outcome: 'failed'; why: string }
   /** pkexec, apt-get or dpkg-deb is not on this system, so nobody was asked for a password. */
   | { outcome: 'unavailable'; needs: string }
+  /** The installer files are not owned by root, or others can write to them, so pkexec was never asked to run them. */
+  | { outcome: 'untrusted' }
 
 export interface SessionProgress {
   /** The password was accepted and the package checked out, so BLDesk may close. */
@@ -49,6 +52,7 @@ export function parseSessionOutput(text: string): SessionProgress {
     else if (line === 'RESULT installed') result = { outcome: 'installed' }
     else if (line === 'RESULT cancelled') result = { outcome: 'cancelled' }
     else if (line.startsWith('RESULT failed')) result = { outcome: 'failed', why: line.slice('RESULT failed'.length).trim() }
+    else if (line === 'RESULT untrusted') result = { outcome: 'untrusted' }
     else if (line.startsWith('RESULT unavailable')) result = { outcome: 'unavailable', needs: line.slice('RESULT unavailable'.length).trim() }
   }
   return { authorised, result }
@@ -58,6 +62,9 @@ export function parseSessionOutput(text: string): SessionProgress {
 export function describeFailure(result: SessionOutcome | null): string | null {
   if (!result || result.outcome === 'installed') return null
   if (result.outcome === 'cancelled') return CANCELLED_MESSAGE
+  if (result.outcome === 'untrusted') {
+    return "BLDesk won't install updates from here: its update installer is not owned by root, or other users can change it, so it can't be trusted to run with administrator rights. Install BLDesk from its .deb package."
+  }
   if (result.outcome === 'unavailable') {
     return `BLDesk can't install updates on this system: it needs ${result.needs || 'the tools that install packages'}, which could not be found.`
   }
@@ -88,6 +95,14 @@ export function listedChecksum(
     if (/\.deb$/i.test(path)) debs.push(file)
   }
   return debs.length === 1 && /\.deb$/i.test(name) ? debs[0].sha512 : undefined
+}
+
+/**
+ * Whether a refusal from the installer means the downloaded file itself is no good (it will be refused every time), as
+ * against a failure of the install, which a retry of the same file can get past.
+ */
+export function isPackageProblem(why: string): boolean {
+  return /does not match its published checksum|not the BLDesk package|not a regular file|not owned by the user|larger than expected|could not be read/.test(why)
 }
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/

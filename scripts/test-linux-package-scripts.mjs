@@ -14,6 +14,9 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+// release.yml runs the whole typecheck on Windows and macOS runners too; these run bash with Linux paths and symlinks.
+const linuxOnly = process.platform === 'linux' ? {} : { skip: 'runs the Linux package scripts, which need Linux' }
+
 const scriptPath = process.env.AFTER_REMOVE ?? new URL('../linux/after-remove.sh', import.meta.url).pathname
 const script = readFileSync(scriptPath, 'utf8')
 
@@ -50,7 +53,7 @@ function run(action) {
   }
 }
 
-test('an upgrade leaves the AppArmor profile and the /usr/bin link alone', () => {
+test('an upgrade leaves the AppArmor profile and the /usr/bin link alone', linuxOnly, () => {
   const r = run('upgrade')
   assert.equal(r.status, 0)
   assert.equal(r.profile, true, 'the profile was deleted during the upgrade')
@@ -60,7 +63,7 @@ test('an upgrade leaves the AppArmor profile and the /usr/bin link alone', () =>
 })
 
 for (const action of ['failed-upgrade', 'abort-install', 'abort-upgrade', 'disappear']) {
-  test(`${action} does not take the profile away either`, () => {
+  test(`${action} does not take the profile away either`, linuxOnly, () => {
     const r = run(action)
     assert.equal(r.status, 0)
     assert.equal(r.profile, true)
@@ -69,7 +72,7 @@ for (const action of ['failed-upgrade', 'abort-install', 'abort-upgrade', 'disap
 }
 
 for (const action of ['remove', 'purge']) {
-  test(`${action} unloads and deletes the profile, and takes the /usr/bin link away`, () => {
+  test(`${action} unloads and deletes the profile, and takes the /usr/bin link away`, linuxOnly, () => {
     const r = run(action)
     assert.equal(r.status, 0)
     assert.equal(r.profile, false)

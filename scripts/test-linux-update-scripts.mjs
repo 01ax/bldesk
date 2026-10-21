@@ -9,7 +9,7 @@
 // INSTALL_UPDATE and UPDATE_SESSION override the script paths, for checking that the tests catch a broken script.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -31,7 +31,7 @@ const PACKAGE_BYTES = Buffer.from('not really a deb, but its checksum is real')
 const sha512 = (bytes) => createHash('sha512').update(bytes).digest('base64')
 
 /** A scratch folder with fake apt-get / dpkg-deb, the helper rewritten to use them, and a package to install. */
-function sandbox({ packageName = 'BLDesk-1.0.99-linux-amd64.deb', debPackageField = 'bldesk', aptStatus = 0 } = {}) {
+function sandbox({ packageName = 'BLDesk-1.0.99-linux-amd64.deb', debPackageField = 'bldesk', aptStatus = 0, setprivMode = 'ok', maxBytes = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'bldesk-install-update-'))
   mkdirSync(join(dir, 'scratch'))
   mkdirSync(join(dir, 'downloads'))
@@ -53,13 +53,38 @@ echo "apt says hello on stderr" >&2
 exit ${aptStatus}
 `
   )
-  writeFileSync(join(dir, 'dpkg-deb'), `#!/bin/sh\nprintf 'dpkg-deb %s\\n' "$*" >> "${log}"\nprintf '%s\\n' "${debPackageField}"\n`)
+  // dpkg-deb is the check on the copy, so it also records who could see the copy at that moment.
+  writeFileSync(
+    join(dir, 'dpkg-deb'),
+    `#!/bin/sh
+printf 'dpkg-deb %s\\n' "$*" >> "${log}"
+printf 'copy-while-checked mode %s dir-mode %s\\n' "$(stat -c %a "$2")" "$(stat -c %a "$(dirname "$2")")" >> "${log}"
+printf '%s\\n' "${debPackageField}"
+`
+  )
+  // setpriv stands in for dropping to the user (only root can): it records its arguments and runs the rest as it is.
+  // 'fail' is a package the user cannot read; 'grow' is a file that is longer by the time it is read than when it was checked.
+  writeFileSync(
+    join(dir, 'setpriv'),
+    `#!/bin/sh
+printf 'setpriv %s\\n' "$*" >> "${log}"
+while [ "$#" -gt 0 ]; do case "$1" in --reuid=* | --regid=* | --clear-groups) shift ;; *) break ;; esac; done
+case "${setprivMode}" in
+  fail) echo "head: cannot open: Permission denied" >&2; exit 1 ;;
+  grow) "$@"; head -c 3000 /dev/zero; exit 0 ;;
+esac
+exec "$@"
+`
+  )
   chmodSync(join(dir, 'apt-get'), 0o755)
   chmodSync(join(dir, 'dpkg-deb'), 0o755)
+  chmodSync(join(dir, 'setpriv'), 0o755)
   const script = helperSource
     .replace('APT_GET=/usr/bin/apt-get', `APT_GET=${join(dir, 'apt-get')}`)
     .replace('DPKG_DEB=/usr/bin/dpkg-deb', `DPKG_DEB=${join(dir, 'dpkg-deb')}`)
+    .replace('SETPRIV=/usr/bin/setpriv', `SETPRIV=${join(dir, 'setpriv')}`)
     .replace('SCRATCH=/var/tmp/bldesk-update.XXXXXX', `SCRATCH=${join(dir, 'scratch')}/bldesk-update.XXXXXX`)
+    .replace('MAX_BYTES=524288000', maxBytes === null ? 'MAX_BYTES=524288000' : `MAX_BYTES=${maxBytes}`)
   assert.notEqual(script, helperSource, 'the helper has none of the substitution points the tests rely on')
   writeFileSync(join(dir, 'install-update.sh'), script, { mode: 0o755 })
   const pkg = join(dir, 'downloads', packageName)
@@ -94,6 +119,7 @@ test('a good package is authorised, then installed, and nothing but the protocol
     const c = calls(box)
     assert.ok(c.some((l) => /^apt-get install -y .*\/bldesk\.deb$/.test(l)), c.join('\n'))
     assert.ok(c.includes('frontend noninteractive'))
+    assert.ok(c.some((l) => l.includes('-o DPkg::Lock::Timeout=120')), 'apt-get must wait for the dpkg lock rather than fail at once')
   } finally {
     box.cleanup()
   }
@@ -253,16 +279,16 @@ test('it only runs through pkexec', () => {
   }
 })
 
-for (const [label, args] of [
-  ['too few arguments', (box) => ['1', box.pkg]],
-  ['too many arguments', (box) => [...GOOD(box), 'extra']],
-  ['a process id that is not a number', (box) => ['12; reboot', box.pkg, sha512(PACKAGE_BYTES)]],
-  ['an empty process id', (box) => ['', box.pkg, sha512(PACKAGE_BYTES)]],
-  ['a checksum that is not base64', (box) => ['1', box.pkg, 'abc$(touch bldesk-pwned-marker)']],
-  ['an empty checksum', (box) => ['1', box.pkg, '']],
-  ['a relative package path', () => ['1', 'bldesk.deb', sha512(PACKAGE_BYTES)]],
-  ['a package that does not exist', (box) => ['1', join(box.dir, 'downloads', 'missing.deb'), sha512(PACKAGE_BYTES)]],
-  ['a package path with a newline in it', (box) => ['1', `${box.pkg}\n/etc/passwd`, sha512(PACKAGE_BYTES)]]
+for (const [label, args, reason] of [
+  ['too few arguments', (box) => ['1', box.pkg], /expected three arguments/],
+  ['too many arguments', (box) => [...GOOD(box), 'extra'], /expected three arguments/],
+  ['a process id that is not a number', (box) => ['12; reboot', box.pkg, sha512(PACKAGE_BYTES)], /process id is not a number/],
+  ['an empty process id', (box) => ['', box.pkg, sha512(PACKAGE_BYTES)], /process id is not a number/],
+  ['a checksum that is not base64', (box) => ['1', box.pkg, 'abc$(touch bldesk-pwned-marker)'], /checksum is not base64/],
+  ['an empty checksum', (box) => ['1', box.pkg, ''], /checksum is not base64/],
+  ['a relative package path', () => ['1', 'bldesk.deb', sha512(PACKAGE_BYTES)], /path is not absolute/],
+  ['a package that does not exist', (box) => ['1', join(box.dir, 'downloads', 'missing.deb'), sha512(PACKAGE_BYTES)], /not a regular file/],
+  ['a package path with a newline in it', (box) => ['1', `${box.pkg}\n/etc/passwd`, sha512(PACKAGE_BYTES)], /contains a newline/]
 ]) {
   test(`refused, with a FAILED line and nothing installed: ${label}`, () => {
     const box = sandbox()
@@ -270,8 +296,8 @@ for (const [label, args] of [
       const r = runHelper(box, args(box))
       assert.notEqual(r.status, 0)
       assert.equal(r.out.length, 1, r.out.join('|'))
-      assert.match(r.out[0], /^FAILED \S/)
-      assert.deepEqual(calls(box).filter((l) => l.startsWith('apt-get')), [])
+      assert.match(r.out[0], reason, 'refused, but not for the reason being tested')
+      assert.deepEqual(calls(box).filter((l) => l.startsWith('apt-get') || l.startsWith('setpriv')), [], 'went on to read or install it')
       assert.equal(existsSync(MARKER), false)
     } finally {
       box.cleanup()
@@ -326,12 +352,132 @@ test('a refused package leaves no scratch folder behind either', () => {
   }
 })
 
-test('the scratch folder is created for root alone while the package is copied into it', () => {
-  // The copy is made under umask 077 and the folder opened to others only after, so the file is never readable early.
-  assert.match(helperSource, /^umask 077$/m)
-  const copyAt = helperSource.indexOf('cat -- "$PACKAGE" > "$COPY"')
-  const chmodAt = helperSource.indexOf('chmod 755 "$WORK"')
-  assert.ok(copyAt > 0 && chmodAt > copyAt, 'the copy must be made before the folder is opened')
+test('the copy stays private to root until it has been checked, and only then is opened to apt-get', () => {
+  const box = sandbox()
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.equal(r.status, 0, r.err)
+    const c = calls(box)
+    // dpkg-deb is the last check: at that moment nobody else could enter the folder or read the copy
+    assert.ok(c.includes('copy-while-checked mode 600 dir-mode 700'), c.join('\n'))
+    assert.ok(c.includes('copy-mode 644 dir-mode 755'), 'apt-get could not read the checked copy')
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a package that fails its checks was never readable by anyone else, and is gone', () => {
+  const box = sandbox({ debPackageField: 'something-else' })
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.notEqual(r.status, 0)
+    assert.ok(calls(box).includes('copy-while-checked mode 600 dir-mode 700'))
+    assert.ok(!calls(box).some((l) => l.startsWith('copy-mode')), 'a refused package was opened to apt-get')
+    assert.deepEqual(readdirSync(join(box.dir, 'scratch')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('the package is read as the user who asked, never as root, and at most one byte past the limit', () => {
+  const box = sandbox()
+  try {
+    const gid = execFileSync('id', ['-g'], { encoding: 'utf8' }).trim()
+    const r = runHelper(box, GOOD(box))
+    assert.equal(r.status, 0, r.err)
+    assert.ok(calls(box).includes(`setpriv --reuid=${myUid} --regid=${gid} --clear-groups head -c 524288001 -- ${box.pkg}`), calls(box).join('\n'))
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a package the user cannot read is refused before anything else happens', () => {
+  const box = sandbox({ setprivMode: 'fail' })
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.notEqual(r.status, 0)
+    assert.deepEqual(r.out, ['FAILED the package could not be read'])
+    assert.deepEqual(calls(box).filter((l) => l.startsWith('apt-get') || l.startsWith('dpkg-deb')), [])
+    assert.deepEqual(readdirSync(join(box.dir, 'scratch')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a file that is longer when it is read than when it was checked is refused', () => {
+  const box = sandbox({ setprivMode: 'grow', maxBytes: 1000 })
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.notEqual(r.status, 0)
+    assert.deepEqual(r.out, ['FAILED the package is larger than expected'])
+    assert.deepEqual(calls(box).filter((l) => l.startsWith('apt-get')), [])
+    assert.deepEqual(readdirSync(join(box.dir, 'scratch')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('being killed while it waits for BLDesk to exit still removes the scratch folder', async () => {
+  const box = sandbox()
+  try {
+    const app = spawn('sleep', ['30'], { stdio: 'ignore' })
+    const helper = spawn('sh', [box.helper, String(app.pid), box.pkg, sha512(PACKAGE_BYTES)], {
+      env: { PATH: '/usr/bin:/bin', PKEXEC_UID: myUid },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let out = ''
+    helper.stdout.on('data', (d) => (out += d))
+    const waited = new Promise((resolve) => helper.on('close', resolve))
+    for (let i = 0; i < 100 && !out.includes('AUTHORIZED'); i++) await new Promise((r) => setTimeout(r, 50))
+    assert.ok(out.includes('AUTHORIZED'))
+    assert.equal(readdirSync(join(box.dir, 'scratch')).length, 1, 'the folder should exist while it waits')
+    helper.kill('SIGTERM')
+    await waited
+    app.kill()
+    assert.deepEqual(readdirSync(join(box.dir, 'scratch')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a package over the size limit is refused before anything reads it', () => {
+  const box = sandbox({ maxBytes: 10 })
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.notEqual(r.status, 0)
+    assert.deepEqual(r.out, ['FAILED the package is larger than expected'])
+    assert.deepEqual(calls(box).filter((l) => l.startsWith('setpriv') || l.startsWith('apt-get')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a file whose real name has a newline in it is refused, not read', () => {
+  const box = sandbox({ packageName: 'a\nb.deb' })
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.notEqual(r.status, 0)
+    assert.deepEqual(r.out, ['FAILED the package path contains a newline'])
+    assert.deepEqual(calls(box).filter((l) => l.startsWith('setpriv') || l.startsWith('apt-get')), [])
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('a PATH set by the caller does not decide which tools run as root', () => {
+  const box = sandbox()
+  try {
+    const evil = join(box.dir, 'evil')
+    mkdirSync(evil)
+    for (const tool of ['sha512sum', 'base64', 'od', 'stat', 'cut', 'tr', 'head', 'mktemp', 'getent', 'sleep', 'rm', 'chmod', 'cat']) {
+      writeFileSync(join(evil, tool), `#!/bin/sh\ntouch "${join(box.dir, 'poisoned')}"\nexit 1\n`, { mode: 0o755 })
+    }
+    const r = spawnSync('sh', [box.helper, ...GOOD(box)], { env: { PATH: `${evil}:/usr/bin:/bin`, PKEXEC_UID: myUid }, encoding: 'utf8' })
+    assert.equal(existsSync(join(box.dir, 'poisoned')), false, 'a tool from the caller\'s PATH ran as root')
+    assert.equal(r.status, 0, r.stderr)
+  } finally {
+    box.cleanup()
+  }
 })
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -352,7 +498,11 @@ exit ${pkexecStatus}
 `
   )
   chmodSync(join(dir, 'bin', 'pkexec'), 0o755)
-  writeFileSync(join(dir, 'update-session.sh'), transform(sessionSource), { mode: 0o755 })
+  // The wrapper walks up from the helper beside it and wants root to own each step; in the sandbox the owner is this user and
+  // the walk stops at the sandbox folder. A test can undo that (transform) to see what an untrusted helper does.
+  const trusting = (text) => text.replace('TRUSTED_OWNER=0', `TRUSTED_OWNER=${process.getuid()}`).replace('TRUST_TOP=/', `TRUST_TOP=${dir}`)
+  writeFileSync(join(dir, 'update-session.sh'), transform(trusting(sessionSource)), { mode: 0o755 })
+  writeFileSync(join(dir, 'install-update.sh'), '#!/bin/sh\n', { mode: 0o755 })
   // What the relaunch runs: records that it ran, with its arguments.
   writeFileSync(join(dir, 'relaunch.sh'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${join(dir, 'relaunch.log')}"\n`, { mode: 0o755 })
   return {
@@ -408,11 +558,22 @@ for (const status of [126, 127]) {
   })
 }
 
-test('session: a cancelled install after BLDesk has already closed opens it again, so the user is not left without it', () => {
+test('session: a dismissed prompt does not reopen BLDesk, even if the user quit it meanwhile', () => {
   const box = sessionBox({ pkexecStatus: 126 })
   try {
     box.run(DEAD_PID, '1')
     assert.deepEqual(outLines(box), ['RESULT cancelled'])
+    assert.equal(box.relaunched(), null, 'BLDesk was told to close only after a password was accepted, and none was')
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('session: a failure after the password was accepted reopens BLDesk once it has closed', () => {
+  const box = sessionBox({ helperLines: ['AUTHORIZED', 'FAILED apt-get could not install the package'], pkexecStatus: 1 })
+  try {
+    box.run(DEAD_PID, '1')
+    assert.deepEqual(outLines(box).at(-1), 'RESULT failed apt-get could not install the package')
     assert.equal(box.relaunched(), '--flag two words')
   } finally {
     box.cleanup()
@@ -460,10 +621,25 @@ test('session: an install at quit (RELAUNCH=0) never opens BLDesk', () => {
   }
 })
 
-test('session: nothing is opened while the old BLDesk is still running, even after an install', () => {
+test('session: it waits for BLDesk to finish closing before it opens it again', () => {
   const box = sessionBox({ helperLines: ['AUTHORIZED', 'INSTALLED'] })
   try {
-    const app = spawn('sleep', ['5'], { stdio: 'ignore' })
+    // An orphan, as BLDesk is to this script: a child of this test would stay a zombie (which kill -0 still sees) while the
+    // script runs, because this process is blocked waiting for it.
+    const appPid = Number(execFileSync('sh', ['-c', 'sleep 1.2 > /dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim())
+    const started = Date.now()
+    box.run(appPid, '1')
+    assert.ok(Date.now() - started >= 1000, 'it did not wait for the old BLDesk to exit')
+    assert.equal(box.relaunched(), '--flag two words')
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('session: a BLDesk that will not close is not opened a second time over', () => {
+  const box = sessionBox({ helperLines: ['AUTHORIZED', 'INSTALLED'], transform: (text) => text.replace('-lt 100 ]', '-lt 3 ]') })
+  try {
+    const app = spawn('sleep', ['30'], { stdio: 'ignore' })
     try {
       box.run(app.pid, '1')
     } finally {
@@ -472,6 +648,28 @@ test('session: nothing is opened while the old BLDesk is still running, even aft
     assert.equal(box.relaunched(), null)
   } finally {
     box.cleanup()
+  }
+})
+
+test('session: an installer that root does not own, or others can change, is never given to pkexec', () => {
+  const uid = process.getuid()
+  const cases = [
+    ['owned by someone else', { transform: (text) => text.replace(`TRUSTED_OWNER=${uid}`, `TRUSTED_OWNER=${uid + 1}`) }, () => {}],
+    ['writable by its group', {}, (box) => chmodSync(join(box.dir, 'install-update.sh'), 0o775)],
+    ['in a folder others can write to', {}, (box) => chmodSync(box.dir, 0o777)]
+  ]
+  for (const [label, options, tamper] of cases) {
+    const box = sessionBox(options)
+    try {
+      tamper(box)
+      box.run(DEAD_PID, '1')
+      assert.deepEqual(outLines(box), ['RESULT untrusted'], label)
+      assert.equal(box.pkexecCalls().length, 0, `${label}: pkexec was called`)
+      assert.equal(box.relaunched(), null)
+    } finally {
+      chmodSync(box.dir, 0o755)
+      box.cleanup()
+    }
   }
 })
 
@@ -535,13 +733,27 @@ test('session: a missing apt-get or dpkg-deb is reported by name, with pkexec ne
 test('session: everything missing is listed in one line', () => {
   const box = sessionBox({
     pathDirs: pathWithoutPkexec,
-    transform: (text) => text.replace('APT_GET=/usr/bin/apt-get', 'APT_GET=/nonexistent/apt-get').replace('DPKG_DEB=/usr/bin/dpkg-deb', 'DPKG_DEB=/nonexistent/dpkg-deb')
+    transform: (text) =>
+      text
+        .replace('APT_GET=/usr/bin/apt-get', 'APT_GET=/nonexistent/apt-get')
+        .replace('DPKG_DEB=/usr/bin/dpkg-deb', 'DPKG_DEB=/nonexistent/dpkg-deb')
+        .replace('SETPRIV=/usr/bin/setpriv', 'SETPRIV=/nonexistent/setpriv')
   })
   try {
     box.run(DEAD_PID, '0')
-    assert.deepEqual(outLines(box), ['RESULT unavailable pkexec (part of polkit), apt-get, dpkg-deb'])
+    assert.deepEqual(outLines(box), ['RESULT unavailable pkexec (part of polkit), apt-get, dpkg-deb, setpriv (part of util-linux)'])
   } finally {
     box.cleanup()
   }
 })
 
+test('session: a missing setpriv is reported by name too', () => {
+  const box = sessionBox({ transform: (text) => text.replace('SETPRIV=/usr/bin/setpriv', 'SETPRIV=/nonexistent/setpriv') })
+  try {
+    box.run(DEAD_PID, '0')
+    assert.deepEqual(outLines(box), ['RESULT unavailable setpriv (part of util-linux)'])
+    assert.equal(box.pkexecCalls().length, 0)
+  } finally {
+    box.cleanup()
+  }
+})

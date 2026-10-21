@@ -7,6 +7,7 @@ import {
   CANCELLED_MESSAGE,
   describeFailure,
   installInputProblem,
+  isPackageProblem,
   leftoverNotice,
   listedChecksum,
   parseSessionOutput,
@@ -65,6 +66,25 @@ test('a session that found a tool missing is reported as that', () => {
   assert.doesNotMatch(describeFailure(r), /Restart to try again/)
   assert.match(describeFailure({ outcome: 'unavailable', needs: '' }), /the tools that install packages/)
   assert.equal(leftoverNotice('RESULT unavailable apt-get\n'), describeFailure({ outcome: 'unavailable', needs: 'apt-get' }))
+})
+
+test('a session that would not run an installer it cannot trust says so', () => {
+  const r = parseSessionOutput('RESULT untrusted\n').result
+  assert.deepEqual(r, { outcome: 'untrusted' })
+  assert.match(describeFailure(r), /not owned by root, or other users can change it/)
+  assert.doesNotMatch(describeFailure(r), /Restart to try again/)
+})
+
+test('a refusal of the file itself is told apart from a failed install', () => {
+  for (const why of [
+    'the downloaded package does not match its published checksum',
+    'the downloaded file is not the BLDesk package',
+    'the package is not a regular file',
+    'the package is not owned by the user who asked for the update',
+    'the package is larger than expected',
+    'the package could not be read'
+  ]) assert.equal(isPackageProblem(why), true, why)
+  for (const why of ['apt-get could not install the package', 'the installer stopped unexpectedly (SIGTERM)', '']) assert.equal(isPackageProblem(why), false, why)
 })
 
 test('messages: none for an install or a session still running, one for each way it can fail', () => {

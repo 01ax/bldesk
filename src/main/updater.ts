@@ -12,8 +12,10 @@ import { appendUpdaterLog } from './updaterLog'
 import {
   describeFailure,
   installInputProblem,
+  isPackageProblem,
   leftoverNotice,
   listedChecksum,
+  MAX_PACKAGE_BYTES,
   parseSessionOutput,
   sessionArguments,
   updateScriptPaths
@@ -337,6 +339,12 @@ export class UpdaterManager {
       if (!this.held) this.setState({ status: 'checking', error: undefined })
     })
     autoUpdater.on('update-available', async (info: UpdateInfo) => {
+      // An install is under way (the password prompt is open, or it is installing). A newer release found now, by a check
+      // that was still running, must not take the state or the download that is about to be installed: the next check has it.
+      if (this.linuxSession) {
+        log('info', `Version ${info.version} was announced while an update is being installed; it is left for the next check.`)
+        return
+      }
       if (this.held) {
         // The version already downloaded again: nothing to do, and the Restart button stays.
         if (info.version === this.held.version) return
@@ -489,6 +497,7 @@ export class UpdaterManager {
    */
   private static async installLinuxPackage(): Promise<void> {
     if (this.linuxSession || this.rechecking) return
+    this.restartWhenReady = false
     // A download can be hours old: the update check runs hourly, so a release published since may not have been seen
     // yet, and installing the old one would mean a second download, password and restart to catch up. So look at the feed
     // once more first. A newer release replaces the download (the library deletes the old file), and is then installed
@@ -509,8 +518,11 @@ export class UpdaterManager {
     }
     if (this.held?.version !== heldVersion) {
       log('info', `A newer version, ${this.state.availableVersion}, was published after ${heldVersion} was downloaded; it will be installed once it has downloaded.`)
-      this.restartWhenReady = true
       this.setState({ installPhase: undefined })
+      // Usually the newer one is still downloading. If it was already here (or finished while the check ran) there is no
+      // download left to wait for, and a flag left set would install it at some later check without being asked.
+      if (this.state.status === 'ready') this.install()
+      else this.restartWhenReady = true
       return
     }
     const pending = this.pendingPackage
@@ -551,6 +563,11 @@ export class UpdaterManager {
     if (!pending || !existsSync(pending.file)) return 'The downloaded update is missing.'
     const problem = installInputProblem(pending.file, pending.sha512)
     if (problem) return problem
+    try {
+      if (statSync(pending.file).size > MAX_PACKAGE_BYTES) return 'The downloaded update is larger than expected, so it was not installed.'
+    } catch {
+      return 'The downloaded update is missing.'
+    }
     if (hasNoNewPrivs()) return NO_NEW_PRIVS_MESSAGE
     const scripts = updateScriptPaths(process.resourcesPath)
     if (!existsSync(scripts.helper) || !existsSync(scripts.session)) {
@@ -577,8 +594,20 @@ export class UpdaterManager {
           /* the folder is gone: the session was replaced */
         }
       })
+      child.on('exit', (code, signal) => {
+        // The session script died without a verdict (killed, logged out, could not write its output): without one the
+        // state would stay on "installing" for good.
+        try {
+          if (parseSessionOutput(readFileSync(out, 'utf8')).result) return
+          appendFileSync(out, `RESULT failed the installer stopped unexpectedly (${signal ?? `exit status ${code}`})\n`)
+        } catch {
+          /* no output file: the session was replaced */
+        }
+      })
       child.unref()
       this.linuxSession = { outPath: out, timer: null, closing: false }
+      // A check that is still running must not start downloading a newer release over the file about to be installed.
+      autoUpdater.autoDownload = false
       log('info', `Update session started for ${pending.version} (${relaunch ? 'restart' : 'at quit'}).`)
       return null
     } catch (err: any) {
@@ -608,13 +637,29 @@ export class UpdaterManager {
     if (!result) return
     clearInterval(session.timer)
     this.linuxSession = null
+    autoUpdater.autoDownload = true
     rmSync(this.sessionPaths().dir, { recursive: true, force: true })
     const failure = describeFailure(result)
     log(failure ? 'warn' : 'info', `Update session ended: ${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : result.outcome === 'unavailable' ? ` (${result.needs})` : ''}.`)
     if (!failure) {
-      // Installed while this process is still up: the package is replaced, so close and let the installer reopen it.
+      // Installed while this process is still up (the helper waits a minute for it to exit, and then goes ahead): nothing is
+      // left to install, so the quit that follows must not offer the same package again. The session script waits for this
+      // process to exit and then opens BLDesk.
+      this.held = null
+      this.pendingPackage = null
       app.quit()
       return
+    }
+    // A file the installer refused (wrong checksum, not a regular file...) is refused every time: drop it, so the next check
+    // downloads it again, instead of leaving Restart to offer the same file.
+    if (result.outcome === 'failed' && isPackageProblem(result.why)) {
+      try {
+        if (this.pendingPackage) rmSync(this.pendingPackage.file, { force: true })
+      } catch {
+        /* not ours to remove */
+      }
+      this.held = null
+      this.pendingPackage = null
     }
     if (this.state.status !== 'installing') {
       // A newer check took over the state while the prompt was open; only say what happened.

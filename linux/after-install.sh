@@ -36,7 +36,12 @@ hash update-desktop-database 2>/dev/null && update-desktop-database /usr/share/a
 # pkexec runs install-update.sh as root, so only root may write to it or to the policy that names it, whatever umask the
 # package was built under (a packaging machine with umask 002 makes them group-writable).
 if [ -d "$APP_DIR/resources/linux" ]; then
-  chmod 0755 "$APP_DIR/resources/linux" "$APP_DIR"/resources/linux/*.sh
+  # The folders on the way to them too: whoever can write to one of those can replace what root runs.
+  chmod go-w "$APP_DIR" "$APP_DIR/resources" "$APP_DIR/resources/linux"
+  chmod 0755 "$APP_DIR/resources/linux"
+  for helper_file in "$APP_DIR"/resources/linux/*.sh; do
+    [ -e "$helper_file" ] && chmod 0755 "$helper_file"
+  done
 fi
 if [ -f /usr/share/polkit-1/actions/com.termau.bldesk.policy ]; then
   chmod 0644 /usr/share/polkit-1/actions/com.termau.bldesk.policy

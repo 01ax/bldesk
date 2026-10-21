@@ -167,9 +167,10 @@ if (/\bdpkg\s+-i\b|\bbash\s+-c\b|\bsh\s+-c\b|\beval\b/.test(helperCode)) {
 }
 const at = (re) => helperCode.search(re)
 const order = [
-  ['the copy into the root-owned folder', /cat -- "\$PACKAGE" > "\$COPY"/],
+  ['the copy, read as the user, into the root-only folder', /"\$SETPRIV" --reuid="\$PKEXEC_UID"[^\n]*head -c[^\n]*"\$PACKAGE" > "\$COPY"/],
   ['the checksum comparison', /"\$ACTUAL" = "\$WANT"/],
   ['the package-name check', /Package 2>\/dev\/null\)" = bldesk/],
+  ['opening the checked copy to apt-get', /chmod 755 "\$WORK"/],
   ['say AUTHORIZED', /say AUTHORIZED/],
   ['the wait for BLDesk to exit', /kill -0 "\$APP_PID"/],
   ['the install', /"\$APT_GET" install/]
@@ -180,6 +181,10 @@ for (const [label, re] of order) {
   if (index < 0) failures.push(`install-update.sh: ${label} is missing`)
   else if (index < previous) failures.push(`install-update.sh: ${label} is out of order: the file is copied, then checked, then authorised, then BLDesk is waited for, then installed`)
   else previous = index
+}
+// The package path is chosen by whoever runs the helper and can be swapped at any moment: root must never open it.
+if (/\bcat\b[^\n]*"\$PACKAGE"|<\s*"\$PACKAGE"|\bcp\b[^\n]*"\$PACKAGE"|\bsha512sum\b[^\n]*"\$PACKAGE"/.test(helperCode)) {
+  failures.push('install-update.sh: must not open the package path as root (read it through "$SETPRIV" as the user, into the root-only copy)')
 }
 if (!/sha512sum/.test(helperCode)) failures.push('install-update.sh: must check the package against its SHA-512 checksum')
 
@@ -196,7 +201,7 @@ if (appDir && policyPath && policyPath !== `${appDir}/resources/linux/install-up
 if (!/^HELPER=\$\{0%\/\*\}\/install-update\.sh$/m.test(sessionText)) {
   failures.push('update-session.sh: HELPER must be `${0%/*}/install-update.sh`, the helper beside the script')
 }
-if (!/helper: join\(resourcesPath, 'linux', 'install-update\.sh'\)/.test(linuxInstallText) || !/session: join\(resourcesPath, 'linux', 'update-session\.sh'\)/.test(linuxInstallText)) {
+if (!/helper: posix\.join\(resourcesPath, 'linux', 'install-update\.sh'\)/.test(linuxInstallText) || !/session: posix\.join\(resourcesPath, 'linux', 'update-session\.sh'\)/.test(linuxInstallText)) {
   failures.push('linuxInstall.ts: updateScriptPaths must name resources/linux/install-update.sh and update-session.sh, where the package puts them')
 }
 const privileged = shellCode(sessionText).split('\n').filter((l) => /^\s*pkexec\b/.test(l))
@@ -206,6 +211,10 @@ if (privileged.length !== 1 || !/pkexec --disable-internal-agent "\$HELPER"/.tes
 const sessionCode = shellCode(sessionText)
 if (!/command -v pkexec(?![\w-])/.test(sessionCode) || !/RESULT unavailable/.test(sessionCode) || sessionCode.search(/command -v pkexec(?![\w-])/) > sessionCode.search(/^\s*pkexec\b/m)) {
   failures.push('update-session.sh: must check that pkexec, apt-get and dpkg-deb exist, and report `RESULT unavailable`, before it calls pkexec')
+}
+const untrustedCall = sessionCode.search(/^if untrusted;/m)
+if (!/^untrusted\(\)/m.test(sessionCode) || !/RESULT untrusted/.test(sessionCode) || untrustedCall < 0 || untrustedCall > sessionCode.search(/^\s*pkexec\b/m)) {
+  failures.push('update-session.sh: must check that the helper and the folders above it belong to root and cannot be written by others (`RESULT untrusted`) before it calls pkexec')
 }
 if (!/<allow_active>auth_admin<\/allow_active>/.test(policyText) || /<allow_(any|inactive|active)>(yes|auth_self)</.test(policyText)) {
   failures.push('com.termau.bldesk.policy: installing an update must need an administrator\'s password (auth_admin), never yes or auth_self')
@@ -218,6 +227,9 @@ if (!linuxBuild.some((r) => r.from === 'linux/update' && r.to === 'linux')) {
 }
 if (!(packageJson.build?.deb?.fpm ?? []).includes('linux/com.termau.bldesk.policy=/usr/share/polkit-1/actions/com.termau.bldesk.policy')) {
   failures.push('package.json: build.deb.fpm must install linux/com.termau.bldesk.policy to /usr/share/polkit-1/actions/')
+}
+if (!/chmod go-w "\$APP_DIR" "\$APP_DIR\/resources" "\$APP_DIR\/resources\/linux"/.test(afterInstallText)) {
+  failures.push('after-install.sh: the app folder, its resources folder and linux/ (what root runs, and the folders on the way to it) must not be writable by group or others')
 }
 if (!/chmod 0755 "\$APP_DIR\/resources\/linux"/.test(afterInstallText) || !/chmod 0644 \/usr\/share\/polkit-1\/actions\/com\.termau\.bldesk\.policy/.test(afterInstallText)) {
   failures.push('after-install.sh: must make the helper and its folder writable by root alone (0755) and the policy 0644, whatever umask the package was built under')

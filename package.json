@@ -152,6 +152,9 @@
     "deb": {
       "afterInstall": "linux/after-install.sh",
       "afterRemove": "linux/after-remove.sh",
+      "recommends": [
+        "pkexec | policykit-1"
+      ],
       "fpm": [
         "linux/com.termau.bldesk.policy=/usr/share/polkit-1/actions/com.termau.bldesk.policy"
       ],

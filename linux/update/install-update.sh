@@ -15,10 +15,12 @@
 #   FAILED <why>    nothing was installed (it also exits non-zero)
 # Everything else (apt's output) goes to standard error.
 #
-# The package sits in a folder the user can write to, so it is copied into a folder only root can write to and checked
-# there against the checksum before apt-get installs that copy: swapping the file after the check changes nothing. That
-# closes the gap between checking the download and installing it. It does NOT prove where the file came from: the
-# checksum is passed in, and the releases are not signed. apt-get refuses a downgrade and resolves dependencies.
+# The package sits in a folder the user can write to, and the user can change it at any moment. So it is read as that user
+# (never as root: a path swapped for a link to something only root can read then reads nothing), at most MAX_BYTES + 1
+# bytes of it, into a folder only root can enter, and checked there against the checksum. Only a checked copy is made
+# readable to apt-get, which installs that copy: swapping the file after the check changes nothing. That closes the gap
+# between checking the download and installing it. It does NOT prove where the file came from: the checksum is passed in
+# by whoever runs this, and the releases are not signed. apt-get refuses a downgrade and resolves dependencies.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -26,6 +28,7 @@ umask 077
 
 APT_GET=/usr/bin/apt-get
 DPKG_DEB=/usr/bin/dpkg-deb
+SETPRIV=/usr/bin/setpriv
 SCRATCH=/var/tmp/bldesk-update.XXXXXX
 MAX_BYTES=524288000
 
@@ -48,17 +51,26 @@ case $PACKAGE in *'
 [ "$(stat -c %s -- "$PACKAGE")" -le "$MAX_BYTES" ] || fail "the package is larger than expected"
 
 WORK=$(mktemp -d "$SCRATCH")
+# The scratch folder goes however this ends, a kill included.
 trap 'rm -rf "$WORK"' EXIT
+trap 'exit 1' HUP INT TERM
 COPY=$WORK/bldesk.deb
-cat -- "$PACKAGE" > "$COPY"
-# apt-get reads the file as its own unprivileged user; only root can change it.
-chmod 755 "$WORK"
-chmod 644 "$COPY"
+USER_GID=$(getent passwd "$PKEXEC_UID" | cut -d: -f4)
+[ -n "$USER_GID" ] || fail "the user who asked for the update is not known"
+# The redirection is opened here, as root, on a path in the folder above; the package path is only handed to the unprivileged
+# process, which cannot read anything the user could not.
+"$SETPRIV" --reuid="$PKEXEC_UID" --regid="$USER_GID" --clear-groups head -c "$((MAX_BYTES + 1))" -- "$PACKAGE" > "$COPY" ||
+  fail "the package could not be read"
+[ "$(stat -c %s -- "$COPY")" -le "$MAX_BYTES" ] || fail "the package is larger than expected"
 
 ACTUAL=$(sha512sum "$COPY" | cut -d' ' -f1)
 WANT=$(printf '%s' "$EXPECTED" | base64 -d 2>/dev/null | od -An -v -tx1 | tr -d ' \n')
 { [ -n "$WANT" ] && [ "$ACTUAL" = "$WANT" ]; } || fail "the downloaded package does not match its published checksum"
 [ "$("$DPKG_DEB" -f "$COPY" Package 2>/dev/null)" = bldesk ] || fail "the downloaded file is not the BLDesk package"
+
+# Checked, so now it may be opened to apt-get, which reads local files as its own unprivileged user. Only root can change it.
+chmod 755 "$WORK"
+chmod 644 "$COPY"
 
 say AUTHORIZED
 
