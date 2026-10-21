@@ -20,6 +20,7 @@ import {
   sessionArguments,
   updateScriptPaths
 } from './linuxInstall'
+import { transition, type FlowEffect, type FlowEvent, type FlowState } from './linuxInstallFlow'
 import { CHECK_INTERVAL_MS, dueForCheck, MIN_GAP_BETWEEN_EVENT_CHECKS_MS, RESUME_CHECK_DELAY_MS } from './updaterSchedule'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
@@ -268,7 +269,10 @@ export class UpdaterManager {
   /** The downloaded .deb and the checksum its release lists for it, which the installer checks again as root. Linux packages only. */
   private static pendingPackage: { version: string; file: string; sha512: string | undefined } | null = null
   /** The Linux install in progress: update-session.sh, started by Restart (polled here) or at quit (nothing is left to poll). */
-  private static linuxSession: { outPath: string; timer: NodeJS.Timeout | null; closing: boolean } | null = null
+  private static linuxSession: { id: number; outPath: string; timer: NodeJS.Timeout | null; closing: boolean } | null = null
+  private static sessionCounter = 0
+  private static flowQueue: FlowEvent[] = []
+  private static flowBusy = false
   /** Restart was chosen, and the look at the feed just before the install found a newer version: install that one once it is downloaded. */
   private static restartWhenReady = false
   private static rechecking = false
@@ -282,9 +286,6 @@ export class UpdaterManager {
 
   private static markReady(version: string): void {
     this.held = { version }
-    // A check that was already running when Restart was chosen reports the waiting download again: it must not bring
-    // the Restart button back while the password prompt is open.
-    if (this.state.status === 'installing') return
     this.setState({ status: 'ready', availableVersion: version, progress: 100 })
   }
 
@@ -339,10 +340,11 @@ export class UpdaterManager {
       if (!this.held) this.setState({ status: 'checking', error: undefined })
     })
     autoUpdater.on('update-available', async (info: UpdateInfo) => {
-      // An install is under way (the password prompt is open, or it is installing). A newer release found now, by a check
-      // that was still running, must not take the state or the download that is about to be installed: the next check has it.
-      if (this.linuxSession) {
-        log('info', `Version ${info.version} was announced while an update is being installed; it is left for the next check.`)
+      if (isLinuxPackage) {
+        // Decided in linuxInstallFlow.ts: not while an install is under way, and not for the version already held.
+        const takesEffect = !this.linuxSession && this.held?.version !== info.version
+        this.dispatch({ type: 'update-available', version: info.version })
+        if (takesEffect) this.setState({ releaseNotes: notesToString(info) })
         return
       }
       if (this.held) {
@@ -351,10 +353,7 @@ export class UpdaterManager {
         // A different version. On Windows and Linux electron-updater deletes the downloaded installer when a download
         // of another version starts, and again when it fails, so the waiting update cannot be installed any more and
         // must not be offered. (On macOS the zip is BLDesk's own and stays.)
-        if (!isMac) {
-          this.held = null
-          this.pendingPackage = null
-        }
+        if (!isMac) this.held = null
       }
       this.setState({ status: 'available', availableVersion: info.version, releaseNotes: notesToString(info) })
       if (isMac) {
@@ -417,18 +416,13 @@ export class UpdaterManager {
     )
     autoUpdater.on('update-downloaded', (info: UpdateDownloadedEvent) => {
       if (isLinuxPackage) {
-        this.pendingPackage = { version: info.version, file: info.downloadedFile, sha512: listedChecksum(info.files, info.downloadedFile) }
+        this.dispatch({ type: 'update-downloaded', version: info.version, file: info.downloadedFile, sha512: listedChecksum(info.files, info.downloadedFile) })
+        return
       }
       // electron-updater reports a download it already holds again on every check: say "is ready" once.
       const repeat = this.held?.version === info.version
       this.markReady(info.version)
-      if (this.restartWhenReady && isLinuxPackage) {
-        // The user chose Restart and a newer release turned up first: this is the one to install, without another click.
-        this.restartWhenReady = false
-        this.install()
-      } else if (!repeat) {
-        this.notifyReady(info.version)
-      }
+      if (!repeat) this.notifyReady(info.version)
     })
     autoUpdater.on('error', (err: Error) => {
       if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return
@@ -474,7 +468,7 @@ export class UpdaterManager {
       return
     }
     if (isLinuxPackage) {
-      void this.installLinuxPackage()
+      this.dispatch({ type: 'restart' })
       return
     }
     // The install runs synchronously and blocks this process for several seconds, so
@@ -489,65 +483,130 @@ export class UpdaterManager {
   }
 
   /**
-   * Restart, on a Linux package: the system's password prompt opens and BLDesk stays open and responsive behind it.
-   * Only once the password is accepted and the download has checked out does BLDesk close; the installer then waits for
-   * it to exit, installs, and opens it again. Cancelling leaves BLDesk running with the update still waiting.
-   * (The library's install blocks this process for about ten seconds, with the window frozen, and replaces the files
-   * under the running app.)
+   * Everything a Linux package does about an update is decided in linuxInstallFlow.ts, which this feeds with the facts
+   * (the library's events, the session's output, timers) and whose effects it carries out. Restart: the system's password
+   * prompt opens and BLDesk stays open and responsive behind it; only once the password is accepted and the download has
+   * checked out does BLDesk close, and the installer then waits for it to exit, installs, and opens it again. Cancelling
+   * leaves BLDesk running with the update still waiting. (The library's own install blocks this process for about ten
+   * seconds, with the window frozen, and replaces the files under the running app.)
    */
-  private static async installLinuxPackage(): Promise<void> {
-    if (this.linuxSession || this.rechecking) return
-    this.restartWhenReady = false
-    // A download can be hours old: the update check runs hourly, so a release published since may not have been seen
-    // yet, and installing the old one would mean a second download, password and restart to catch up. So look at the feed
-    // once more first. A newer release replaces the download (the library deletes the old file), and is then installed
-    // as soon as it has downloaded. If the feed cannot be read quickly, the download is installed as it is.
-    const heldVersion = this.held?.version
-    this.rechecking = true
-    this.setState({ status: 'installing', installPhase: 'checking', installError: undefined })
+  private static flowSnapshot(): FlowState {
+    return {
+      status: this.state.status,
+      availableVersion: this.state.availableVersion,
+      installPhase: this.state.installPhase,
+      installError: this.state.installError,
+      held: this.held,
+      pending: this.pendingPackage,
+      session: this.linuxSession ? { id: this.linuxSession.id, closing: this.linuxSession.closing } : null,
+      rechecking: this.rechecking,
+      restartWhenReady: this.restartWhenReady
+    }
+  }
+
+  private static applyFlow(prev: FlowState, next: FlowState): void {
+    this.held = next.held
+    this.pendingPackage = next.pending
+    this.rechecking = next.rechecking
+    this.restartWhenReady = next.restartWhenReady
+    if (this.linuxSession && next.session) this.linuxSession.closing = next.session.closing
+    const patch: Partial<UpdaterState> = {}
+    if (next.status !== prev.status) patch.status = next.status
+    if (next.availableVersion !== prev.availableVersion) patch.availableVersion = next.availableVersion
+    if (next.installPhase !== prev.installPhase) patch.installPhase = next.installPhase
+    if (next.installError !== prev.installError) patch.installError = next.installError
+    if (next.status === 'ready' && prev.status !== 'ready') {
+      patch.progress = 100
+      patch.error = undefined
+    }
+    if (Object.keys(patch).length > 0) this.setState(patch)
+  }
+
+  /** One event at a time, in order, even when carrying out an effect sends another. */
+  private static dispatch(event: FlowEvent): void {
+    this.flowQueue.push(event)
+    if (this.flowBusy) return
+    this.flowBusy = true
     try {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, RECHECK_BEFORE_INSTALL_MS)
-        void this.checkNow().finally(() => {
-          clearTimeout(timer)
-          resolve()
-        })
-      })
+      for (let next = this.flowQueue.shift(); next; next = this.flowQueue.shift()) {
+        const before = this.flowSnapshot()
+        const result = transition(before, next)
+        this.applyFlow(before, result.state)
+        for (const effect of result.effects) this.runEffect(effect)
+      }
     } finally {
-      this.rechecking = false
+      this.flowBusy = false
     }
-    if (this.held?.version !== heldVersion) {
-      log('info', `A newer version, ${this.state.availableVersion}, was published after ${heldVersion} was downloaded; it will be installed once it has downloaded.`)
-      this.setState({ installPhase: undefined })
-      // Usually the newer one is still downloading. If it was already here (or finished while the check ran) there is no
-      // download left to wait for, and a flag left set would install it at some later check without being asked.
-      if (this.state.status === 'ready') this.install()
-      else this.restartWhenReady = true
-      return
+  }
+
+  private static runEffect(effect: FlowEffect): void {
+    switch (effect.type) {
+      case 'recheck': {
+        // A download can be hours old, and the check runs hourly, so a release published since may not have been seen:
+        // look at the feed once more first, for at most six seconds. If it cannot be read in time the download is installed.
+        let settled = false
+        const settle = () => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          this.dispatch({
+            type: 'recheck-done',
+            heldVersion: effect.heldVersion,
+            fileExists: !!this.pendingPackage && existsSync(this.pendingPackage.file)
+          })
+        }
+        const timer = setTimeout(settle, RECHECK_BEFORE_INSTALL_MS)
+        void this.checkNow().finally(settle)
+        return
+      }
+      case 'check':
+        void this.check()
+        return
+      case 'start-session': {
+        const problem = this.startLinuxSession(effect.relaunch)
+        this.dispatch({ type: 'session-started', id: this.linuxSession?.id ?? 0, relaunch: effect.relaunch, problem })
+        return
+      }
+      case 'start-polling':
+        if (this.linuxSession) this.linuxSession.timer = setInterval(() => this.pollLinuxSession(), SESSION_POLL_MS)
+        return
+      case 'stop-polling':
+        if (this.linuxSession?.timer) clearInterval(this.linuxSession.timer)
+        this.linuxSession = null
+        return
+      case 'schedule-close':
+        setTimeout(() => this.dispatch({ type: 'close-timer', id: effect.id }), CLOSE_DELAY_MS)
+        return
+      case 'quit-app':
+        app.quit()
+        return
+      case 'remove-file':
+        try {
+          rmSync(effect.file, { force: true })
+        } catch {
+          /* not ours to remove */
+        }
+        return
+      case 'notify-ready':
+        this.notifyReady(effect.version)
+        return
+      case 'auto-download':
+        autoUpdater.autoDownload = effect.on
+        return
+      case 'record-result':
+        try {
+          appendFileSync(this.sessionPaths().out, `${effect.text}\n`)
+        } catch {
+          /* no output file: the session was replaced */
+        }
+        return
+      case 'clear-session-files':
+        rmSync(this.sessionPaths().dir, { recursive: true, force: true })
+        return
+      case 'log':
+        log(effect.level, effect.text)
+        return
     }
-    const pending = this.pendingPackage
-    if (!pending || !existsSync(pending.file)) {
-      // Deleted from under us (cache cleaned, or a newer download started): nothing to install, so fetch it again.
-      this.held = null
-      this.pendingPackage = null
-      this.setState({
-        status: 'idle',
-        availableVersion: undefined,
-        installPhase: undefined,
-        installError: 'The downloaded update has gone missing, so BLDesk is downloading it again.'
-      })
-      void this.check()
-      return
-    }
-    const problem = this.startLinuxSession(true)
-    if (problem) {
-      log('error', 'Could not start the update installer:', problem)
-      this.setState({ status: 'ready', installPhase: undefined, installError: problem })
-      return
-    }
-    this.setState({ status: 'installing', installPhase: 'authorising', installError: undefined })
-    const session = this.linuxSession!
-    session.timer = setInterval(() => this.pollLinuxSession(), SESSION_POLL_MS)
   }
 
   /**
@@ -574,6 +633,7 @@ export class UpdaterManager {
       return "BLDesk's update installer is missing from this installation. Install the latest BLDesk .deb again."
     }
     const { dir, out } = this.sessionPaths()
+    const id = ++this.sessionCounter
     try {
       rmSync(dir, { recursive: true, force: true })
       ensureOwnerDir(dir)
@@ -595,19 +655,17 @@ export class UpdaterManager {
         }
       })
       child.on('exit', (code, signal) => {
-        // The session script died without a verdict (killed, logged out, could not write its output): without one the
-        // state would stay on "installing" for good.
+        // Whether the script wrote its verdict before it went decides, in linuxInstallFlow.ts, whether one is written for it.
+        let hadResult = true // no output file: the session was replaced
         try {
-          if (parseSessionOutput(readFileSync(out, 'utf8')).result) return
-          appendFileSync(out, `RESULT failed the installer stopped unexpectedly (${signal ?? `exit status ${code}`})\n`)
+          hadResult = !!parseSessionOutput(readFileSync(out, 'utf8')).result
         } catch {
-          /* no output file: the session was replaced */
+          /* replaced */
         }
+        this.dispatch({ type: 'session-exited', id, hadResult, how: signal ?? `exit status ${code}` })
       })
       child.unref()
-      this.linuxSession = { outPath: out, timer: null, closing: false }
-      // A check that is still running must not start downloading a newer release over the file about to be installed.
-      autoUpdater.autoDownload = false
+      this.linuxSession = { id, outPath: out, timer: null, closing: false }
       log('info', `Update session started for ${pending.version} (${relaunch ? 'restart' : 'at quit'}).`)
       return null
     } catch (err: any) {
@@ -615,7 +673,7 @@ export class UpdaterManager {
     }
   }
 
-  /** Reads the session's output: closes BLDesk once the password was accepted, and reports a failure or cancellation. */
+  /** Reads the session's output and hands what it says to linuxInstallFlow.ts. */
   private static pollLinuxSession(): void {
     const session = this.linuxSession
     if (!session || !session.timer) return
@@ -626,50 +684,17 @@ export class UpdaterManager {
       return // not created yet
     }
     const { authorised, result } = parseSessionOutput(text)
-    if (authorised && !session.closing) {
-      session.closing = true
-      log('info', 'Update authorised; closing BLDesk so the installer can replace it.')
-      this.setState({ installPhase: 'installing' })
-      setTimeout(() => {
-        if (this.linuxSession === session && session.closing) app.quit()
-      }, CLOSE_DELAY_MS)
-    }
-    if (!result) return
-    clearInterval(session.timer)
-    this.linuxSession = null
-    autoUpdater.autoDownload = true
-    rmSync(this.sessionPaths().dir, { recursive: true, force: true })
-    const failure = describeFailure(result)
-    log(failure ? 'warn' : 'info', `Update session ended: ${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : result.outcome === 'unavailable' ? ` (${result.needs})` : ''}.`)
-    if (!failure) {
-      // Installed while this process is still up (the helper waits a minute for it to exit, and then goes ahead): nothing is
-      // left to install, so the quit that follows must not offer the same package again. The session script waits for this
-      // process to exit and then opens BLDesk.
-      this.held = null
-      this.pendingPackage = null
-      app.quit()
-      return
-    }
-    // A file the installer refused (wrong checksum, not a regular file...) is refused every time: drop it, so the next check
-    // downloads it again, instead of leaving Restart to offer the same file.
-    if (result.outcome === 'failed' && isPackageProblem(result.why)) {
-      try {
-        if (this.pendingPackage) rmSync(this.pendingPackage.file, { force: true })
-      } catch {
-        /* not ours to remove */
-      }
-      this.held = null
-      this.pendingPackage = null
-    }
-    if (this.state.status !== 'installing') {
-      // A newer check took over the state while the prompt was open; only say what happened.
-      this.setState({ installPhase: undefined, installError: failure })
-    } else if (this.held) {
-      this.setState({ status: 'ready', availableVersion: this.held.version, progress: 100, installPhase: undefined, installError: failure })
-    } else {
-      this.setState({ status: 'idle', availableVersion: undefined, installPhase: undefined, installError: failure })
-      void this.check()
-    }
+    this.dispatch({
+      type: 'poll',
+      authorised,
+      ended: result
+        ? {
+            failure: describeFailure(result),
+            packageProblem: result.outcome === 'failed' && isPackageProblem(result.why),
+            summary: `${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : result.outcome === 'unavailable' ? ` (${result.needs})` : ''}`
+          }
+        : null
+    })
   }
 
   private static sessionPaths(): { dir: string; out: string } {
@@ -702,20 +727,16 @@ export class UpdaterManager {
       installMacUpdate(macPendingZipPath, false)
     }
     // Quitting with an update waiting installs it, as before; the password prompt now opens while BLDesk closes, not
-    // before. Once started it is not started again: the quit can be announced twice (a window closing quits too).
-    if (isLinuxPackage && !this.linuxSession && (this.state.status === 'ready' || this.held) && this.pendingPackage) {
-      const problem = this.startLinuxSession(false)
-      if (problem) log('warn', 'The waiting update was not installed at quit:', problem)
-    }
+    // before. Whether, and not twice, is decided in linuxInstallFlow.ts.
+    if (isLinuxPackage) this.dispatch({ type: 'quit' })
   }
 
   static setChannel(channel: UpdateChannel): UpdaterState {
     if (channel !== 'stable' && channel !== 'beta') return this.getState()
     writeSettings({ channel })
     this.applyChannel(channel)
-    this.held = null
-    this.pendingPackage = null
-    this.restartWhenReady = false
+    if (isLinuxPackage) this.dispatch({ type: 'channel-changed' })
+    else this.held = null
     this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined, installError: undefined })
     if (app.isPackaged) void this.check()
     return this.getState()
@@ -744,13 +765,18 @@ export class UpdaterManager {
     } else {
       log('error', 'Update check failed:', msg)
     }
-    if (this.held) {
-      // A downloaded update is still waiting: a failed check does not take it away, or interrupt its install.
-      this.setState({ lastCheckedAt: new Date().toISOString() })
-      if (this.state.status !== 'installing') this.restoreHeld()
+    if (isLinuxPackage) {
+      // What a failed check does to a waiting update, or to an install under way, is decided in linuxInstallFlow.ts.
+      this.setState(this.held ? { lastCheckedAt: new Date().toISOString() } : { error: msg, lastCheckedAt: new Date().toISOString() })
+      this.dispatch({ type: 'check-failed', unreachable: status === 'check-failed' })
       return
     }
-    this.restartWhenReady = false
+    if (this.held) {
+      // A downloaded update is still waiting: a failed check does not take it away.
+      this.setState({ lastCheckedAt: new Date().toISOString() })
+      this.restoreHeld()
+      return
+    }
     this.setState({
       status,
       availableVersion: undefined,

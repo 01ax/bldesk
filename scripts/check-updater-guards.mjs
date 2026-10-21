@@ -251,14 +251,29 @@ if (!/chmod 0755 "\$APP_DIR\/resources\/linux"/.test(afterInstallText) || !/chmo
 if (!codeOnly.includes('autoUpdater.autoInstallOnAppQuit=!isLinuxPackage')) {
   failures.push('updater.ts: autoInstallOnAppQuit must be off for a Linux package (`= !isLinuxPackage`), or quitting installs through the library\'s blocking pkexec flow')
 }
-const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{(?:void)?this\.installLinuxPackage\(\);?return\}/)
+const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{this\.dispatch\(\{type:'restart'\}\);?return\}/)
 if (linuxBranch < 0 || linuxBranch > codeOnly.indexOf('quitAndInstall(')) {
-  failures.push('updater.ts: install() must hand a Linux package to installLinuxPackage() before it reaches autoUpdater.quitAndInstall')
+  failures.push('updater.ts: install() must hand a Linux package to the flow (dispatch restart) before it reaches autoUpdater.quitAndInstall')
 }
 
-// Restart looks at the feed once more before it asks for the password (see installLinuxPackage).
-if (!/installLinuxPackage\(\):Promise<void>\{[\s\S]*?this\.checkNow\(\)[\s\S]*?this\.startLinuxSession\(true\)/.test(codeOnly)) {
-  failures.push('updater.ts: installLinuxPackage() must call checkNow() (the last look at the feed) before startLinuxSession(true)')
+// A Linux package's decisions are linuxInstallFlow.ts's, and the shell only carries them out. Restart looks at the feed once more
+// before it asks for the password: a Restart only ever produces the look ('recheck'), and the session for it ('start-session') only
+// ever follows the look's end ('recheck-done').
+const flowText = readFileSync(resolve(root, 'src/main/linuxInstallFlow.ts'), 'utf8')
+const flowCode = flowText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')
+const restartBody = flowCode.slice(flowCode.indexOf('function restart('))
+if (!/type: 'recheck'/.test(restartBody) || /start-session/.test(restartBody)) {
+  failures.push('linuxInstallFlow.ts: restart() must start the look at the feed (a recheck effect) and must not start a session itself')
+}
+const sessionStarts = [...flowCode.matchAll(/type: 'start-session', relaunch: true/g)]
+const recheckDone = flowCode.indexOf("case 'recheck-done'")
+const sessionStarted = flowCode.indexOf("case 'session-started'")
+if (sessionStarts.length !== 1 || !(sessionStarts[0].index > recheckDone && sessionStarts[0].index < sessionStarted)) {
+  failures.push("linuxInstallFlow.ts: a session for Restart may only be started where the look at the feed ends (case 'recheck-done')")
+}
+// updater.ts starts the session script only as the effect the flow asked for, and does not reach into the flow's decisions.
+if ([...codeOnly.matchAll(/this\.startLinuxSession\(/g)].length !== 1 || !/case'start-session':\{constproblem=this\.startLinuxSession\(effect\.relaunch\)/.test(codeOnly)) {
+  failures.push("updater.ts: startLinuxSession() may only be called from the flow's 'start-session' effect")
 }
 
 if (failures.length > 0) {
