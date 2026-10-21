@@ -26,7 +26,10 @@ if type update-alternatives >/dev/null 2>&1; then
 else
   ln -sf "$APP_DIR/$EXECUTABLE" "/usr/bin/$EXECUTABLE"
 fi
-hash update-mime-database 2>/dev/null && update-mime-database /usr/share/mime || true
+# No update-mime-database here. BLDesk ships nothing under /usr/share/mime/packages (the bldesk:// handler is registered
+# through the desktop file, which update-desktop-database below picks up), and the call rebuilds the whole MIME database,
+# about six seconds on every install and upgrade. A package that does ship a MIME file has the database rebuilt by dpkg's
+# own trigger for that folder.
 hash update-desktop-database 2>/dev/null && update-desktop-database /usr/share/applications || true
 
 # --- Update installer ---

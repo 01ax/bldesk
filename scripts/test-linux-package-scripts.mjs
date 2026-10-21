@@ -84,3 +84,14 @@ test('the desktop database is refreshed whatever dpkg is doing', () => {
     assert.ok(run(action).calls.some((c) => c.startsWith('update-desktop-database')), action)
   }
 })
+
+test('after-install.sh rebuilds the MIME database only if the package ships a MIME file', () => {
+  // update-mime-database rebuilds the whole database (about six seconds, on every install and upgrade). dpkg's own trigger
+  // on /usr/share/mime/packages does it for a package that ships a file there, so the script has no reason to.
+  const afterInstall = readFileSync(process.env.AFTER_INSTALL ?? new URL('../linux/after-install.sh', import.meta.url).pathname, 'utf8')
+  const code = afterInstall.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n')
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const shipsMimeFile = JSON.stringify(manifest.build?.deb ?? {}).includes('/usr/share/mime/')
+  assert.equal(/update-mime-database/.test(code), shipsMimeFile)
+})
+
