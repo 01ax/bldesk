@@ -196,30 +196,48 @@ test('a file swapped for another after the check is not what gets installed', ()
   }
 })
 
-test('it waits for BLDesk to exit before installing, and says it is authorised while that is still running', async () => {
+test('it waits for BLDesk to exit before installing, and says it is authorised while that is still running', { timeout: 15000 }, async () => {
   const box = sandbox()
+  let app
+  let giveUp
   try {
-    const app = spawn('sleep', ['1.5'], { stdio: 'ignore' })
+    // The app stays up until the test lets it go, so nothing here depends on how fast the machine is.
+    const release = join(box.dir, 'release')
+    app = spawn('sh', ['-c', 'while [ ! -e "$1" ]; do sleep 0.05; done', 'app', release], { stdio: 'ignore' })
     writeFileSync(join(box.dir, 'app.pid'), String(app.pid))
-    const started = Date.now()
+    // If the helper never says AUTHORIZED (it is waiting for the app), stop the app so the failure is reported rather than hanging.
+    giveUp = setTimeout(() => app.kill(), 8000)
     const result = await new Promise((resolve) => {
       const helper = spawn('sh', [box.helper, String(app.pid), box.pkg, sha512(PACKAGE_BYTES)], {
         env: { PATH: '/usr/bin:/bin', PKEXEC_UID: myUid },
         stdio: ['ignore', 'pipe', 'pipe']
       })
       let out = ''
-      let authorisedAfter = null
+      let atAuthorised = null
       helper.stdout.on('data', (d) => {
         out += d
-        if (authorisedAfter === null && out.includes('AUTHORIZED')) authorisedAfter = Date.now() - started
+        if (atAuthorised === null && out.includes('AUTHORIZED')) {
+          let appRunning = true
+          try {
+            process.kill(app.pid, 0)
+          } catch {
+            appRunning = false
+          }
+          atAuthorised = { appRunning, installerRan: calls(box).includes('app-alive-at-install') }
+          writeFileSync(release, '')
+        }
       })
-      helper.on('close', (code) => resolve({ code, out, authorisedAfter, total: Date.now() - started }))
+      helper.on('close', (code) => resolve({ code, out, atAuthorised }))
     })
     assert.equal(result.code, 0)
-    assert.ok(result.authorisedAfter < 800, `AUTHORIZED came after ${result.authorisedAfter} ms: it should not wait for the app`)
-    assert.ok(result.total >= 1400, `installed after ${result.total} ms, before the app (1500 ms) had exited`)
+    assert.ok(result.atAuthorised, 'the helper never said AUTHORIZED')
+    assert.ok(result.atAuthorised.appRunning, 'AUTHORIZED was held back until BLDesk had exited: it should come while it is still running')
+    assert.ok(!result.atAuthorised.installerRan, 'apt-get had already run when AUTHORIZED was printed')
     assert.ok(calls(box).includes('app-alive-at-install no'), 'apt-get ran while BLDesk was still running')
   } finally {
+    // A failed assertion must not leave the stand-in app running: it only stops when told to.
+    clearTimeout(giveUp)
+    app?.kill()
     box.cleanup()
   }
 })
