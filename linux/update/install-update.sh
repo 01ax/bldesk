@@ -17,9 +17,11 @@
 #
 # The package sits in a folder the user can write to, and the user can change it at any moment. So it is read as that user
 # (never as root: a path swapped for a link to something only root can read then reads nothing), at most MAX_BYTES + 1
-# bytes of it, into a folder only root can enter, and checked there against the checksum. Only a checked copy is made
-# readable to apt-get, which installs that copy: swapping the file after the check changes nothing. That closes the gap
-# between checking the download and installing it. It does NOT prove where the file came from: the checksum is passed in
+# bytes of it. What it reads goes down a pipe into root's own cat, which writes the copy, in a folder only root can enter:
+# the unprivileged process never holds an open handle to the copy, which a process of the same user that may attach to it
+# (any, on Debian's default; an ancestor, on Ubuntu's) could keep and write through after the check. The copy is checked
+# there against the checksum, and only then made readable to apt-get, which installs that copy: swapping the file after
+# the check changes nothing. That closes the gap between checking the download and installing it. It does NOT prove where the file came from: the checksum is passed in
 # by whoever runs this, and the releases are not signed. apt-get refuses a downgrade and resolves dependencies.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -57,10 +59,11 @@ trap 'exit 1' HUP INT TERM
 COPY=$WORK/bldesk.deb
 USER_GID=$(getent passwd "$PKEXEC_UID" | cut -d: -f4)
 [ -n "$USER_GID" ] || fail "the user who asked for the update is not known"
-# The redirection is opened here, as root, on a path in the folder above; the package path is only handed to the unprivileged
-# process, which cannot read anything the user could not.
-"$SETPRIV" --reuid="$PKEXEC_UID" --regid="$USER_GID" --clear-groups head -c "$((MAX_BYTES + 1))" -- "$PACKAGE" > "$COPY" ||
-  fail "the package could not be read"
+# The package path is only ever handed to the unprivileged process, which cannot read anything the user could not. Whether
+# the user can read it at all is asked first, as the user, because the pipeline below reports only cat's status (sh has no
+# pipefail); a read that fails half-way leaves a short copy, which fails the checksum.
+"$SETPRIV" --reuid="$PKEXEC_UID" --regid="$USER_GID" --clear-groups test -r "$PACKAGE" || fail "the package could not be read"
+"$SETPRIV" --reuid="$PKEXEC_UID" --regid="$USER_GID" --clear-groups head -c "$((MAX_BYTES + 1))" -- "$PACKAGE" | cat > "$COPY"
 [ "$(stat -c %s -- "$COPY")" -le "$MAX_BYTES" ] || fail "the package is larger than expected"
 
 ACTUAL=$(sha512sum "$COPY" | cut -d' ' -f1)

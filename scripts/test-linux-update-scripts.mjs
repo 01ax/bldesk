@@ -69,9 +69,11 @@ printf '%s\\n' "${debPackageField}"
     `#!/bin/sh
 printf 'setpriv %s\\n' "$*" >> "${log}"
 while [ "$#" -gt 0 ]; do case "$1" in --reuid=* | --regid=* | --clear-groups) shift ;; *) break ;; esac; done
+# what the unprivileged process would be given as its output: a pipe is fine, an open file (the copy) is the hole
+if [ "$1" = head ]; then printf 'unprivileged-stdout %s\\n' "$(readlink /proc/$$/fd/1)" >> "${log}"; fi
 case "${setprivMode}" in
   fail) echo "head: cannot open: Permission denied" >&2; exit 1 ;;
-  grow) "$@"; head -c 3000 /dev/zero; exit 0 ;;
+  grow) if [ "$1" = head ]; then "$@"; head -c 3000 /dev/zero; exit 0; fi ;;
 esac
 exec "$@"
 `
@@ -385,7 +387,23 @@ test('the package is read as the user who asked, never as root, and at most one 
     const gid = execFileSync('id', ['-g'], { encoding: 'utf8' }).trim()
     const r = runHelper(box, GOOD(box))
     assert.equal(r.status, 0, r.err)
+    assert.ok(calls(box).includes(`setpriv --reuid=${myUid} --regid=${gid} --clear-groups test -r ${box.pkg}`), calls(box).join('\n'))
     assert.ok(calls(box).includes(`setpriv --reuid=${myUid} --regid=${gid} --clear-groups head -c 524288001 -- ${box.pkg}`), calls(box).join('\n'))
+  } finally {
+    box.cleanup()
+  }
+})
+
+test('the unprivileged process is given a pipe as its output, never an open handle to the copy', () => {
+  // A same-user process that can attach to it (pidfd_getfd or ptrace: any on Debian's default, an ancestor on Ubuntu's) would
+  // keep an open copy and write through it after the checksum check. A pipe leads only to root's cat.
+  const box = sandbox()
+  try {
+    const r = runHelper(box, GOOD(box))
+    assert.equal(r.status, 0, r.err)
+    const seen = calls(box).filter((l) => l.startsWith('unprivileged-stdout '))
+    assert.equal(seen.length, 1, calls(box).join('\n'))
+    assert.match(seen[0], /^unprivileged-stdout pipe:\[\d+\]$/, 'the unprivileged process was handed something other than a pipe')
   } finally {
     box.cleanup()
   }

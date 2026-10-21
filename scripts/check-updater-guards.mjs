@@ -167,7 +167,7 @@ if (/\bdpkg\s+-i\b|\bbash\s+-c\b|\bsh\s+-c\b|\beval\b/.test(helperCode)) {
 }
 const at = (re) => helperCode.search(re)
 const order = [
-  ['the copy, read as the user, into the root-only folder', /"\$SETPRIV" --reuid="\$PKEXEC_UID"[^\n]*head -c[^\n]*"\$PACKAGE" > "\$COPY"/],
+  ['the copy, read as the user, into the root-only folder', /"\$SETPRIV" --reuid="\$PKEXEC_UID"[^\n]*head -c[^\n]*"\$PACKAGE" \| cat > "\$COPY"/],
   ['the checksum comparison', /"\$ACTUAL" = "\$WANT"/],
   ['the package-name check', /Package 2>\/dev\/null\)" = bldesk/],
   ['opening the checked copy to apt-get', /chmod 755 "\$WORK"/],
@@ -185,6 +185,18 @@ for (const [label, re] of order) {
 // The package path is chosen by whoever runs the helper and can be swapped at any moment: root must never open it.
 if (/\bcat\b[^\n]*"\$PACKAGE"|<\s*"\$PACKAGE"|\bcp\b[^\n]*"\$PACKAGE"|\bsha512sum\b[^\n]*"\$PACKAGE"/.test(helperCode)) {
   failures.push('install-update.sh: must not open the package path as root (read it through "$SETPRIV" as the user, into the root-only copy)')
+}
+// Nor may the unprivileged process be handed an open file as its output: a process of the same user that can attach to it keeps
+// the handle and writes through it after the check. Its output must go down a pipe into root's own cat.
+for (const line of helperCode.split('\n')) {
+  for (const segment of line.split('|')) {
+    if (segment.includes('"$SETPRIV"') && /[>]/.test(segment.replace(/2>&1|>&2/g, ''))) {
+      failures.push('install-update.sh: the output of an unprivileged ("$SETPRIV") command is redirected into a file; pipe it into root\'s own cat instead (an open file handed to it could be written through after the check): ' + line.trim())
+    }
+  }
+}
+if (!/"\$SETPRIV"[^\n]*head -c[^\n]*"\$PACKAGE"\s*\|\s*cat > "\$COPY"/.test(helperCode)) {
+  failures.push('install-update.sh: the package must be read by an unprivileged head whose output is piped into root\'s `cat > "$COPY"`')
 }
 if (!/sha512sum/.test(helperCode)) failures.push('install-update.sh: must check the package against its SHA-512 checksum')
 
