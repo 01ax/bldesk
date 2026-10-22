@@ -95,7 +95,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         >
           <Search className="w-3.5 h-3.5 text-slate-300" />
           <span>Search servers, DNS, actions...</span>
-          <kbd className="ml-3 px-1.5 py-0.5 text-[10px] bg-black/40 text-slate-300 rounded border border-white/10 font-mono">
+          <kbd className="ml-3 max-md:hidden px-1.5 py-0.5 text-[10px] bg-black/40 text-slate-300 rounded border border-white/10 font-mono">
             Ctrl+K
           </kbd>
         </button>
