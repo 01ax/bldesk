@@ -1,5 +1,32 @@
 # Help verification
 
+## Which rules open a port to the world (22 October 2026, #326)
+
+The fleet audit's “open to the world” flags and the Network Map's exposure label and SSH count now read a server's rules the way BinaryLane applies them: for each of the server's public IPv4 addresses (`publicAddressesOf` in `firewallMatrix.ts`: its public networks and failover IPs), rule by rule from the first, and the first rule that matches traffic from anywhere to that address decides. Before, any rule with a source of `0.0.0.0/0` counted, whatever its destination or position. `exposes` and `exposureLabel` moved from `networkMap.ts` into `firewallMatrix.ts` (the map re-exports them) so the audit and the map share one reading, and so Node can test them. `explainUnreachablePort` in `firewallMatch.ts` skips a rule that does not apply to the address the reachability badge probed.
+
+`docs/help/firewall.md` has one new paragraph under Rules and access, and `docs/help/map.md` one new sentence about the exposure label. Each clause was checked against the code:
+
+| Sentence | Checked against |
+| --- | --- |
+| “for each of the server's public IPv4 addresses … from first to last … the first rule that matches decides” | `worldPorts`, `reachablePorts` (one pass per address, rules in order) |
+| “a rule that names only a private address or a VPC range, or another server's address, never applies” | `destinationApplies`: a destination applies only if it is empty, an any-address, or contains the address |
+| “a server with no public IPv4 address … has nothing open to the world” | `worldPorts` returns no ports for an empty address list |
+| “a port that no rule decides is not counted as open” | `reachablePorts` only collects ports an accept decides; `worldPorts` treats an empty rule list as unfiltered, which `auditServer` reports as no rules |
+| “IPv6 is not read” | no IPv6 address reaches `destinationApplies` |
+| “allowing ping adds nothing because ICMP has no port” | `reachablePorts` reads only `tcp` and `udp` rules, plus `all` |
+
+Service facts, from `openapi.json`: the rules response says the order is critical, the first matching rule is applied, and traffic that matches no rule is permitted; `destination_addresses` is the “destination addresses to match for this rule” and every rule must have one; a network's `nat_target` is the private address that receives packets for a public one. The reference does not say whether a rule's destination is compared with the address a packet is sent to or with the address behind a VPC server's public address. That was checked on 22 October 2026 on throwaway servers (a VPC with several members, a server outside a VPC, a server with two public addresses, and one with no public IPv4), probing six ports from outside and from a second member of the VPC. BinaryLane has not confirmed it. Results, each with a listener on every port tested (a new server blocks its own outbound port 22 by default, so SSH between VPC members could not be tested):
+
+- Accept TCP to the VPC range (or to the server's private address), then drop everything: nothing answered from the internet and the other VPC member reached the other five ports. The same on a server outside a VPC with a rule for `172.16.0.0/12`.
+- Accept TCP 22 and 80 to the server's public address, then drop everything: 22 and 80 answered from the internet, and the other VPC member reached nothing.
+- Drop all TCP to the VPC range, then accept everything: the internet reached every port, including 22, and the other VPC member reached none. Drop TCP 22 to the public address, then accept everything: 22 was closed and the rest open.
+- Drop TCP 22 for any destination, then accept TCP to the VPC range: 22 closed, every other port open from the internet (a port no rule matches is permitted).
+- With two public addresses, accepting SSH on one and then dropping everything left the other address dropped, and dropping SSH on one and then accepting everything left SSH open on the other.
+- A server whose only IPv4 is its VPC address has no public address to reach.
+- With `drop all` as the only rule, IPv6 was still reachable on every port: the external firewall does not filter IPv6, as the help already says.
+
+Not checked: failover IPs (they are included as public addresses, which can only add exposure, but no server here had one); a source range wider than a /32 but narrower than `0.0.0.0/0`, which is still not counted as “the world”, as before; and a rule list with no final drop, which the audit still reads as it always has (the new paragraph says so). One map label changes as a side effect of reading rules by protocol: a rule that allows ping from anywhere used to make the label `all`, and ICMP, which has no port, no longer adds one. Checked in the GUI harness on fixture servers, with the same rules written to each through the mock's own API: BASE flagged eleven ports as open to the world on a server whose only accept was for the VPC range and flagged SSH on a server with no public IPv4; FIXED flags neither, still flags SSH on a server that accepts it for any destination and on one that accepts it for its first public address, and no longer flags SSH on a server that drops it ahead of an accept-all.
+
 ## Servers with no scheduled backups (21 October 2026, #314)
 
 `BackupManager.tsx` shows `NO_SCHEDULED_BACKUPS_WARNING` under the banner when the server's options keep no daily, weekly or monthly backups (the banner's Disabled state), and `NO_SCHEDULED_BACKUPS_EMPTY` in the empty state of such a server. The banner's Disabled text now also says offsite backups are set in Change Plan (`offsite_backups` is a resize option in the reference, and Change Plan's Backups section sets it). `docs/help/backups.md` quotes all three.

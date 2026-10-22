@@ -4,7 +4,7 @@ import { Download, ExternalLink, Globe, Loader2, Maximize2, Minus, Plus, Search,
 import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useFleetFirewalls, useLoadBalancers, useVpcMembers, useVpcs } from '../../api/queries'
-import { auditServer, worstLevel, type AuditLevel, type FwRule } from '../../lib/firewallMatrix'
+import { auditServer, publicAddressesOf, worstLevel, type AuditLevel, type FwRule } from '../../lib/firewallMatrix'
 import { openServerSsh } from '../../lib/openServerSsh'
 import {
   INTERNET_ID,
@@ -82,7 +82,8 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     }
     const mapServers: MapServer[] = servers.map((s) => {
       const rules = rulesByServer.has(s.id) ? (rulesByServer.get(s.id) ?? null) : null
-      const flags = rulesByServer.has(s.id) ? auditServer(rules, accountAddresses) : []
+      const publicAddresses = publicAddressesOf(s)
+      const flags = rulesByServer.has(s.id) ? auditServer(rules, accountAddresses, publicAddresses) : []
       const power = (s as any)._power?.state as MapServer['power'] | undefined
       return {
         id: s.id,
@@ -94,7 +95,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
         vpcId: members ? (serverVpc.get(s.id) ?? null) : (s.vpc_id ?? null),
         publicIp: s.networks?.v4?.find((n) => n.type === 'public')?.ip_address,
         privateIp: s.networks?.v4?.find((n) => n.type === 'private')?.ip_address,
-        exposure: rulesByServer.has(s.id) ? exposureLabel(rules) : '…',
+        exposure: rulesByServer.has(s.id) ? exposureLabel(rules, publicAddresses) : '…',
         exposureLevel: rulesByServer.has(s.id) ? worstLevel(flags) : null,
         flags: flags.map((f) => f.text)
       }
@@ -110,7 +111,9 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
       region: lb.region?.name || '',
       vpcId: lbVpc.get(lb.id) ?? null
     }))
-    return { mapServers, mapVpcs, mapLbs }
+    // Counted here, with the cards, rather than on every pan and zoom frame.
+    const exposedSsh = servers.filter((s) => rulesByServer.has(s.id) && exposes(rulesByServer.get(s.id) ?? null, 22, publicAddressesOf(s))).length
+    return { mapServers, mapVpcs, mapLbs, exposedSsh }
   }, [servers, rulesByServer, accountAddresses, vpcsQuery.data, lbsQuery.data, membersQuery.data])
 
   const layout = useMemo(() => layoutTopology(model.mapServers, model.mapVpcs, model.mapLbs), [model])
@@ -364,7 +367,7 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     servers: model.mapServers.length,
     vpcs: model.mapVpcs.length,
     lbs: model.mapLbs.length,
-    exposedSsh: model.mapServers.filter((s) => exposes(rulesByServer.get(s.id) ?? null, 22) && rulesByServer.has(s.id)).length
+    exposedSsh: model.exposedSsh
   }
   // A read that failed must not look like "none": say what the counts could not see.
   const vpcsUnread = vpcsQuery.isError && vpcsQuery.data === undefined

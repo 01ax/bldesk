@@ -80,6 +80,191 @@ export function portsInclude(ports: string[] | null | undefined, port: number): 
   return false
 }
 
+// ---------------------------------------------------------------------------
+// Exposure: what can the internet reach on this server?
+// ---------------------------------------------------------------------------
+//
+// BinaryLane checks each packet against the rules in order and the first match decides, and a rule's destination is
+// the address the packet was sent to. Traffic from the internet is sent to the server's public address, so a rule
+// whose destination is only the VPC range or a private address never applies to it, and neither does one written for
+// another server's address. This was checked on live servers (#326): with "accept TCP to the VPC range, then drop
+// everything", nothing answered from the internet while a VPC neighbour could still connect, and a rule that dropped
+// SSH on one of a server's two public addresses left it open on the other. Each public address is therefore read on
+// its own.
+//
+// Limits, all of them what the audit has always done: a port that no rule decides is not counted as open, although
+// BinaryLane permits such traffic, so a list with no final drop is more open than this says; "the world" is a rule
+// whose sources include 0.0.0.0/0 (see isWorld), not a wide range such as 0.0.0.0/1; and only IPv4 is read, because
+// the external firewall does not filter IPv6 at all.
+
+type Server = components['schemas']['Server']
+
+/**
+ * The public IPv4 addresses a server answers on: its public networks and any failover IPs. `undefined` when its
+ * networks were not read. `[]` is a server with no public IPv4 at all, such as one that is only a VPC member: no rule
+ * can expose that over IPv4. Only IPv4 addresses are kept, because the external firewall does not read anything else.
+ */
+export function publicAddressesOf(server: Pick<Server, 'networks' | 'failover_ips'>): string[] | undefined {
+  const v4 = server.networks?.v4
+  if (!v4) return undefined
+  const addresses = v4.filter((n) => n.type === 'public').map((n) => n.ip_address)
+  return [...new Set([...addresses, ...(server.failover_ips ?? [])].filter((a) => a && ipv4(a) !== null))]
+}
+
+function ipv4(text: string): number | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(text.trim())
+  if (!m || m.slice(1).some((octet) => Number(octet) > 255)) return null
+  return ((Number(m[1]) * 256 + Number(m[2])) * 256 + Number(m[3])) * 256 + Number(m[4])
+}
+
+/** An IPv4 address or CIDR range as its first and last address, or null when it is neither. */
+function ipv4Range(entry: string): [number, number] | null {
+  const [base, bits, extra] = entry.trim().split('/')
+  const at = ipv4(base)
+  const length = bits === undefined ? 32 : bits.trim() === '' ? NaN : Number(bits)
+  if (at === null || extra !== undefined || !Number.isInteger(length) || length < 0 || length > 32) return null
+  const size = 2 ** (32 - length)
+  const first = Math.floor(at / size) * size
+  return [first, first + size - 1]
+}
+
+const isAnyAddress = (a: string) => WORLD.has(a.trim().toLowerCase())
+const entriesOf = (list: string[] | null | undefined) => (list ?? []).map((a) => a.trim()).filter(Boolean)
+
+/**
+ * Could a rule that lists these destinations apply to traffic sent to the IPv4 address `to`? An empty list is any, as
+ * it is for sources. `to` undefined is a public address we were not told, so only a rule whose destinations are all
+ * private or local is certain not to apply.
+ */
+export function destinationApplies(list: string[] | null | undefined, to: string | undefined): boolean {
+  const entries = entriesOf(list)
+  if (entries.length === 0 || entries.some(isAnyAddress)) return true
+  if (to === undefined) return entries.some((a) => !isPrivateOrLocal(a))
+  const at = ipv4(to)
+  if (at === null) return false
+  return entries.some((a) => {
+    const range = ipv4Range(a)
+    return range !== null && range[0] <= at && at <= range[1]
+  })
+}
+
+/** Does every address `inner` names fall inside `outer`? An empty or any-address list is everything. */
+function destinationsCover(outer: string[] | null | undefined, inner: string[] | null | undefined): boolean {
+  const wide = entriesOf(outer)
+  if (wide.length === 0 || wide.some(isAnyAddress)) return true
+  const narrow = entriesOf(inner)
+  if (narrow.length === 0 || narrow.some(isAnyAddress)) return false
+  const ranges = wide.map(ipv4Range)
+  return narrow.every((a) => {
+    const r = ipv4Range(a)
+    return r !== null && ranges.some((w) => w !== null && w[0] <= r[0] && r[1] <= w[1])
+  })
+}
+
+/** Ports as inclusive spans. The ports of a rule are 1 to 65535. */
+type Span = [number, number]
+const ALL_PORTS: Span = [1, 65535]
+
+function portSpans(ports: string[] | null | undefined): Span[] {
+  if (!ports || ports.length === 0) return [ALL_PORTS]
+  const spans: Span[] = []
+  for (const raw of ports) {
+    const s = raw.trim().toLowerCase()
+    if (!s) continue
+    if (s === '*' || s === 'all') return [ALL_PORTS]
+    const range = s.split('-').map((x) => Number(x.trim()))
+    const [lo, hi] = range.length === 2 ? range : [Number(s), Number(s)]
+    if (Number.isNaN(lo) || Number.isNaN(hi) || lo > hi) continue
+    const first = Math.max(lo, ALL_PORTS[0])
+    const last = Math.min(hi, ALL_PORTS[1])
+    if (first <= last) spans.push([first, last])
+  }
+  return spans
+}
+
+function intersect(a: Span[], b: Span[]): Span[] {
+  const out: Span[] = []
+  for (const [alo, ahi] of a) {
+    for (const [blo, bhi] of b) {
+      const lo = Math.max(alo, blo)
+      const hi = Math.min(ahi, bhi)
+      if (lo <= hi) out.push([lo, hi])
+    }
+  }
+  return out
+}
+
+function subtract(from: Span[], cut: Span[]): Span[] {
+  let rest = from
+  for (const [clo, chi] of cut) {
+    const next: Span[] = []
+    for (const [lo, hi] of rest) {
+      if (chi < lo || clo > hi) {
+        next.push([lo, hi])
+        continue
+      }
+      if (lo < clo) next.push([lo, clo - 1])
+      if (hi > chi) next.push([chi + 1, hi])
+    }
+    rest = next
+  }
+  return rest
+}
+
+/** Sorted, with overlapping and neighbouring spans joined. */
+function joined(spans: Span[]): Span[] {
+  const out: Span[] = []
+  for (const [lo, hi] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = out[out.length - 1]
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi)
+    else out.push([lo, hi])
+  }
+  return out
+}
+
+/** The ports a host on the internet reaches on `to` over one protocol, reading the rules first to last. */
+function reachablePorts(rules: FwRule[], protocol: 'tcp' | 'udp', to: string | undefined): Span[] {
+  let open: Span[] = []
+  let undecided: Span[] = [ALL_PORTS]
+  for (const r of rules) {
+    if (undecided.length === 0) break
+    const proto = (r.protocol || 'all').toLowerCase()
+    if (proto !== 'all' && proto !== protocol) continue
+    if (!isWorld(r.source_addresses) || !destinationApplies(r.destination_addresses, to)) continue
+    const decided = intersect(undecided, portSpans(r.destination_ports))
+    if ((r.action || '').toLowerCase() !== 'drop') open = open.concat(decided)
+    undecided = subtract(undecided, decided)
+  }
+  return joined(open)
+}
+
+/** The ports reachable from the internet on any of the server's public addresses, over any of `protocols`. */
+function worldPorts(rules: FwRule[], publicAddresses: readonly string[] | undefined, protocols: Array<'tcp' | 'udp'>): Span[] {
+  const targets = publicAddresses === undefined ? [undefined] : publicAddresses
+  if (targets.length === 0) return []
+  if (rules.length === 0) return [ALL_PORTS] // BinaryLane filters nothing without rules
+  return joined(targets.flatMap((to) => protocols.flatMap((p) => reachablePorts(rules, p, to))))
+}
+
+const spansInclude = (spans: Span[], port: number) => spans.some(([lo, hi]) => lo <= port && port <= hi)
+
+/** Does the world reach TCP `port` on this server? `publicAddresses` is from publicAddressesOf. */
+export function exposes(rules: FwRule[] | null, port: number, publicAddresses: readonly string[] | undefined): boolean {
+  if (rules === null) return false
+  return spansInclude(worldPorts(rules, publicAddresses, ['tcp']), port)
+}
+
+/** "22 80 443" / "all" / "none" from a server's rule list; null rules = unreadable. */
+export function exposureLabel(rules: FwRule[] | null, publicAddresses: readonly string[] | undefined): string {
+  if (rules === null) return '?'
+  const spans = worldPorts(rules, publicAddresses, ['tcp', 'udp'])
+  if (spans.length === 0) return 'none'
+  if (spans.length === 1 && spans[0][0] === ALL_PORTS[0] && spans[0][1] === ALL_PORTS[1]) return 'all'
+  const list = spans.map(([lo, hi]) => (lo === hi ? `${lo}` : `${lo}-${hi}`))
+  const shown = list.slice(0, 4).join(' ')
+  return list.length > 4 ? `${shown} +${list.length - 4}` : shown
+}
+
 export function buildMatrix(rulesByServer: Map<number, FwRule[] | null>): Matrix {
   const counts = new Map<string, { count: number; descriptions: Map<string, number> }>()
   const cells = new Map<number, Map<string, CellState>>()
@@ -151,6 +336,7 @@ function isPrivateOrLocal(addr: string): boolean {
   return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|169\.254\.|fc|fd|fe80|::1$)/i.test(a)
 }
 
+/** Every protocol, every port and every source. What it covers of the destinations is `destinationsCover`'s question. */
 function catchesAll(r: FwRule): boolean {
   const proto = (r.protocol || 'all').toLowerCase()
   return proto === 'all' && (!r.destination_ports || r.destination_ports.length === 0) && isWorld(r.source_addresses)
@@ -160,33 +346,39 @@ function catchesAll(r: FwRule): boolean {
  * Flags for one server's rule list. `accountAddresses` are every public IPv4
  * the account owns, so a /32 source that matches none of them is called out
  * as "not one of your servers" — it may well be an office address, hence
- * info rather than a warning.
+ * info rather than a warning. `publicAddresses` are this server's own (see
+ * publicAddressesOf): a port is open to the world only when a rule that
+ * applies to one of them lets it in.
  */
-export function auditServer(rules: FwRule[] | null, accountAddresses: Set<string>): AuditFlag[] {
+export function auditServer(rules: FwRule[] | null, accountAddresses: Set<string>, publicAddresses: readonly string[] | undefined): AuditFlag[] {
   const flags: AuditFlag[] = []
   if (!rules) return [{ code: 'unreadable', level: 'amber', text: 'Rules could not be read' }]
   if (rules.length === 0) {
     return [{ code: 'no-rules', level: 'amber', text: 'No firewall rules — everything inbound is allowed' }]
   }
 
-  const worldAccepts = rules.filter((r) => (r.action || '').toLowerCase() !== 'drop' && isWorld(r.source_addresses))
-  const tcpish = (r: FwRule) => ['tcp', 'all'].includes((r.protocol || 'all').toLowerCase())
+  const reachable = worldPorts(rules, publicAddresses, ['tcp'])
 
   for (const [port, name] of ADMIN_PORTS) {
-    if (worldAccepts.some((r) => tcpish(r) && portsInclude(r.destination_ports, port))) {
+    if (spansInclude(reachable, port)) {
       flags.push({ code: port === 22 ? 'ssh-world' : 'admin-world', level: 'red', text: `${name} (${port}) open to the world` })
     }
   }
   for (const [port, name] of DB_PORTS) {
-    if (worldAccepts.some((r) => tcpish(r) && portsInclude(r.destination_ports, port))) {
+    if (spansInclude(reachable, port)) {
       flags.push({ code: 'db-world', level: 'amber', text: `${name} (${port}) open to the world` })
     }
   }
 
-  // First-match: anything after a catch-all drop never runs.
-  const catchAllIdx = rules.findIndex((r) => (r.action || '').toLowerCase() === 'drop' && catchesAll(r))
-  if (catchAllIdx >= 0 && catchAllIdx < rules.length - 1) {
-    const shadowed = rules.length - 1 - catchAllIdx
+  // First-match: a rule after a catch-all drop that covers its destinations never runs. A drop that is only for the
+  // VPC range, or only for one address, is a catch-all for just that traffic.
+  const catchAllDrops: FwRule[] = []
+  let shadowed = 0
+  for (const r of rules) {
+    if (catchAllDrops.some((drop) => destinationsCover(drop.destination_addresses, r.destination_addresses))) shadowed++
+    else if ((r.action || '').toLowerCase() === 'drop' && catchesAll(r)) catchAllDrops.push(r)
+  }
+  if (shadowed > 0) {
     flags.push({ code: 'shadowed', level: 'amber', text: `${shadowed} rule${shadowed === 1 ? '' : 's'} after a catch-all drop never match` })
   }
 

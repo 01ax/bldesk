@@ -12,6 +12,8 @@ BinaryLane's external firewall uses ordered first-match rules, with no implicit 
 
 Before applying an import or clone, inspect the complete diff. Allowing SSH in this list cannot start sshd or override a guest firewall.
 
+Fleet matrix and the [network map](help:map) read these rules the same way when they say a port is open to the world. For each of the server's public IPv4 addresses they follow the rules from first to last for traffic coming from anywhere, and the first rule that matches decides. A rule that names only a private address or a VPC range, or another server's address, never applies to that traffic, so it opens nothing to the internet. A server with no public IPv4 address, such as one that is only in a VPC, has nothing open to the world. A port that no rule decides is not counted as open, although BinaryLane lets that traffic through, so a list with no final drop can be more open than the audit says. IPv6 is not read, because the external firewall does not cover it.
+
 ## Add, import and clone
 Rules are evaluated first to last, so the order in the confirmation's diff is the order that is written. A new rule goes immediately ahead of the first drop rule that would swallow it, so that it can match: one that drops its protocol (or every protocol), its ports (or all ports), its sources and its destinations, or more. If no rule would swallow it, it goes last. A drop that covers only some sources, such as a block on one address, stays in front of a new accept rule, so the block still applies. Addresses and ports are compared as written, so a range that contains another is not recognised. Adding Drop All and then an SSH rule leaves the SSH rule in front of it.
 

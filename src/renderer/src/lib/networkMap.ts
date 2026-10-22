@@ -1,5 +1,7 @@
-import type { AuditLevel, FwRule } from './firewallMatrix'
-import { isWorld, portsInclude } from './firewallMatrix'
+import type { AuditLevel } from './firewallMatrix'
+// The map's exposure reads (and the SSH count in its header) live with the audit in firewallMatrix.ts: one reading of the
+// rules, which Node can also test, because that file has no imports.
+export { exposes, exposureLabel } from './firewallMatrix'
 
 /**
  * Network map (FEATURES.md #10): a deterministic, schematic layout of the
@@ -127,35 +129,6 @@ const MARGIN = 32
 export const serverNodeId = (id: number) => `s${id}`
 export const lbNodeId = (id: number) => `lb${id}`
 export const INTERNET_ID = 'internet'
-
-/** "22 80 443" / "all" / "none" from a server's rule list; null rules = unreadable. */
-export function exposureLabel(rules: FwRule[] | null): string {
-  if (rules === null) return '?'
-  if (rules.length === 0) return 'all'
-  const worldAccepts = rules.filter((r) => (r.action || '').toLowerCase() !== 'drop' && isWorld(r.source_addresses))
-  if (worldAccepts.length === 0) return 'none'
-  if (worldAccepts.some((r) => !r.destination_ports || r.destination_ports.length === 0 || r.destination_ports.some((p) => p === '*' || p.toLowerCase() === 'all'))) {
-    return 'all'
-  }
-  const ports = new Set<string>()
-  for (const r of worldAccepts) for (const p of r.destination_ports ?? []) ports.add(p.trim())
-  const list = [...ports].sort((a, b) => Number(a.split('-')[0]) - Number(b.split('-')[0]))
-  const shown = list.slice(0, 4).join(' ')
-  return list.length > 4 ? `${shown} +${list.length - 4}` : shown
-}
-
-/** Does the world reach `port` on this server? */
-export function exposes(rules: FwRule[] | null, port: number): boolean {
-  if (rules === null) return false
-  if (rules.length === 0) return true
-  return rules.some(
-    (r) =>
-      (r.action || '').toLowerCase() !== 'drop' &&
-      isWorld(r.source_addresses) &&
-      ['tcp', 'all'].includes((r.protocol || 'all').toLowerCase()) &&
-      portsInclude(r.destination_ports, port)
-  )
-}
 
 function bezier(x1: number, y1: number, x2: number, y2: number): string {
   const dx = Math.max(40, (x2 - x1) * 0.5)

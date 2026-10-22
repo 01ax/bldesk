@@ -87,7 +87,7 @@ export function useReachability(
   // Fetched only once a timeout has happened, so a healthy server never pulls
   // firewall rules it has no use for.
   const rulesQuery = useFirewallRules(client ?? null, timedOut && serverId ? serverId : null)
-  const verdict = explainUnreachablePort(timedOut ? rulesQuery.data : undefined, port)
+  const verdict = explainUnreachablePort(timedOut ? rulesQuery.data : undefined, port, ip)
 
   const runTrace = useCallback(async () => {
     if (!supported || !ip) return
