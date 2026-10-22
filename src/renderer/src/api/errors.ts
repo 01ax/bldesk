@@ -40,6 +40,21 @@ function fieldReasons(errors: unknown): { field: string; reasons: string[] }[] {
 }
 
 /**
+ * Fields whose reasons are the very same, joined into one entry ("replace_id, strategy: reason"): the same text under
+ * several fields is said once, because repeating it reads as noise. The order the fields were listed in is kept.
+ */
+function mergeSameReasons(fields: { field: string; reasons: string[] }[]): { field: string; reasons: string[] }[] {
+  const groups = new Map<string, { names: string[]; reasons: string[] }>()
+  for (const { field, reasons } of fields) {
+    const key = reasons.join('\n')
+    const group = groups.get(key)
+    if (group) group.names.push(field)
+    else groups.set(key, { names: [field], reasons })
+  }
+  return [...groups.values()].map(({ names, reasons }) => ({ field: names.join(', '), reasons }))
+}
+
+/**
  * The reason BinaryLane gave, in words. Never raw JSON: a body with none of the fields the API reference
  * documents reads as a generic failure rather than a dump of what came back.
  *
@@ -54,7 +69,7 @@ export function describeApiError(error: unknown): string {
   }
   const e = error as { message?: unknown; detail?: unknown; title?: unknown; errors?: unknown }
   const summary = typeof e.message === 'string' && e.message ? e.message : typeof e.detail === 'string' && e.detail ? e.detail : ''
-  const fields = fieldReasons(e.errors)
+  const fields = mergeSameReasons(fieldReasons(e.errors))
   let reasons = ''
   if (fields.length) {
     const shown = fields.slice(0, MAX_FIELDS).map(({ field, reasons: list }) => `${field}: ${list.join(', ')}`)
