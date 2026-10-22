@@ -66,6 +66,11 @@ test('an accept from anywhere to the address shadows a later drop; one for named
   assert.equal(why(office, PUBLIC), 'blocked by rule 2', 'it may not cover this machine')
 })
 
+test('an accept from 0.0.0.0 is not an accept from anywhere, so it does not shadow a later drop', () => {
+  const rules = [rule('accept', 'tcp', { ports: ['22'], src: ['0.0.0.0'] }), rule('drop', 'tcp', { ports: ['22'] })]
+  assert.equal(why(rules, PUBLIC), 'blocked by rule 2')
+})
+
 test('a destination range that holds the probed address applies, and one that does not does not', () => {
   assert.equal(why([rule('drop', 'tcp', { ports: ['22'], dst: ['203.0.113.0/24'] })], PUBLIC), 'blocked by rule 1')
   assert.equal(why([rule('drop', 'tcp', { ports: ['22'], dst: ['203.0.113.32/28'] })], PUBLIC), 'no-matching-rule')

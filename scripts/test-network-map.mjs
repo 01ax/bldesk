@@ -68,7 +68,9 @@ const label = (rules, ...publics) => exposureLabel(rules, publics.length ? publi
 test('the label lists the ports a rule lets the world reach, in order, and says all or none', () => {
   assert.equal(label([rule('accept', 'tcp', { ports: ['443', '80', '22'] }), rule('drop', 'all')]), '22 80 443')
   assert.equal(label([rule('accept', 'all'), rule('drop', 'icmp')]), 'all')
-  assert.equal(label([rule('accept', 'tcp', { ports: ['*'] })]), 'all')
+  assert.equal(label([rule('accept', 'tcp', { ports: ['*'] }), rule('drop', 'all')]), 'all', 'a * port list is every port')
+  assert.equal(label([rule('drop', 'all', { ports: ['*'] }), rule('accept', 'all')]), 'none')
+  assert.equal(label([rule('drop', 'all', { ports: ['all'] }), rule('accept', 'all')]), 'none')
   assert.equal(label([rule('drop', 'all')]), 'none')
   assert.equal(label(null), '?', 'rules that could not be read')
   assert.equal(label([]), 'all', 'no rules filter nothing')
@@ -144,4 +146,6 @@ test('when almost everything is open the label names what is closed', () => {
   assert.equal(label([rule('accept', 'all', { ports: ['101-65535'] }), rule('drop', 'all')]), '101-65535')
   assert.equal(label([rule('drop', 'all', { ports: ['1-100'] })]), '101-65535')
   assert.equal(label([rule('drop', 'all', { ports: ['1-65535'] })]), 'none')
+  // The shorter list in spans, not in ports: two open ranges against one closed one name the closed one.
+  assert.equal(label([rule('accept', 'all', { ports: ['1-1024', '49152-65535'] }), rule('drop', 'all')]), 'all but 1025-49151')
 })

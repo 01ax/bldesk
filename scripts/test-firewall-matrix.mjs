@@ -7,7 +7,7 @@
 // public address is translated to.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { auditServer, destinationApplies, exposes, publicAddressesOf, worstLevel } from '../src/renderer/src/lib/firewallMatrix.ts'
+import { auditServer, destinationApplies, exposes, isWorld, publicAddressesOf, worstLevel } from '../src/renderer/src/lib/firewallMatrix.ts'
 
 const PUBLIC = '203.0.113.20' // the server's public IPv4 (documentation range)
 const PRIVATE = '10.21.0.100' // what a VPC server's public address is translated to
@@ -207,10 +207,98 @@ test('a destination list applies to an address it names or contains', () => {
   assert.equal(destinationApplies(['203.0.113.16/28'], PUBLIC), true)
   assert.equal(destinationApplies(['203.0.113.32/28'], PUBLIC), false)
   assert.equal(destinationApplies(['0.0.0.0/0'], PUBLIC), true)
-  assert.equal(destinationApplies(['any'], PUBLIC), true)
+  assert.equal(destinationApplies(['203.0.113.20/28'], '203.0.113.17'), true, 'host bits in the range are ignored')
+  assert.equal(destinationApplies(['203.0.113.20/28'], '203.0.113.32'), false)
+  assert.equal(destinationApplies(['0.0.0.0'], PUBLIC), false, 'a bare 0.0.0.0 is the one address 0.0.0.0, not any address')
+  assert.equal(destinationApplies(['any'], PUBLIC), false, 'the API refuses it, so it is not an address')
   assert.equal(destinationApplies([], PUBLIC), true, 'an empty list is any, as it is for sources')
   assert.equal(destinationApplies(null, PUBLIC), true)
   assert.equal(destinationApplies(['not-an-address', '10.0.0.0/33', '10.0.0.0/', '1.2.3'], PUBLIC), false, 'an entry that is not an IPv4 address or range names nothing')
   assert.equal(destinationApplies(['fd00::/8'], PUBLIC), false, 'the external firewall does not read IPv6')
   assert.equal(destinationApplies([VPC, PUBLIC], PUBLIC), true)
+})
+
+// --- Any address is 0.0.0.0/0 and nothing else -------------------------------
+
+test('only 0.0.0.0/0 means any address: a bare 0.0.0.0 is one address that no host has', () => {
+  // Live: a drop of SSH from 0.0.0.0, or to 0.0.0.0, followed by an accept-all, closed nothing. The API refuses the others.
+  for (const field of ['src', 'dst']) {
+    assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], [field]: ['0.0.0.0'] }), rule('accept', 'all')]), true, `drop with ${field} 0.0.0.0`)
+  }
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], src: ['0.0.0.0/0'] }), rule('accept', 'all')]), false)
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], src: ['*'] }), rule('accept', 'all')]), true)
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], src: ['::/0'] }), rule('accept', 'all')]), true)
+  // An accept for that address is not an accept for the world either, so it opens nothing ahead of a final drop.
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['22'], src: ['0.0.0.0'] }), rule('drop', 'all')]), false)
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['22'], dst: ['0.0.0.0'] }), rule('drop', 'all')]), false)
+  assert.equal(isWorld(['0.0.0.0']), false)
+  assert.equal(isWorld(['198.51.100.7', '0.0.0.0/0']), true)
+  assert.equal(isWorld([]), true, 'an empty list is read as any, as before')
+})
+
+// --- When the server's addresses are not known --------------------------------
+
+test('when the addresses are not known a rule that might name them can open a port but never close one', () => {
+  const other = '198.51.100.200'
+  // A drop for one named address might not be for this server, so it closes nothing...
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], dst: [other] }), rule('accept', 'all')], undefined), true)
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], dst: [PUBLIC] }), rule('accept', 'all')], undefined), true)
+  // ...a drop for any address does...
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'] }), rule('accept', 'all')], undefined), false)
+  // ...and an accept for a named address might be, so it opens the port.
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['22'], dst: [other] }), rule('drop', 'all')], undefined), true)
+  // Whatever the address turns out to be, unknown is never narrower than knowing it.
+  for (const rules of [
+    [rule('drop', 'tcp', { ports: ['22'], dst: [other] }), rule('accept', 'all')],
+    [rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] }), rule('drop', 'all')],
+    [rule('drop', 'tcp', { ports: ['22'] }), rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] })]
+  ]) {
+    for (const known of [PUBLIC, other, '203.0.113.99']) {
+      if (sshOpen(rules, [known])) assert.equal(sshOpen(rules, undefined), true, JSON.stringify(rules))
+    }
+  }
+})
+
+test('private and local space is exactly the blocks, and a range reaching outside them can name a public address', () => {
+  assert.equal(destinationApplies(['172.31.255.255'], undefined), false)
+  assert.equal(destinationApplies(['172.32.0.1'], undefined), true)
+  assert.equal(destinationApplies(['10.255.255.255'], undefined), false)
+  assert.equal(destinationApplies(['11.0.0.0'], undefined), true)
+  assert.equal(destinationApplies(['10.0.0.0/7'], undefined), true, 'it holds 11.0.0.0 and up')
+  assert.equal(destinationApplies(['10.0.0.0/0'], undefined), true, 'that is every address')
+  assert.equal(destinationApplies(['192.168.1.0/24', '127.0.0.1'], undefined), false)
+  assert.equal(destinationApplies(['fd00::/8', 'not-an-address'], undefined), false, 'neither names an IPv4 address')
+})
+
+// --- Port lists -------------------------------------------------------------
+
+test('a rule\'s ports are read as written: the end ports, ranges, all ports, and nothing that is not a port', () => {
+  const closes = (ports, port) => !sshOpenOn([rule('drop', 'tcp', { ports }), rule('accept', 'all')], port)
+  const sshOpenOn = (rules, port) => exposes(rules, port, [PUBLIC])
+  assert.equal(closes(['1'], 1), true)
+  assert.equal(closes(['1'], 2), false)
+  assert.equal(closes(['65535'], 65535), true)
+  assert.equal(closes(['65535'], 65534), false)
+  assert.equal(closes(['0-65535'], 1), true, 'a range from 0 still covers the first port')
+  assert.equal(closes(['0-65535'], 65535), true)
+  assert.equal(closes(['20-30', '8000-9000'], 22), true)
+  assert.equal(closes(['20-30', '8000-9000'], 8500), true)
+  assert.equal(closes(['20-30', '8000-9000'], 31), false)
+  assert.equal(closes([' 22 - 25 '], 24), true, 'spaces around a range are allowed')
+  assert.equal(closes(['*'], 4000), true)
+  assert.equal(closes(['all'], 4000), true)
+  for (const bad of ['22-1', '22.5', '0x16', '-22', '22-', 'ssh', '', '21-23.5']) assert.equal(closes([bad], 22), false, `"${bad}" is not a port, so the drop closes nothing`)
+})
+
+// --- Shadowed rules: what is and is not a catch-all ----------------------------
+
+test('a drop that does not cover every protocol and port, or only some of a rule\'s destinations, shadows nothing', () => {
+  const shadowed = (rules) => codes(rules).includes('shadowed')
+  assert.equal(shadowed([rule('drop', 'tcp', { ports: ['22'] }), rule('accept', 'tcp', { ports: ['80'] })]), false, 'a drop of one port')
+  assert.equal(shadowed([rule('drop', 'tcp'), rule('accept', 'udp', { ports: ['53'] })]), false, 'a drop of one protocol')
+  assert.equal(shadowed([rule('drop', 'all', { ports: ['22'] }), rule('accept', 'tcp', { ports: ['80'] })]), false, 'a drop of every protocol on one port')
+  assert.equal(shadowed([rule('drop', 'all', { src: [OFFICE] }), rule('accept', 'tcp', { ports: ['80'] })]), false, 'a drop for named sources')
+  assert.equal(shadowed([rule('drop', 'all', { dst: [PUBLIC] }), rule('accept', 'tcp', { ports: ['80'], dst: [PUBLIC, '203.0.113.99'] })]), false, 'a rule that also names an address the drop does not')
+  assert.equal(shadowed([rule('drop', 'all', { dst: [PUBLIC, '203.0.113.99'] }), rule('accept', 'tcp', { ports: ['80'], dst: [PUBLIC, '203.0.113.99'] })]), true)
+  assert.equal(shadowed([rule('drop', 'all'), rule('drop', 'all'), rule('accept', 'tcp')]), true, 'a catch-all after a catch-all is shadowed too')
 })

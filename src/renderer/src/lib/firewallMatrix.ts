@@ -34,7 +34,9 @@ export interface Matrix {
   cells: Map<number, Map<string, CellState>>
 }
 
-const WORLD = new Set(['0.0.0.0/0', '::/0', '0.0.0.0', '::', '*', 'any'])
+// Any address is 0.0.0.0/0 and nothing else. The API refuses `*`, `any`, `::/0` and `::` as an address (a 400), and a
+// bare `0.0.0.0` is the one address 0.0.0.0, which no host has: a drop for it closed nothing when checked live.
+const WORLD = new Set(['0.0.0.0/0'])
 
 export function isWorld(addresses: string[] | null | undefined): boolean {
   if (!addresses || addresses.length === 0) return true // BinaryLane treats an empty source as any
@@ -130,16 +132,30 @@ function ipv4Range(entry: string): [number, number] | null {
 
 const isAnyAddress = (a: string) => WORLD.has(a.trim().toLowerCase())
 const entriesOf = (list: string[] | null | undefined) => (list ?? []).map((a) => a.trim()).filter(Boolean)
+/** Does this list name every address, as an empty list or an any-address does? */
+const namesEveryAddress = (list: string[] | null | undefined) => {
+  const entries = entriesOf(list)
+  return entries.length === 0 || entries.some(isAnyAddress)
+}
+
+/** Private and local IPv4 space: a rule written only for these cannot name a public address. */
+const LOCAL_BLOCKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16'].map((b) => ipv4Range(b)!)
+const insideLocal = ([first, last]: [number, number]) => LOCAL_BLOCKS.some(([lo, hi]) => lo <= first && last <= hi)
 
 /**
  * Could a rule that lists these destinations apply to traffic sent to the IPv4 address `to`? An empty list is any, as
- * it is for sources. `to` undefined is a public address we were not told, so only a rule whose destinations are all
- * private or local is certain not to apply.
+ * it is for sources. `to` undefined is a public address we were not told, so a rule applies unless every destination
+ * it lists is private or local, or is not an IPv4 address at all.
  */
 export function destinationApplies(list: string[] | null | undefined, to: string | undefined): boolean {
+  if (namesEveryAddress(list)) return true
   const entries = entriesOf(list)
-  if (entries.length === 0 || entries.some(isAnyAddress)) return true
-  if (to === undefined) return entries.some((a) => !isPrivateOrLocal(a))
+  if (to === undefined) {
+    return entries.some((a) => {
+      const range = ipv4Range(a)
+      return range !== null && !insideLocal(range)
+    })
+  }
   const at = ipv4(to)
   if (at === null) return false
   return entries.some((a) => {
@@ -150,10 +166,10 @@ export function destinationApplies(list: string[] | null | undefined, to: string
 
 /** Does every address `inner` names fall inside `outer`? An empty or any-address list is everything. */
 function destinationsCover(outer: string[] | null | undefined, inner: string[] | null | undefined): boolean {
+  if (namesEveryAddress(outer)) return true
+  if (namesEveryAddress(inner)) return false
   const wide = entriesOf(outer)
-  if (wide.length === 0 || wide.some(isAnyAddress)) return true
   const narrow = entriesOf(inner)
-  if (narrow.length === 0 || narrow.some(isAnyAddress)) return false
   const ranges = wide.map(ipv4Range)
   return narrow.every((a) => {
     const r = ipv4Range(a)
@@ -172,9 +188,10 @@ function portSpans(ports: string[] | null | undefined): Span[] {
     const s = raw.trim().toLowerCase()
     if (!s) continue
     if (s === '*' || s === 'all') return [ALL_PORTS]
-    const range = s.split('-').map((x) => Number(x.trim()))
-    const [lo, hi] = range.length === 2 ? range : [Number(s), Number(s)]
-    if (Number.isNaN(lo) || Number.isNaN(hi) || lo > hi) continue
+    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(s)
+    if (!m) continue
+    const lo = Number(m[1])
+    const hi = m[2] === undefined ? lo : Number(m[2])
     const first = Math.max(lo, ALL_PORTS[0])
     const last = Math.min(hi, ALL_PORTS[1])
     if (first <= last) spans.push([first, last])
@@ -234,8 +251,11 @@ function reachablePorts(rules: FwRule[], protocol: 'tcp' | 'udp', to: string | u
     const proto = (r.protocol || 'all').toLowerCase()
     if (proto !== 'all' && proto !== protocol) continue
     if (!isWorld(r.source_addresses) || !destinationApplies(r.destination_addresses, to)) continue
+    const drops = (r.action || '').toLowerCase() === 'drop'
+    // Without a known address a rule that only might name it can open a port but never close one.
+    if (drops && to === undefined && !namesEveryAddress(r.destination_addresses)) continue
     const decided = intersect(undecided, portSpans(r.destination_ports))
-    if ((r.action || '').toLowerCase() !== 'drop') open = open.concat(decided)
+    if (!drops) open = open.concat(decided)
     undecided = subtract(undecided, decided)
   }
   return joined(open.concat(undecided))

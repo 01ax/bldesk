@@ -668,9 +668,9 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
                     <Row k="Region" v={s.region} />
                     <Row
                       k="Reachable from internet"
-                      v={s.exposure === '…' ? 'reading…' : s.exposure === '?' ? 'unknown' : s.exposure === 'all' ? 'all ports' : s.exposure === 'none' ? 'nothing' : `ports ${s.exposure}`}
+                      v={s.exposure === '…' ? 'reading…' : s.exposure === '?' ? 'unknown' : s.exposure === 'all' ? 'all ports' : s.exposure === 'none' ? 'nothing' : s.exposure.startsWith('all but ') ? `all ports except ${s.exposure.slice('all but '.length)}` : `ports ${s.exposure}`}
                       mono
-                      tone={s.exposure === '?' || s.exposure === '…' ? undefined : s.exposureLevel === 'red' ? 'bad' : s.exposureLevel === 'amber' ? 'warn' : 'ok'}
+                      tone={s.exposure === '?' || s.exposure === '…' ? undefined : s.exposure === 'none' ? 'ok' : s.exposureLevel === 'red' ? 'bad' : s.exposureLevel === 'amber' ? 'warn' : 'ok'}
                     />
                     {s.flags.length > 0 && (
                       <ul className="space-y-1">
