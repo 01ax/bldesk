@@ -45,6 +45,24 @@ test('describeApiError does not say a reason twice when the message already says
   assert.equal(describeApiError({ message: limit, errors: { backup_type: [limit], size: ['is unknown'] } }), `${limit} backup_type: ${limit}; size: is unknown`)
 })
 
+test('describeApiError says a reason once when it appears under several fields', () => {
+  const same = 'must not be specified if the strategy is not specified.'
+  assert.equal(
+    describeApiError({ message: 'Validation failed.', errors: { replace_id: [same], strategy: [same] } }),
+    `Validation failed. replace_id, strategy: ${same}`
+  )
+  // Only fields with the very same reasons are joined, and the order the API listed them in is kept.
+  assert.equal(
+    describeApiError({ errors: { a: ['x'], b: ['y'], c: ['x'], d: ['x', 'y'] } }),
+    'a, c: x; b: y; d: x, y'
+  )
+  // Joined fields count once towards the five that are shown.
+  const many = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`field${i}`, ['is wrong']]))
+  assert.equal(describeApiError({ message: 'Failed.', errors: many }), 'Failed. field0, field1, field2, field3, field4, field5, field6, field7: is wrong')
+  // A reason the message already says is still not repeated for either field.
+  assert.equal(describeApiError({ message: `Failed: ${same}`, errors: { replace_id: [same], strategy: [same] } }), `Failed: ${same}`)
+})
+
 test('describeApiError ignores an errors value that is not field -> reasons, and falls back as before', () => {
   const odd = [null, undefined, 'a string', 7, true, [], ['x', 'y'], {}, { name: [] }, { name: [''] }, { name: ['   '] }, { name: null }, { name: 7 }, { name: { deep: ['x'] } }, { name: [{ a: 1 }, 7, null] }]
   for (const errors of odd) {
@@ -62,9 +80,9 @@ test('describeApiError ignores an errors value that is not field -> reasons, and
 })
 
 test('describeApiError bounds what it adds from errors', () => {
-  const many = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, ['is wrong']]))
+  const many = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`field${i}`, [`is wrong ${i}`]]))
   const text = describeApiError({ message: 'Failed.', errors: many })
-  assert.ok(text.includes('field0: is wrong') && text.includes('field4: is wrong'), 'the first fields are shown')
+  assert.ok(text.includes('field0: is wrong 0') && text.includes('field4: is wrong 4'), 'the first fields are shown')
   assert.ok(!text.includes('field5:') && /and 15 more/.test(text), text)
   const long = describeApiError({ message: 'Failed.', errors: { name: ['x'.repeat(2000)] } })
   assert.ok(long.length <= 'Failed. '.length + 301, `${long.length} characters`)
