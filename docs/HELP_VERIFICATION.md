@@ -1,5 +1,14 @@
 # Help verification
 
+## Temporary backup terms in the palette's backup review (22 October 2026, #313)
+
+The command palette's `backup` review (`CommandPalette.tsx`, the confirm stage) now shows `TEMPORARY_BACKUP_TERMS` from `lib/backupSlots.ts`, the sentence Take Backup and Change Plan already show under Temporary: “A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.” It sits under the list of targets and shows for every `backup` command, whether or not a target has a backup to replace; before, the review said only which backup would be replaced, and only for a target that holds one. Other palette commands are unchanged.
+
+Sources checked: the sentence is the reference's own words, “only retained for a maximum of 48 hours” (`BackupSlot`) and “At most two temporary backups may be taken of a server in any seven day period” (the Take Backup action), in `openapi.json` 0.45.0. `docs/help/palette.md` also says the reference has no field for how many temporary backups a server has taken in the last seven days, so the palette does not check the limit; searching every schema in `openapi.json` for a quota, taken, remaining or expiry field finds one expiry field, `AttachedBackup.attachment_expires`, which is about attaching a backup. And it says a take BinaryLane refuses is listed in the result as failed, with the error text BLDesk received, which is what `run` does with `err.message`. What the text of a refusal says is not claimed.
+
+- Real app, in the GUI harness against the mock: `backup` on a server that holds a temporary backup shows the sentence, then the amber note, then the backup that would be replaced; `backup` on a server that holds none shows the sentence and no amber note; `restart` on a running server shows neither. No `take_backup` request reached the mock while reviewing. `check-help-guards.mjs` passes, so the quoted sentence is a whole string the app shows.
+- Not checked: a live refusal and what its text reads like (#322).
+
 ## Servers with no scheduled backups (21 October 2026, #314)
 
 `BackupManager.tsx` shows `NO_SCHEDULED_BACKUPS_WARNING` under the banner when the server's options keep no daily, weekly or monthly backups (the banner's Disabled state), and `NO_SCHEDULED_BACKUPS_EMPTY` in the empty state of such a server. The banner's Disabled text now also says offsite backups are set in Change Plan (`offsite_backups` is a resize option in the reference, and Change Plan's Backups section sets it). `docs/help/backups.md` quotes all three.
