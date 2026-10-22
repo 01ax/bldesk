@@ -78,8 +78,9 @@ test('the label lists the ports a rule lets the world reach, in order, and says 
 
 test('a long list is cut after four, and ranges are shown as ranges', () => {
   assert.equal(label([rule('accept', 'tcp', { ports: ['5000', '1000', '4000', '2000', '3000'] }), rule('drop', 'all')]), '1000 2000 3000 4000 +1')
-  assert.equal(label([rule('accept', 'tcp', { ports: ['8000-9000', '22'] }), rule('drop', 'all')]), '22 8000-9000')
-  assert.equal(label([rule('accept', 'tcp', { ports: ['80', '81', '82'] }), rule('drop', 'all')]), '80-82', 'neighbouring ports are one range')
+  assert.equal(label([rule('accept', 'tcp', { ports: ['8000:9000', '22'] }), rule('drop', 'all')]), '22 8000:9000', 'a range as the API writes it')
+  assert.equal(label([rule('accept', 'tcp', { ports: ['8000-9000', '22'] }), rule('drop', 'all')]), '22 8000:9000', 'a hyphen is read, and shown the API way')
+  assert.equal(label([rule('accept', 'tcp', { ports: ['80', '81', '82'] }), rule('drop', 'all')]), '80:82', 'neighbouring ports are one range')
 })
 
 test('a rule for the VPC range does not put its ports on the card', () => {
@@ -119,9 +120,9 @@ test('the SSH count counts a server only if its own rules let the world reach po
   assert.equal(exposes([rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] }), rule('drop', 'all')], 22, [PUBLIC]), true)
   assert.equal(exposes([rule('drop', 'tcp', { ports: ['22'] }), rule('accept', 'all')], 22, [PUBLIC]), false)
   assert.equal(exposes([rule('accept', 'tcp', { ports: ['22'] })], 22, []), false, 'no public address')
-  assert.equal(exposes([rule('accept', 'tcp', { ports: ['2200-2300'] }), rule('drop', 'all')], 22, [PUBLIC]), false)
-  assert.equal(exposes([rule('accept', 'tcp', { ports: ['20-30'] }), rule('drop', 'all')], 22, [PUBLIC]), true)
-  assert.equal(exposes([rule('accept', 'tcp', { ports: ['2200-2300'] })], 22, [PUBLIC]), true, 'no final drop: 22 matches no rule and is permitted')
+  assert.equal(exposes([rule('accept', 'tcp', { ports: ['2200:2300'] }), rule('drop', 'all')], 22, [PUBLIC]), false)
+  assert.equal(exposes([rule('accept', 'tcp', { ports: ['20:30'] }), rule('drop', 'all')], 22, [PUBLIC]), true, 'a range accept opens the port, as it did live')
+  assert.equal(exposes([rule('accept', 'tcp', { ports: ['2200:2300'] })], 22, [PUBLIC]), true, 'no final drop: 22 matches no rule and is permitted')
   assert.equal(exposes([], 22, [PUBLIC]), true)
   assert.equal(exposes(null, 22, [PUBLIC]), false)
 })
@@ -139,13 +140,14 @@ test('a list with no final drop leaves the rest open, and the label says so', ()
 test('when almost everything is open the label names what is closed', () => {
   assert.equal(label([rule('drop', 'all', { ports: ['3389', '22'] })]), 'all but 22 3389')
   assert.equal(label([rule('drop', 'all', { ports: ['22'] }), rule('accept', 'tcp', { ports: ['80'] })]), 'all but 22')
-  assert.equal(label([rule('drop', 'all', { ports: ['8000-9000'] })]), 'all but 8000-9000')
+  assert.equal(label([rule('drop', 'all', { ports: ['8000:9000'] })]), 'all but 8000:9000')
   assert.equal(label([rule('drop', 'all', { ports: ['2', '4', '6', '8', '10'] })]), 'all but 2 4 6 8 +1', 'cut after four, like the open list')
   assert.equal(label([rule('drop', 'all', { ports: ['1', '3', '5', '7', '9', '11'] })]), '2 4 6 8 +2', 'as many closed spans as open ones shows the open list')
   // Whichever list is shorter is shown: one span open and one closed shows the open one.
-  assert.equal(label([rule('accept', 'all', { ports: ['101-65535'] }), rule('drop', 'all')]), '101-65535')
-  assert.equal(label([rule('drop', 'all', { ports: ['1-100'] })]), '101-65535')
-  assert.equal(label([rule('drop', 'all', { ports: ['1-65535'] })]), 'none')
+  assert.equal(label([rule('accept', 'all', { ports: ['101:65535'] }), rule('drop', 'all')]), '101:65535')
+  assert.equal(label([rule('drop', 'all', { ports: ['1:100'] })]), '101:65535')
+  assert.equal(label([rule('drop', 'all', { ports: ['1:65535'] })]), 'none')
+  assert.equal(label([rule('drop', 'all', { ports: ['0:1023'] })]), '1024:65535', 'mPanel\'s System ports')
   // The shorter list in spans, not in ports: two open ranges against one closed one name the closed one.
-  assert.equal(label([rule('accept', 'all', { ports: ['1-1024', '49152-65535'] }), rule('drop', 'all')]), 'all but 1025-49151')
+  assert.equal(label([rule('accept', 'all', { ports: ['1:1024', '49152:65535'] }), rule('drop', 'all')]), 'all but 1025:49151')
 })

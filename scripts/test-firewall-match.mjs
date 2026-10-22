@@ -81,7 +81,10 @@ test('only a rule for TCP and the port in question can explain it', () => {
   assert.equal(why([rule('drop', 'udp', { ports: ['22'] })], PUBLIC), 'no-matching-rule')
   assert.equal(why([rule('drop', 'icmp')], PUBLIC), 'no-matching-rule')
   assert.equal(why([rule('drop', 'tcp', { ports: ['2222'] })], PUBLIC), 'no-matching-rule')
-  assert.equal(why([rule('drop', 'tcp', { ports: ['20-30'] })], PUBLIC), 'blocked by rule 1')
+  assert.equal(why([rule('drop', 'tcp', { ports: ['20:30'] })], PUBLIC), 'blocked by rule 1', 'a range as the API writes it')
+  assert.equal(why([rule('drop', 'tcp', { ports: ['0:1023'] })], PUBLIC), 'blocked by rule 1')
+  assert.equal(why([rule('drop', 'tcp', { ports: ['23:30'] })], PUBLIC), 'no-matching-rule')
+  assert.equal(why([rule('drop', 'tcp', { ports: ['20-30'] })], PUBLIC), 'blocked by rule 1', 'a hyphen is read too')
   assert.equal(why([rule('drop', 'all')], PUBLIC, 3389), 'blocked by rule 1')
 })
 

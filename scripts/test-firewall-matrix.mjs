@@ -7,7 +7,7 @@
 // public address is translated to.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { auditServer, destinationApplies, exposes, isWorld, publicAddressesOf, worstLevel } from '../src/renderer/src/lib/firewallMatrix.ts'
+import { auditServer, destinationApplies, exposes, isWorld, publicAddressesOf, ruleSignature, worstLevel } from '../src/renderer/src/lib/firewallMatrix.ts'
 
 const PUBLIC = '203.0.113.20' // the server's public IPv4 (documentation range)
 const PRIVATE = '10.21.0.100' // what a VPC server's public address is translated to
@@ -279,15 +279,20 @@ test('a rule\'s ports are read as written: the end ports, ranges, all ports, and
   assert.equal(closes(['1'], 2), false)
   assert.equal(closes(['65535'], 65535), true)
   assert.equal(closes(['65535'], 65534), false)
-  assert.equal(closes(['0-65535'], 1), true, 'a range from 0 still covers the first port')
-  assert.equal(closes(['0-65535'], 65535), true)
-  assert.equal(closes(['20-30', '8000-9000'], 22), true)
-  assert.equal(closes(['20-30', '8000-9000'], 8500), true)
-  assert.equal(closes(['20-30', '8000-9000'], 31), false)
-  assert.equal(closes([' 22 - 25 '], 24), true, 'spaces around a range are allowed')
+  assert.equal(closes(['0:65535'], 1), true, 'a range from 0 still covers the first port')
+  assert.equal(closes(['0:65535'], 65535), true)
+  assert.equal(closes(['20:30', '8000:9000'], 22), true)
+  assert.equal(closes(['20:30', '8000:9000'], 8500), true)
+  assert.equal(closes(['20:30', '8000:9000'], 31), false)
+  assert.equal(closes(['8000:9000'], 8000), true, 'a range covers both of its ends')
+  assert.equal(closes(['8000:9000'], 9000), true)
+  assert.equal(closes(['8000:9000'], 7999), false)
+  assert.equal(closes(['8000:9000'], 9001), false)
+  assert.equal(closes(['20-30'], 22), true, 'a hyphen is read as well, though the API refuses it')
+  assert.equal(closes([' 22 : 25 '], 24), true, 'spaces around a range are allowed')
   assert.equal(closes(['*'], 4000), true)
   assert.equal(closes(['all'], 4000), true)
-  for (const bad of ['22-1', '22.5', '0x16', '-22', '22-', 'ssh', '', '21-23.5']) assert.equal(closes([bad], 22), false, `"${bad}" is not a port, so the drop closes nothing`)
+  for (const bad of ['22:1', '22-1', '22.5', '0x16', '-22', '22:', '22-', 'ssh', '', '21:23.5', '22::25']) assert.equal(closes([bad], 22), false, `"${bad}" is not a port, so the drop closes nothing`)
 })
 
 // --- Shadowed rules: what is and is not a catch-all ----------------------------
@@ -301,4 +306,26 @@ test('a drop that does not cover every protocol and port, or only some of a rule
   assert.equal(shadowed([rule('drop', 'all', { dst: [PUBLIC] }), rule('accept', 'tcp', { ports: ['80'], dst: [PUBLIC, '203.0.113.99'] })]), false, 'a rule that also names an address the drop does not')
   assert.equal(shadowed([rule('drop', 'all', { dst: [PUBLIC, '203.0.113.99'] }), rule('accept', 'tcp', { ports: ['80'], dst: [PUBLIC, '203.0.113.99'] })]), true)
   assert.equal(shadowed([rule('drop', 'all'), rule('drop', 'all'), rule('accept', 'tcp')]), true, 'a catch-all after a catch-all is shadowed too')
+})
+
+test('a range is written start:end, as the API writes it, and a range accept or drop is read like a single port', () => {
+  // Live: accepting TCP 20:30 and then dropping everything left 22 open; the old reading never saw the range.
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['20:30'] }), rule('drop', 'all')]), true)
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['2200:2300'] }), rule('drop', 'all')]), false)
+  // Live: dropping TCP 0:1023 (mPanel's "System ports") closed 22, 80, 443 and 1023 and left 1024 alone.
+  const system = [rule('drop', 'tcp', { ports: ['0:1023'] }), rule('accept', 'all')]
+  assert.equal(sshOpen(system), false)
+  for (const port of [22, 80, 443, 1023]) assert.equal(exposes(system, port, [PUBLIC]), false, `port ${port}`)
+  assert.equal(exposes(system, 1024, [PUBLIC]), true)
+  assert.equal(exposes(system, 3306, [PUBLIC]), true)
+  // A range that holds some database ports closes those and no others.
+  const texts = auditServer([rule('drop', 'tcp', { ports: ['3000:7000'] }), rule('accept', 'all')], new Set(), [PUBLIC]).map((f) => f.text)
+  for (const closed of ['MySQL (3306)', 'PostgreSQL (5432)', 'Redis (6379)']) assert.ok(!texts.includes(`${closed} open to the world`), closed)
+  for (const open of ['MongoDB (27017)', 'Elasticsearch (9200)', 'memcached (11211)']) assert.ok(texts.includes(`${open} open to the world`), open)
+})
+
+test('the matrix column of a rule lists its ports in order of their first port, ranges included', () => {
+  assert.equal(ruleSignature(rule('accept', 'tcp', { ports: ['8000:9000', '443', '22', '80'] })), 'tcp 22,80,443,8000:9000 ← any')
+  assert.equal(ruleSignature(rule('accept', 'tcp', { ports: ['80', '22'] })), ruleSignature(rule('drop', 'tcp', { ports: ['22', '80'] })), 'the order they were written in does not matter, and nor does the action')
+  assert.equal(ruleSignature(rule('accept', 'tcp')), 'tcp * ← any')
 })

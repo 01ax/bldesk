@@ -43,9 +43,22 @@ export function isWorld(addresses: string[] | null | undefined): boolean {
   return addresses.some((a) => WORLD.has(a.trim().toLowerCase()))
 }
 
+/**
+ * A rule's port as its first and last port, or null when it is not a port. The API writes a range as `start:end`
+ * (checked live: `8000:9000` is stored and returned as written and covers both ends, while `8000-9000`, `*` and `all`
+ * are refused with a 400), so that is what real rule lists contain. The hyphen is read too, as this code always did.
+ */
+function portRange(token: string): [number, number] | null {
+  const m = /^(\d+)(?:\s*[-:]\s*(\d+))?$/.exec(token.trim())
+  if (!m) return null
+  const first = Number(m[1])
+  return [first, m[2] === undefined ? first : Number(m[2])]
+}
+
 function normPorts(ports: string[] | null | undefined): string {
   if (!ports || ports.length === 0) return '*'
-  return [...ports].map((p) => p.trim()).filter(Boolean).sort((a, b) => Number(a.split('-')[0]) - Number(b.split('-')[0])).join(',')
+  const start = (p: string) => portRange(p)?.[0] ?? Number.MAX_SAFE_INTEGER
+  return [...ports].map((p) => p.trim()).filter(Boolean).sort((a, b) => start(a) - start(b)).join(',')
 }
 
 function normAddrs(addrs: string[] | null | undefined): string {
@@ -65,19 +78,15 @@ export function parseSignature(sig: string): { protocol: string; ports: string; 
   return m ? { protocol: m[1], ports: m[2], source: m[3] } : { protocol: sig, ports: '', source: '' }
 }
 
-/** Does a port list (e.g. ["22", "8000-9000"] or none = all) include `port`? */
+/** Does a port list (e.g. ["22", "8000:9000"] or none = all) include `port`? */
 export function portsInclude(ports: string[] | null | undefined, port: number): boolean {
   if (!ports || ports.length === 0) return true
   for (const p of ports) {
     const s = p.trim()
     if (!s) continue
     if (s === '*' || s.toLowerCase() === 'all') return true
-    const range = s.split('-').map((x) => Number(x.trim()))
-    if (range.length === 2 && !range.some(Number.isNaN)) {
-      if (port >= range[0] && port <= range[1]) return true
-    } else if (Number(s) === port) {
-      return true
-    }
+    const range = portRange(s)
+    if (range && port >= range[0] && port <= range[1]) return true
   }
   return false
 }
@@ -188,12 +197,10 @@ function portSpans(ports: string[] | null | undefined): Span[] {
     const s = raw.trim().toLowerCase()
     if (!s) continue
     if (s === '*' || s === 'all') return [ALL_PORTS]
-    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(s)
-    if (!m) continue
-    const lo = Number(m[1])
-    const hi = m[2] === undefined ? lo : Number(m[2])
-    const first = Math.max(lo, ALL_PORTS[0])
-    const last = Math.min(hi, ALL_PORTS[1])
+    const range = portRange(s)
+    if (!range) continue
+    const first = Math.max(range[0], ALL_PORTS[0])
+    const last = Math.min(range[1], ALL_PORTS[1])
     if (first <= last) spans.push([first, last])
   }
   return spans
@@ -288,7 +295,7 @@ export function exposureLabel(rules: FwRule[] | null, publicAddresses: readonly 
   if (open.length === 0) return 'none'
   const closed = subtract([ALL_PORTS], open)
   if (closed.length === 0) return 'all'
-  const named = (spans: Span[]) => spans.map(([lo, hi]) => (lo === hi ? `${lo}` : `${lo}-${hi}`))
+  const named = (spans: Span[]) => spans.map(([lo, hi]) => (lo === hi ? `${lo}` : `${lo}:${hi}`)) // a range as the API writes it
   const exceptions = closed.length < open.length
   const list = named(exceptions ? closed : open)
   const shown = list.slice(0, 4).join(' ')
