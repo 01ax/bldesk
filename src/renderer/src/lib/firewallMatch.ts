@@ -1,8 +1,10 @@
-import { components } from '@shared/api/schema'
+import type { components } from '@shared/api/schema'
 // One implementation of BinaryLane's firewall semantics, shared with the fleet
 // matrix and the network map, so the audit and this verdict never disagree.
-import { destinationApplies, isWorld, portsInclude } from './firewallMatrix'
-import { describeFirewallRule } from './diff'
+// The imports name their .ts files (tsconfig.web.json allows it) so that Node can
+// load this module for scripts/test-firewall-match.mjs.
+import { destinationApplies, isWorld, portsInclude } from './firewallMatrix.ts'
+import { describeFirewallRule } from './diff.ts'
 
 type Rule = components['schemas']['AdvancedFirewallRule']
 

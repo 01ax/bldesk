@@ -1,9 +1,10 @@
 // Tests for the fleet audit: which servers have SSH, RDP or a database open to the world, read from their firewall rules.
 // The module has no runtime imports, so Node runs the TypeScript directly: node --test scripts/test-firewall-matrix.mjs
 //
-// The rule lists are the ones tried on live servers for #326. BinaryLane checks a packet against the rules in order,
-// the first match decides, and a rule's destination is the address the packet was sent to: from the internet that is
-// the server's public address, never the private address a VPC server's public address is translated to.
+// The rule lists are the ones tried on live servers for #326 and #327. BinaryLane checks a packet against the rules in
+// order, the first match decides, and traffic that matches no rule is permitted. A rule's destination is the address the
+// packet was sent to: from the internet that is the server's public address, never the private address a VPC server's
+// public address is translated to.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { auditServer, destinationApplies, exposes, publicAddressesOf, worstLevel } from '../src/renderer/src/lib/firewallMatrix.ts'
@@ -46,12 +47,36 @@ test('a rule for another protocol does not open a TCP port', () => {
 
 // --- Destination: #326 ------------------------------------------------------
 
-test('"Allow all TCP to VPC" does not open the public address, however it is followed', () => {
+test('"Allow all TCP to VPC" does not open the public address when the list ends in a drop', () => {
   const allowVpc = rule('accept', 'tcp', { dst: [VPC] })
-  assert.deepEqual(worldFlags([allowVpc, rule('drop', 'all')]), [], 'then drop everything')
-  assert.deepEqual(worldFlags([rule('drop', 'tcp', { ports: ['22'] }), allowVpc]), [], 'an earlier drop of public SSH')
-  assert.deepEqual(worldFlags([allowVpc, rule('drop', 'tcp', { ports: ['22'] })]), [], 'a later drop of public SSH')
+  assert.deepEqual(worldFlags([allowVpc, rule('drop', 'all')]), [])
+  assert.deepEqual(worldFlags([rule('drop', 'all'), allowVpc]), [])
   assert.equal(exposes([allowVpc, rule('drop', 'all')], 22, [PUBLIC]), false)
+})
+
+test('"Allow all TCP to VPC" does not close the public address either: without a final drop the rest is open', () => {
+  const allowVpc = rule('accept', 'tcp', { dst: [VPC] })
+  // Live: the accept alone left every port answering from the internet.
+  assert.equal(sshOpen([allowVpc]), true)
+  assert.equal(worldFlags([allowVpc]).length, 11, 'SSH, the four other admin ports and the six databases')
+  // Live: dropping SSH after (or before) it closed SSH and nothing else, so the databases are still open.
+  for (const list of [[allowVpc, rule('drop', 'tcp', { ports: ['22'] })], [rule('drop', 'tcp', { ports: ['22'] }), allowVpc]]) {
+    assert.equal(sshOpen(list), false)
+    assert.ok(codes(list).includes('db-world'), 'the databases fall through to the permit')
+    assert.ok(codes(list).includes('admin-world'))
+  }
+})
+
+test('traffic that matches no rule is permitted, so a list with no final drop leaves the rest open', () => {
+  // Live: a list that only drops SSH and RDP left every other port answering.
+  const onlyDrops = auditServer([rule('drop', 'tcp', { ports: ['22'] }), rule('drop', 'tcp', { ports: ['3389'] })], new Set(), [PUBLIC]).map((f) => f.text)
+  assert.ok(!onlyDrops.includes('SSH (22) open to the world') && !onlyDrops.includes('RDP (3389) open to the world'))
+  assert.ok(onlyDrops.includes('VNC (5900) open to the world'))
+  assert.ok(onlyDrops.includes('MySQL (3306) open to the world'))
+  // Live: a list that only accepts the web ports left SSH answering as well.
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['80', '443'] })]), true)
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['80', '443'] }), rule('drop', 'all')]), false)
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['22'], dst: [PRIVATE] })]), true, 'a rule for another address decides nothing here')
 })
 
 test('a rule whose destinations are all private, local or another server does not apply to the public address', () => {
@@ -66,10 +91,10 @@ test('a rule that names the public address, or a range holding it, does open it'
   }
 })
 
-test('a drop for the public address closes it and leaves the VPC rule alone; a drop for the VPC does not close it', () => {
+test('a drop for the public address closes it; a drop for the VPC does not', () => {
   const open = rule('accept', 'tcp', { ports: ['22'] })
-  assert.deepEqual(worldFlags([rule('drop', 'tcp', { ports: ['22'], dst: [PUBLIC] }), open]), [])
-  assert.deepEqual(worldFlags([rule('drop', 'tcp', { ports: ['22'], dst: [VPC] }), open]), ['ssh-world'])
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], dst: [PUBLIC] }), open]), false)
+  assert.equal(sshOpen([rule('drop', 'tcp', { ports: ['22'], dst: [VPC] }), open]), true)
 })
 
 test('with two public addresses, a rule for one leaves the other as the rest of the list says', () => {
@@ -80,9 +105,14 @@ test('with two public addresses, a rule for one leaves the other as the rest of 
   assert.equal(sshOpen(dropFirst, publics), true)
   assert.equal(sshOpen(dropFirst, [PUBLIC]), false)
   assert.equal(sshOpen(dropFirst, [second]), true)
-  // Live: opening SSH on one address only.
+  // Live: opening SSH on one address only, then dropping everything.
   assert.deepEqual(worldFlags([rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] }), rule('drop', 'all')], publics), ['ssh-world'])
   assert.deepEqual(worldFlags([rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] }), rule('drop', 'all')], [second]), [])
+  // Live: the same accept with no final drop. The other address matches no rule and is permitted on every port.
+  const acceptFirst = [rule('accept', 'tcp', { ports: ['22'], dst: [PUBLIC] })]
+  assert.equal(sshOpen(acceptFirst, publics), true)
+  assert.equal(sshOpen(acceptFirst, [second]), true)
+  assert.equal(worldFlags(acceptFirst, [second]).length, 11)
 })
 
 // --- Order: the first match decides ------------------------------------------
@@ -90,23 +120,24 @@ test('with two public addresses, a rule for one leaves the other as the rest of 
 test('the first rule that matches decides, whichever way round the pair is', () => {
   const accept = rule('accept', 'tcp', { ports: ['22'] })
   const drop = rule('drop', 'tcp', { ports: ['22'] })
-  assert.deepEqual(worldFlags([accept, drop]), ['ssh-world'])
-  assert.deepEqual(worldFlags([drop, accept]), [])
+  assert.equal(sshOpen([accept, drop]), true)
+  assert.equal(sshOpen([drop, accept]), false)
   assert.equal(sshOpen([drop, rule('accept', 'all')]), false, 'a drop of SSH ahead of an accept-all')
   assert.ok(codes([drop, rule('accept', 'all')]).includes('admin-world'), 'which still leaves the ports it does not name open')
   assert.deepEqual(worldFlags([rule('drop', 'all'), accept]), [], 'a catch-all drop ahead of the accept')
 })
 
 test('a rule for the VPC ahead of a drop of public SSH does not rescue it', () => {
-  assert.deepEqual(worldFlags([rule('accept', 'tcp', { ports: ['22'], dst: [VPC] }), rule('drop', 'tcp', { ports: ['22'] })]), [])
+  assert.equal(sshOpen([rule('accept', 'tcp', { ports: ['22'], dst: [VPC] }), rule('drop', 'tcp', { ports: ['22'] })]), false)
 })
 
-test('SSH allowed only from named addresses is closed to the world; allowed from anywhere after them it is open', () => {
+test('SSH allowed from named addresses is closed to the world only if a drop follows; allowed from anywhere it is open', () => {
   const office = rule('accept', 'tcp', { ports: ['22'], src: [OFFICE] })
-  assert.deepEqual(worldFlags([office, rule('drop', 'tcp', { ports: ['22'] })]), [])
-  assert.deepEqual(worldFlags([office]), [], 'an allowlist alone is not the world')
-  assert.deepEqual(worldFlags([office, rule('accept', 'tcp', { ports: ['22'] })]), ['ssh-world'])
-  assert.deepEqual(worldFlags([rule('drop', 'all', { src: ['192.0.2.9'] }), rule('accept', 'tcp', { ports: ['22'] })]), ['ssh-world'], 'a drop for one address is not a drop for everyone')
+  assert.equal(sshOpen([office, rule('drop', 'tcp', { ports: ['22'] })]), false)
+  assert.equal(sshOpen([office, rule('drop', 'all')]), false)
+  assert.equal(sshOpen([office]), true, 'an allowlist with nothing after it closes nothing: the world matches no rule and is permitted')
+  assert.equal(sshOpen([office, rule('accept', 'tcp', { ports: ['22'] })]), true)
+  assert.equal(sshOpen([rule('drop', 'all', { src: ['192.0.2.9'] }), rule('accept', 'tcp', { ports: ['22'] })]), true, 'a drop for one address is not a drop for everyone')
 })
 
 // --- A server with no public IPv4 --------------------------------------------
@@ -149,7 +180,7 @@ test('rules after a catch-all drop are called out', () => {
 
 test('a drop for the VPC alone, or one address alone, is not a catch-all for everything', () => {
   const web = rule('accept', 'tcp', { ports: ['80'], dst: [PUBLIC] })
-  assert.deepEqual(codes([rule('drop', 'all', { dst: [VPC] }), web]), [], 'a drop for the VPC does not shadow a rule for the public address')
+  assert.ok(!codes([rule('drop', 'all', { dst: [VPC] }), web]).includes('shadowed'), 'a drop for the VPC does not shadow a rule for the public address')
   assert.deepEqual(codes([rule('drop', 'all', { dst: [PUBLIC] }), rule('accept', 'tcp', { ports: ['80'], dst: ['203.0.113.99'] })]), [])
   assert.deepEqual(codes([rule('drop', 'all', { dst: [PUBLIC] }), web]), ['shadowed'], 'it does shadow a rule for that address')
   assert.deepEqual(codes([rule('drop', 'all', { dst: ['203.0.113.0/24'] }), web]), ['shadowed'], 'and one inside the range it drops')

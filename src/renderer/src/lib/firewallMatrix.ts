@@ -84,18 +84,18 @@ export function portsInclude(ports: string[] | null | undefined, port: number): 
 // Exposure: what can the internet reach on this server?
 // ---------------------------------------------------------------------------
 //
-// BinaryLane checks each packet against the rules in order and the first match decides, and a rule's destination is
-// the address the packet was sent to. Traffic from the internet is sent to the server's public address, so a rule
-// whose destination is only the VPC range or a private address never applies to it, and neither does one written for
-// another server's address. This was checked on live servers (#326): with "accept TCP to the VPC range, then drop
-// everything", nothing answered from the internet while a VPC neighbour could still connect, and a rule that dropped
-// SSH on one of a server's two public addresses left it open on the other. Each public address is therefore read on
-// its own.
+// BinaryLane checks each packet against the rules in order and the first match decides, and traffic that matches no
+// rule is permitted. A rule's destination is the address the packet was sent to. Traffic from the internet is sent to
+// the server's public address, so a rule whose destination is only the VPC range or a private address never applies
+// to it, and neither does one written for another server's address. This was checked on live servers (#326): with
+// "accept TCP to the VPC range, then drop everything", nothing answered from the internet while a VPC neighbour could
+// still connect; with the accept alone, or with only a drop of SSH after it, every other port answered; a rule that
+// dropped SSH on one of a server's two public addresses left it open on the other; and a list that only accepted SSH
+// for one of the two addresses left every port open on both. Each public address is therefore read on its own, and a
+// port that no applicable rule decides is open.
 //
-// Limits, all of them what the audit has always done: a port that no rule decides is not counted as open, although
-// BinaryLane permits such traffic, so a list with no final drop is more open than this says; "the world" is a rule
-// whose sources include 0.0.0.0/0 (see isWorld), not a wide range such as 0.0.0.0/1; and only IPv4 is read, because
-// the external firewall does not filter IPv6 at all.
+// Limits: "the world" is a rule whose sources include 0.0.0.0/0 (see isWorld), not a wide range such as 0.0.0.0/1;
+// and only IPv4 is read, because the external firewall does not filter IPv6 at all.
 
 type Server = components['schemas']['Server']
 
@@ -222,7 +222,10 @@ function joined(spans: Span[]): Span[] {
   return out
 }
 
-/** The ports a host on the internet reaches on `to` over one protocol, reading the rules first to last. */
+/**
+ * The ports a host on the internet reaches on `to` over one protocol, reading the rules first to last. A port that no
+ * rule decides is open: BinaryLane permits traffic that matches no rule, so a list without a final drop leaves it so.
+ */
 function reachablePorts(rules: FwRule[], protocol: 'tcp' | 'udp', to: string | undefined): Span[] {
   let open: Span[] = []
   let undecided: Span[] = [ALL_PORTS]
@@ -235,14 +238,15 @@ function reachablePorts(rules: FwRule[], protocol: 'tcp' | 'udp', to: string | u
     if ((r.action || '').toLowerCase() !== 'drop') open = open.concat(decided)
     undecided = subtract(undecided, decided)
   }
-  return joined(open)
+  return joined(open.concat(undecided))
 }
 
-/** The ports reachable from the internet on any of the server's public addresses, over any of `protocols`. */
+/**
+ * The ports reachable from the internet on any of the server's public addresses, over any of `protocols`. A server with
+ * no public address has none.
+ */
 function worldPorts(rules: FwRule[], publicAddresses: readonly string[] | undefined, protocols: Array<'tcp' | 'udp'>): Span[] {
   const targets = publicAddresses === undefined ? [undefined] : publicAddresses
-  if (targets.length === 0) return []
-  if (rules.length === 0) return [ALL_PORTS] // BinaryLane filters nothing without rules
   return joined(targets.flatMap((to) => protocols.flatMap((p) => reachablePorts(rules, p, to))))
 }
 
@@ -254,15 +258,22 @@ export function exposes(rules: FwRule[] | null, port: number, publicAddresses: r
   return spansInclude(worldPorts(rules, publicAddresses, ['tcp']), port)
 }
 
-/** "22 80 443" / "all" / "none" from a server's rule list; null rules = unreadable. */
+/**
+ * "22 80 443" / "all" / "all but 22 3389" / "none" from a server's rule list; null rules = unreadable. Whichever of the
+ * open ports and the closed ones is the shorter list is the one shown.
+ */
 export function exposureLabel(rules: FwRule[] | null, publicAddresses: readonly string[] | undefined): string {
   if (rules === null) return '?'
-  const spans = worldPorts(rules, publicAddresses, ['tcp', 'udp'])
-  if (spans.length === 0) return 'none'
-  if (spans.length === 1 && spans[0][0] === ALL_PORTS[0] && spans[0][1] === ALL_PORTS[1]) return 'all'
-  const list = spans.map(([lo, hi]) => (lo === hi ? `${lo}` : `${lo}-${hi}`))
+  const open = worldPorts(rules, publicAddresses, ['tcp', 'udp'])
+  if (open.length === 0) return 'none'
+  const closed = subtract([ALL_PORTS], open)
+  if (closed.length === 0) return 'all'
+  const named = (spans: Span[]) => spans.map(([lo, hi]) => (lo === hi ? `${lo}` : `${lo}-${hi}`))
+  const exceptions = closed.length < open.length
+  const list = named(exceptions ? closed : open)
   const shown = list.slice(0, 4).join(' ')
-  return list.length > 4 ? `${shown} +${list.length - 4}` : shown
+  const text = list.length > 4 ? `${shown} +${list.length - 4}` : shown
+  return exceptions ? `all but ${text}` : text
 }
 
 export function buildMatrix(rulesByServer: Map<number, FwRule[] | null>): Matrix {
@@ -347,8 +358,8 @@ function catchesAll(r: FwRule): boolean {
  * the account owns, so a /32 source that matches none of them is called out
  * as "not one of your servers" — it may well be an office address, hence
  * info rather than a warning. `publicAddresses` are this server's own (see
- * publicAddressesOf): a port is open to the world only when a rule that
- * applies to one of them lets it in.
+ * publicAddressesOf): a port is open to the world unless the first rule that
+ * applies to it, on each of them, drops it.
  */
 export function auditServer(rules: FwRule[] | null, accountAddresses: Set<string>, publicAddresses: readonly string[] | undefined): AuditFlag[] {
   const flags: AuditFlag[] = []
