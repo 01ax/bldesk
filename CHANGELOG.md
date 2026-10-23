@@ -5,6 +5,13 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.33] - 2026-10-24
+
+**Electron 44.9.3, with the block for compromised eMudhra certificates**
+
+### Security
+- **Electron is updated from 44.4.5 to 44.9.3** (#332). It adds the same block for the compromised eMudhra intermediate certificates that browsers have shipped (Electron advisory GHSA-jr5w-w6x2-84p9), to both Chromium's networking and Node's TLS, which cover every connection BLDesk makes. It also brings Chromium 152.0.7977.167 and Node.js 24.22 inside the app, and a fix for `net.fetch` failing for good after the network service restarts. Nothing in BLDesk's own code changed.
+
 ## [1.0.62-beta.32] - 2026-10-24
 
 **Firewall warnings follow how BinaryLane applies rules, and Ubuntu updates no longer freeze the window**
