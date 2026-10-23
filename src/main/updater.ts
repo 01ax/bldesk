@@ -1,13 +1,27 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, net } from 'electron'
-import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
+import { app, BrowserWindow, net, powerMonitor } from 'electron'
+import electronUpdater, { type UpdateInfo, type UpdateDownloadedEvent, type ProgressInfo } from 'electron-updater'
 import { join } from 'path'
-import { createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { appendFileSync, createReadStream, createWriteStream, existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { ensureOwnerDir, writeOwnerFileAtomic } from './ownerFiles'
 import { execFileSync, spawn } from 'child_process'
 import { UpdateChannel, UpdaterState, UpdaterStatus } from '../shared/ipc-types'
 import { restartArguments } from '../shared/deeplink'
 import { shQuote } from '../shared/ssh'
+import { appendUpdaterLog } from './updaterLog'
+import {
+  describeFailure,
+  installInputProblem,
+  isPackageProblem,
+  leftoverNotice,
+  listedChecksum,
+  MAX_PACKAGE_BYTES,
+  parseSessionOutput,
+  sessionArguments,
+  updateScriptPaths
+} from './linuxInstall'
+import { transition, type FlowEffect, type FlowEvent, type FlowState } from './linuxInstallFlow'
+import { CHECK_INTERVAL_MS, dueForCheck, MIN_GAP_BETWEEN_EVENT_CHECKS_MS, RESUME_CHECK_DELAY_MS } from './updaterSchedule'
 
 // electron-updater is CJS with dynamic getter exports; resolve via namespace/default
 const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as any).default?.autoUpdater || electronUpdater
@@ -26,6 +40,16 @@ const autoUpdater = (electronUpdater as any).autoUpdater || (electronUpdater as 
  */
 
 const SETTINGS_FILE = 'updater.json'
+const LOG_FILE = 'updater.log'
+/** A Linux package install's working folder in userData: the session's output file, read by the next start if this one is gone. */
+const SESSION_DIR = 'update-session'
+const SESSION_OUT = 'session.out'
+/** How often the install session's output file is read while the password prompt is open and the package is installing. */
+const SESSION_POLL_MS = 250
+/** After the password is accepted, BLDesk's window says it is closing for this long before it does. */
+const CLOSE_DELAY_MS = 600
+/** How long Restart waits for the last look at the feed before it installs what was downloaded. */
+const RECHECK_BEFORE_INSTALL_MS = 6 * 1000
 /** Network-level failures that mean "couldn't reach the feed", not "no update". */
 const OFFLINE_CODES = new Set([
   'ENOTFOUND',
@@ -36,7 +60,6 @@ const OFFLINE_CODES = new Set([
   'ENETUNREACH',
   'EHOSTUNREACH'
 ])
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h
 const INITIAL_DELAY_MS = 15 * 1000 // let the UI settle before hitting GitHub
 
 interface UpdaterSettings {
@@ -47,6 +70,14 @@ function settingsPath(): string {
   return join(app.getPath('userData'), SETTINGS_FILE)
 }
 
+type LogLevel = 'info' | 'warn' | 'error' | 'debug'
+
+/** The updater's one way to log: the console, as before, and `updater.log` in the user-data folder (see updaterLog.ts). */
+function log(level: LogLevel, ...parts: unknown[]): void {
+  console[level === 'info' ? 'log' : level]('[Updater]', ...parts)
+  appendUpdaterLog(join(app.getPath('userData'), LOG_FILE), level, parts)
+}
+
 function readSettings(): UpdaterSettings {
   try {
     const p = settingsPath()
@@ -55,7 +86,7 @@ function readSettings(): UpdaterSettings {
       if (parsed?.channel === 'beta' || parsed?.channel === 'stable') return { channel: parsed.channel }
     }
   } catch (err) {
-    console.warn('[Updater] Failed to read settings:', err)
+    log('warn', 'Failed to read settings:', err)
   }
   return { channel: 'stable' }
 }
@@ -64,12 +95,12 @@ function writeSettings(s: UpdaterSettings): void {
   try {
     writeOwnerFileAtomic(settingsPath(), JSON.stringify(s, null, 2))
   } catch (err) {
-    console.warn('[Updater] Failed to write settings:', err)
+    log('warn', 'Failed to write settings:', err)
   }
 }
 
 const isMac = process.platform === 'darwin'
-/** A Linux package install (.deb), which updates through pkexec. The AppImage updater restarts itself. */
+/** A Linux package install (.deb), which BLDesk updates through pkexec (see installLinuxPackage). The AppImage updater restarts itself. */
 const isLinuxPackage = process.platform === 'linux' && !process.env.APPIMAGE
 let macPendingZipPath: string | null = null
 let macDownloading = false
@@ -153,7 +184,7 @@ function installMacUpdate(zipPath: string, forceRunAfter: boolean): void {
 
   const targetApp = process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '')
   if (!targetApp.endsWith('.app') || !existsSync(targetApp)) {
-    console.error('[Updater] Cannot locate app bundle to replace:', process.execPath)
+    log('error', 'Cannot locate app bundle to replace:', process.execPath)
     macInstalling = false
     return
   }
@@ -227,12 +258,24 @@ export class UpdaterManager {
   }
   private static timer: NodeJS.Timeout | null = null
   private static initialised = false
+  /** When the last check started (ms since the epoch), for the focus and wake-up checks; null before the first. */
+  private static lastCheckStartedAt: number | null = null
   /**
    * The update that has been downloaded and is waiting for a restart. It stays until it is installed or a newer one has
    * finished downloading: a later check (every few hours, or the Check button) that finds nothing, fails because the
    * machine is offline, or sees the same version again must not take the Restart button away.
    */
   private static held: { version: string } | null = null
+  /** The downloaded .deb and the checksum its release lists for it, which the installer checks again as root. Linux packages only. */
+  private static pendingPackage: { version: string; file: string; sha512: string | undefined } | null = null
+  /** The Linux install in progress: update-session.sh, started by Restart (polled here) or at quit (nothing is left to poll). */
+  private static linuxSession: { id: number; outPath: string; timer: NodeJS.Timeout | null; closing: boolean } | null = null
+  private static sessionCounter = 0
+  private static flowQueue: FlowEvent[] = []
+  private static flowBusy = false
+  /** Restart was chosen, and the look at the feed just before the install found a newer version: install that one once it is downloaded. */
+  private static restartWhenReady = false
+  private static rechecking = false
 
   /** Shows a notification. Set by init(), so the app's notification settings decide whether "is ready" is shown. */
   private static notify: (title: string, body: string) => void = () => {}
@@ -258,31 +301,29 @@ export class UpdaterManager {
 
     const settings = readSettings()
     this.state.channel = settings.channel
+    if (isLinuxPackage) this.state.installError = this.takeLeftoverSession()
 
     if (!app.isPackaged) {
-      console.log('[Updater] Not packaged; auto-update disabled (dev mode).')
+      log('info', 'Not packaged; auto-update disabled (dev mode).')
       this.setState({ status: 'idle' })
       return
     }
 
     autoUpdater.logger = {
-      info: (m: any) => console.log('[Updater]', m),
-      warn: (m: any) => console.warn('[Updater]', m),
-      error: (m: any) => console.error('[Updater]', m),
-      debug: (m: any) => console.debug('[Updater]', m)
+      info: (m: any) => log('info', m),
+      warn: (m: any) => log('warn', m),
+      error: (m: any) => log('error', m),
+      debug: (m: any) => log('debug', m)
     }
     if (isMac) {
       // Squirrel.Mac requires Developer ID signatures; bypass on macOS via direct zip update
       autoUpdater.autoDownload = false
     } else {
       autoUpdater.autoDownload = true
-      autoUpdater.autoInstallOnAppQuit = true
-    }
-    if (isLinuxPackage) {
-      // Restart with relaunchAfterExit rather than app.relaunch(); see there.
-      // electron-updater emits this only once quitAndInstall has installed.
-      autoUpdater.autoRunAppAfterInstall = false
-      nativeAutoUpdater.on('before-quit-for-update', relaunchAfterExit)
+      // A Linux package is installed by BLDesk's own helper, at quit too (see installLinuxPackage and onAppQuit): the
+      // library's install blocks this process for about ten seconds, with the window frozen, and asks for the password
+      // to run a shell.
+      autoUpdater.autoInstallOnAppQuit = !isLinuxPackage
     }
     try {
       autoUpdater.setFeedURL({
@@ -291,7 +332,7 @@ export class UpdaterManager {
         repo: 'bldesk'
       })
     } catch (err) {
-      console.warn('[Updater] setFeedURL initialization failed:', err)
+      log('warn', 'setFeedURL initialization failed:', err)
     }
     this.applyChannel(settings.channel)
 
@@ -299,6 +340,13 @@ export class UpdaterManager {
       if (!this.held) this.setState({ status: 'checking', error: undefined })
     })
     autoUpdater.on('update-available', async (info: UpdateInfo) => {
+      if (isLinuxPackage) {
+        // Decided in linuxInstallFlow.ts: not while an install is under way, and not for the version already held.
+        const takesEffect = !this.linuxSession && this.held?.version !== info.version
+        this.dispatch({ type: 'update-available', version: info.version })
+        if (takesEffect) this.setState({ releaseNotes: notesToString(info) })
+        return
+      }
       if (this.held) {
         // The version already downloaded again: nothing to do, and the Restart button stays.
         if (info.version === this.held.version) return
@@ -349,7 +397,7 @@ export class UpdaterManager {
           this.markReady(info.version)
           this.notifyReady(info.version)
         } catch (err: any) {
-          console.error('[Updater] macOS update download failed:', err)
+          log('error', 'macOS update download failed:', err)
           this.handleCheckError(err)
         } finally {
           macDownloading = false
@@ -361,12 +409,16 @@ export class UpdaterManager {
         this.setState({ lastCheckedAt: new Date().toISOString() })
         return
       }
-      this.setState({ status: 'up-to-date', availableVersion: undefined, lastCheckedAt: new Date().toISOString() })
+      this.setState({ status: 'up-to-date', availableVersion: undefined, installError: undefined, lastCheckedAt: new Date().toISOString() })
     })
     autoUpdater.on('download-progress', (p: ProgressInfo) =>
       this.setState({ status: 'downloading', progress: Math.round(p.percent) })
     )
-    autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+    autoUpdater.on('update-downloaded', (info: UpdateDownloadedEvent) => {
+      if (isLinuxPackage) {
+        this.dispatch({ type: 'update-downloaded', version: info.version, file: info.downloadedFile, sha512: listedChecksum(info.files, info.downloadedFile) })
+        return
+      }
       // electron-updater reports a download it already holds again on every check: say "is ready" once.
       const repeat = this.held?.version === info.version
       this.markReady(info.version)
@@ -374,17 +426,18 @@ export class UpdaterManager {
     })
     autoUpdater.on('error', (err: Error) => {
       if (isMac && String(err).includes('SQRLCodeSignatureErrorDomain')) return
-      if (isLinuxPackage && /pkexec/.test(err?.message || '') && hasNoNewPrivs()) {
-        // This window was restarted by an older BLDesk's app.relaunch(), so
-        // pkexec cannot gain privileges here and exits with 127.
-        this.handleCheckError(new Error('BLDesk can\'t install updates in this window. Close BLDesk completely, open it again from your app menu, then install the update.'))
-        return
-      }
       this.handleCheckError(err)
     })
 
     setTimeout(() => this.check(), INITIAL_DELAY_MS)
     this.timer = setInterval(() => this.check(), CHECK_INTERVAL_MS)
+    // Also when the window gets focus and when the computer wakes, so a release published while nobody was looking is
+    // seen soon, and before it is a restart that installs an older version. See updaterSchedule.ts.
+    const checkIfDue = () => {
+      if (dueForCheck(this.lastCheckStartedAt, Date.now(), MIN_GAP_BETWEEN_EVENT_CHECKS_MS)) void this.check()
+    }
+    app.on('browser-window-focus', checkIfDue)
+    powerMonitor.on('resume', () => setTimeout(checkIfDue, RESUME_CHECK_DELAY_MS))
   }
 
   static getState(): UpdaterState {
@@ -394,6 +447,11 @@ export class UpdaterManager {
   static async check(): Promise<UpdaterState> {
     if (!app.isPackaged) return this.getState()
     if (this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'installing') return this.getState()
+    return this.checkNow()
+  }
+
+  private static async checkNow(): Promise<UpdaterState> {
+    this.lastCheckStartedAt = Date.now()
     if (!this.held) this.setState({ status: 'checking', error: undefined })
     try {
       await autoUpdater.checkForUpdates()
@@ -409,6 +467,10 @@ export class UpdaterManager {
       installMacUpdate(macPendingZipPath, true)
       return
     }
+    if (isLinuxPackage) {
+      this.dispatch({ type: 'restart' })
+      return
+    }
     // The install runs synchronously and blocks this process for several seconds, so
     // the window looks frozen and a second click on Restart was queued and delivered
     // afterwards. electron-updater ignores that repeat call but clears its own
@@ -416,9 +478,246 @@ export class UpdaterManager {
     // again. Leaving 'ready' first removes the button and makes repeats no-ops.
     this.held = null
     this.setState({ status: 'installing' })
-    // isSilent=false shows the installer UI on Windows. The app restarts through
-    // autoRunAppAfterInstall, or relaunchAfterExit for a Linux package.
+    // isSilent=false shows the installer UI on Windows, and the app restarts through autoRunAppAfterInstall.
     setImmediate(() => autoUpdater.quitAndInstall(false, true))
+  }
+
+  /**
+   * Everything a Linux package does about an update is decided in linuxInstallFlow.ts, which this feeds with the facts
+   * (the library's events, the session's output, timers) and whose effects it carries out. Restart: the system's password
+   * prompt opens and BLDesk stays open and responsive behind it; only once the password is accepted and the download has
+   * checked out does BLDesk close, and the installer then waits for it to exit, installs, and opens it again. Cancelling
+   * leaves BLDesk running with the update still waiting. (The library's own install blocks this process for about ten
+   * seconds, with the window frozen, and replaces the files under the running app.)
+   */
+  private static flowSnapshot(): FlowState {
+    return {
+      status: this.state.status,
+      availableVersion: this.state.availableVersion,
+      installPhase: this.state.installPhase,
+      installError: this.state.installError,
+      held: this.held,
+      pending: this.pendingPackage,
+      session: this.linuxSession ? { id: this.linuxSession.id, closing: this.linuxSession.closing } : null,
+      rechecking: this.rechecking,
+      restartWhenReady: this.restartWhenReady
+    }
+  }
+
+  private static applyFlow(prev: FlowState, next: FlowState): void {
+    this.held = next.held
+    this.pendingPackage = next.pending
+    this.rechecking = next.rechecking
+    this.restartWhenReady = next.restartWhenReady
+    if (this.linuxSession && next.session) this.linuxSession.closing = next.session.closing
+    const patch: Partial<UpdaterState> = {}
+    if (next.status !== prev.status) patch.status = next.status
+    if (next.availableVersion !== prev.availableVersion) patch.availableVersion = next.availableVersion
+    if (next.installPhase !== prev.installPhase) patch.installPhase = next.installPhase
+    if (next.installError !== prev.installError) patch.installError = next.installError
+    if (next.status === 'ready' && prev.status !== 'ready') {
+      patch.progress = 100
+      patch.error = undefined
+    }
+    if (Object.keys(patch).length > 0) this.setState(patch)
+  }
+
+  /** One event at a time, in order, even when carrying out an effect sends another. */
+  private static dispatch(event: FlowEvent): void {
+    this.flowQueue.push(event)
+    if (this.flowBusy) return
+    this.flowBusy = true
+    try {
+      for (let next = this.flowQueue.shift(); next; next = this.flowQueue.shift()) {
+        const before = this.flowSnapshot()
+        const result = transition(before, next)
+        this.applyFlow(before, result.state)
+        for (const effect of result.effects) this.runEffect(effect)
+      }
+    } finally {
+      this.flowBusy = false
+    }
+  }
+
+  private static runEffect(effect: FlowEffect): void {
+    switch (effect.type) {
+      case 'recheck': {
+        // A download can be hours old, and the check runs hourly, so a release published since may not have been seen:
+        // look at the feed once more first, for at most six seconds. If it cannot be read in time the download is installed.
+        let settled = false
+        const settle = () => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          this.dispatch({
+            type: 'recheck-done',
+            heldVersion: effect.heldVersion,
+            fileExists: !!this.pendingPackage && existsSync(this.pendingPackage.file)
+          })
+        }
+        const timer = setTimeout(settle, RECHECK_BEFORE_INSTALL_MS)
+        void this.checkNow().finally(settle)
+        return
+      }
+      case 'check':
+        void this.check()
+        return
+      case 'start-session': {
+        const problem = this.startLinuxSession(effect.relaunch)
+        this.dispatch({ type: 'session-started', id: this.linuxSession?.id ?? 0, relaunch: effect.relaunch, problem })
+        return
+      }
+      case 'start-polling':
+        if (this.linuxSession) this.linuxSession.timer = setInterval(() => this.pollLinuxSession(), SESSION_POLL_MS)
+        return
+      case 'stop-polling':
+        if (this.linuxSession?.timer) clearInterval(this.linuxSession.timer)
+        this.linuxSession = null
+        return
+      case 'schedule-close':
+        setTimeout(() => this.dispatch({ type: 'close-timer', id: effect.id }), CLOSE_DELAY_MS)
+        return
+      case 'quit-app':
+        app.quit()
+        return
+      case 'remove-file':
+        try {
+          rmSync(effect.file, { force: true })
+        } catch {
+          /* not ours to remove */
+        }
+        return
+      case 'notify-ready':
+        this.notifyReady(effect.version)
+        return
+      case 'auto-download':
+        autoUpdater.autoDownload = effect.on
+        return
+      case 'record-result':
+        try {
+          appendFileSync(this.sessionPaths().out, `${effect.text}\n`)
+        } catch {
+          /* no output file: the session was replaced */
+        }
+        return
+      case 'clear-session-files':
+        rmSync(this.sessionPaths().dir, { recursive: true, force: true })
+        return
+      case 'log':
+        log(effect.level, effect.text)
+        return
+    }
+  }
+
+  /**
+   * Starts update-session.sh, detached, so it carries on after BLDesk has closed. `relaunch` is whether it opens BLDesk
+   * again afterwards: after Restart it does, after Quit it does not. Returns why it could not start, or null.
+   *
+   * It restarts BLDesk with a plain command, not app.relaunch(): on Linux the instance app.relaunch() starts has
+   * no_new_privs set (NoNewPrivs: 1 in /proc/<pid>/status), and so does everything it runs. The next update's pkexec then
+   * cannot gain privileges and exits with 127. A process started from this one does not set the flag.
+   */
+  private static startLinuxSession(relaunch: boolean): string | null {
+    const pending = this.pendingPackage
+    if (!pending || !existsSync(pending.file)) return 'The downloaded update is missing.'
+    const problem = installInputProblem(pending.file, pending.sha512)
+    if (problem) return problem
+    try {
+      if (statSync(pending.file).size > MAX_PACKAGE_BYTES) return 'The downloaded update is larger than expected, so it was not installed.'
+    } catch {
+      return 'The downloaded update is missing.'
+    }
+    if (hasNoNewPrivs()) return NO_NEW_PRIVS_MESSAGE
+    const scripts = updateScriptPaths(process.resourcesPath)
+    if (!existsSync(scripts.helper) || !existsSync(scripts.session)) {
+      return "BLDesk's update installer is missing from this installation. Install the latest BLDesk .deb again."
+    }
+    const { dir, out } = this.sessionPaths()
+    const id = ++this.sessionCounter
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      ensureOwnerDir(dir)
+      const args = sessionArguments({
+        logPath: join(app.getPath('userData'), LOG_FILE),
+        outPath: out,
+        appPid: process.pid,
+        packagePath: pending.file,
+        sha512: pending.sha512!,
+        relaunch: relaunch ? [process.execPath, ...restartArguments(process.argv)] : null
+      })
+      const child = spawn(scripts.session, args, { detached: true, stdio: 'ignore' })
+      child.on('error', (err) => {
+        // Without a listener this would be an uncaught exception; the poll reads the failure like any other.
+        try {
+          appendFileSync(out, `RESULT failed the installer could not be started: ${err.message.split('\n')[0]}\n`)
+        } catch {
+          /* the folder is gone: the session was replaced */
+        }
+      })
+      child.on('exit', (code, signal) => {
+        // Whether the script wrote its verdict before it went decides, in linuxInstallFlow.ts, whether one is written for it.
+        let hadResult = true // no output file: the session was replaced
+        try {
+          hadResult = !!parseSessionOutput(readFileSync(out, 'utf8')).result
+        } catch {
+          /* replaced */
+        }
+        this.dispatch({ type: 'session-exited', id, hadResult, how: signal ?? `exit status ${code}` })
+      })
+      child.unref()
+      this.linuxSession = { id, outPath: out, timer: null, closing: false }
+      log('info', `Update session started for ${pending.version} (${relaunch ? 'restart' : 'at quit'}).`)
+      return null
+    } catch (err: any) {
+      return `The update installer could not be started: ${err?.message || err}`
+    }
+  }
+
+  /** Reads the session's output and hands what it says to linuxInstallFlow.ts. */
+  private static pollLinuxSession(): void {
+    const session = this.linuxSession
+    if (!session || !session.timer) return
+    let text: string
+    try {
+      text = readFileSync(session.outPath, 'utf8')
+    } catch {
+      return // not created yet
+    }
+    const { authorised, result } = parseSessionOutput(text)
+    this.dispatch({
+      type: 'poll',
+      authorised,
+      ended: result
+        ? {
+            failure: describeFailure(result),
+            packageProblem: result.outcome === 'failed' && isPackageProblem(result.why),
+            summary: `${result.outcome}${result.outcome === 'failed' ? ` (${result.why})` : result.outcome === 'unavailable' ? ` (${result.needs})` : ''}`
+          }
+        : null
+    })
+  }
+
+  private static sessionPaths(): { dir: string; out: string } {
+    const dir = join(app.getPath('userData'), SESSION_DIR)
+    return { dir, out: join(dir, SESSION_OUT) }
+  }
+
+  /**
+   * What an install that ran while BLDesk was closed (one started at quit) left: the message if it did not install, and
+   * the folder removed once it has finished. A session still waiting for its password is left alone.
+   */
+  private static takeLeftoverSession(): string | undefined {
+    const { dir, out } = this.sessionPaths()
+    try {
+      const text = readFileSync(out, 'utf8')
+      if (!parseSessionOutput(text).result) return undefined
+      rmSync(dir, { recursive: true, force: true })
+      const notice = leftoverNotice(text)
+      if (notice) log('warn', 'The last update session ended without installing:', notice)
+      return notice ?? undefined
+    } catch {
+      return undefined
+    }
   }
 
   static onAppQuit(): void {
@@ -427,14 +726,18 @@ export class UpdaterManager {
     if (isMac && (this.state.status === 'ready' || this.held) && macPendingZipPath && existsSync(macPendingZipPath)) {
       installMacUpdate(macPendingZipPath, false)
     }
+    // Quitting with an update waiting installs it, as before; the password prompt now opens while BLDesk closes, not
+    // before. Whether, and not twice, is decided in linuxInstallFlow.ts.
+    if (isLinuxPackage) this.dispatch({ type: 'quit' })
   }
 
   static setChannel(channel: UpdateChannel): UpdaterState {
     if (channel !== 'stable' && channel !== 'beta') return this.getState()
     writeSettings({ channel })
     this.applyChannel(channel)
-    this.held = null
-    this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined })
+    if (isLinuxPackage) this.dispatch({ type: 'channel-changed' })
+    else this.held = null
+    this.setState({ channel, status: 'idle', availableVersion: undefined, error: undefined, installError: undefined })
     if (app.isPackaged) void this.check()
     return this.getState()
   }
@@ -458,9 +761,15 @@ export class UpdaterManager {
     const msg = err?.message || String(err)
     const status = isFeedUnreachable(err) ? 'check-failed' : 'error'
     if (status === 'check-failed') {
-      console.log('[Updater] Update check could not complete:', msg)
+      log('info', 'Update check could not complete:', msg)
     } else {
-      console.error('[Updater] Update check failed:', msg)
+      log('error', 'Update check failed:', msg)
+    }
+    if (isLinuxPackage) {
+      // What a failed check does to a waiting update, or to an install under way, is decided in linuxInstallFlow.ts.
+      this.setState(this.held ? { lastCheckedAt: new Date().toISOString() } : { error: msg, lastCheckedAt: new Date().toISOString() })
+      this.dispatch({ type: 'check-failed', unreachable: status === 'check-failed' })
+      return
     }
     if (this.held) {
       // A downloaded update is still waiting: a failed check does not take it away.
@@ -507,27 +816,8 @@ function isFeedUnreachable(err: any): boolean {
   return /HttpError:\s*404|\b404\s+Not Found\b|app-update\.yml/i.test(err?.message || '')
 }
 
-/**
- * Start BLDesk again once this process has exited, after a Linux package update.
- *
- * Not app.relaunch(): on Linux the instance it starts has no_new_privs set
- * (NoNewPrivs: 1 in /proc/<pid>/status), and so does everything it runs. The
- * next update's pkexec then cannot gain privileges and exits with 127, and sudo
- * fails in a local terminal opened from BLDesk. A detached shell started here
- * does not set the flag. It waits for this process to exit first, or the
- * single-instance lock would turn the new instance away.
- */
-function relaunchAfterExit(): void {
-  const waitThenRun = 'i=0; while kill -0 "$0" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.2; i=$((i+1)); done; exec "$@"'
-  try {
-    spawn('/bin/sh', ['-c', waitThenRun, String(process.pid), process.execPath, ...restartArguments(process.argv)], {
-      detached: true,
-      stdio: 'ignore'
-    }).unref()
-  } catch (err) {
-    console.error('[Updater] Could not restart BLDesk after the update:', err)
-  }
-}
+const NO_NEW_PRIVS_MESSAGE =
+  "BLDesk can't install updates in this window. Close BLDesk completely, open it again from your app menu, then install the update."
 
 /** Whether setuid programs such as pkexec are unable to gain privileges from this process. */
 function hasNoNewPrivs(): boolean {
