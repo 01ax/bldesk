@@ -1,5 +1,20 @@
 # Help verification
 
+## Palette temporary-backup terms (23 October 2026, #313)
+
+`CommandPalette.tsx` now renders the existing `TEMPORARY_BACKUP_TERMS` in its backup review, independently of the replacement list. The same constant is already used by Take Backup and Change Plan; its 48-hour lifetime and two-in-seven-days limit come from `BackupSlot` and Take Backup in `openapi.json` 0.45.0. `docs/help/palette.md` quotes the complete string and distinguishes it from the separate replacement warning.
+
+| Claim | Decided by |
+| --- | --- |
+| The backup review shows the lifetime and limit even when no backup might be replaced | The `parsed?.kind === 'backup'` condition inside the review, outside `replaceLines.length > 0` |
+| Other commands do not show the backup terms | The same condition; the review is shown only for a valid plan |
+| Reviewing or returning to input takes no backup | The existing `primary`/Back paths; only `execute` calls `plan.run` |
+| Run still takes a temporary backup with oldest replacement and the supplied label | The unchanged backup action body in the multi-server command handler |
+
+Checked in the real Electron app against the GUI fixtures: an empty slot, an existing temporary image, and a multi-server command each show one copy of the terms; the existing replacement warning remains conditional. A power review shows no backup terms. No action POST occurs before Run or after Back; Run sends exactly one `take_backup` request with `backup_type: temporary`, `replacement_strategy: oldest` and the supplied label. At actual window sizes 1024x680 and 1280x840 and zoom 80%, 125% and 150%, the note wraps without horizontal overflow and Run/Back remain reachable; native window captures were inspected.
+
+The [23 October live API check](https://github.com/termau/bldesk/issues/322#issuecomment-6353444081) establishes the ordinary-take/replacement path separately: with scheduled backups disabled, an initial temporary take and an oldest replacement completed (HTTP 200); a third oldest-replacement attempt returned HTTP 400, with `errors.backup_type` containing "Temporary backup limit of 2 per 7 day period has been reached." No action was returned or appeared in the subsequent action lists, and the second image remained unchanged. This is direct API evidence, not a check of BLDesk's failure card. Resize pre-action counting and elapsed expiry/reset timing were not tested. Shared validation-error presentation remains with #318/#325; this change does not claim those items complete or close #313/#322.
+
 ## Servers with no scheduled backups (21 October 2026, #314)
 
 `BackupManager.tsx` shows `NO_SCHEDULED_BACKUPS_WARNING` under the banner when the server's options keep no daily, weekly or monthly backups (the banner's Disabled state), and `NO_SCHEDULED_BACKUPS_EMPTY` in the empty state of such a server. The banner's Disabled text now also says offsite backups are set in Change Plan (`offsite_backups` is a resize option in the reference, and Change Plan's Backups section sets it). `docs/help/backups.md` quotes all three.
@@ -14,7 +29,7 @@ Change Plan's hint on a server whose only free slot is temporary no longer says 
 
 `openapi.json` is now the live 0.45.0 reference (it was 0.43.3; descriptions only, see the commit). Two sentences in it are new: the `temporary` row of BackupSlot reads “A backup which is created on demand and only retained for a maximum of 48 hours (seven days for an uploaded .iso image)” (it said seven days), and Take Backup reads “At most two temporary backups may be taken of a server in any seven day period.” `BACKUP_SLOT_LABELS.temporary` now says “Temporary (kept up to 48 hours)”, and `TEMPORARY_BACKUP_TERMS` is shown under the slot when Temporary is chosen in `BackupManager.tsx` (Take Backup) and in `ChangePlanPanel.tsx` (Backup first). `docs/help/backups.md` and `docs/help/server-change-plan.md` quote them.
 
-Not checked against a live account: that the limit is enforced as described, what a refusal reads like, and whether a pre-action backup or a replacement counts toward it (the reference does not say, so the help says only what it says). The command palette's `backup` still has no note about the limit and shows the API's refusal as it does any other failure; that, and the live check, are tracked in the issues for temporary-backup wording (#313) and for the live check (#312). The GUI mock refuses a third temporary backup in seven days (`temporaryLimit`) and does not expire them.
+At the time of this 21 October update, the limit and refusal had not been checked against a live account, the reference did not say whether a pre-action backup or a replacement counts, and the command palette had no limit note. See the 23 October entry above for the subsequent ordinary-take check and palette note. Pre-action counting and failure presentation remain separate work (#322 and #318/#325). The GUI mock refuses a third temporary backup in seven days (`temporaryLimit`) and does not expire them.
 
 ## Notification settings (20 October 2026, after 1.0.62-beta.28)
 
