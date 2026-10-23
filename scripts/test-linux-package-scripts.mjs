@@ -83,7 +83,7 @@ for (const action of ['remove', 'purge']) {
   })
 }
 
-test('the desktop database is refreshed whatever dpkg is doing', () => {
+test('the desktop database is refreshed whatever dpkg is doing', linuxOnly, () => {
   for (const action of ['upgrade', 'remove', 'purge']) {
     assert.ok(run(action).calls.some((c) => c.startsWith('update-desktop-database')), action)
   }

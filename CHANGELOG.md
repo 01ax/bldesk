@@ -5,6 +5,18 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.32] - 2026-10-24
+
+**Firewall warnings follow how BinaryLane applies rules, and Ubuntu updates no longer freeze the window**
+
+### Fixed
+- **The firewall audit and the Network Map read rules the way BinaryLane applies them** (#327, #326). For each of a server's public IPv4 addresses the rules are followed first to last and the first match decides, so a rule written only for the VPC range or a private address no longer counts as open to the world, and a server with no public IPv4 is never flagged. A port that no rule decides is open, because BinaryLane lets through traffic that matches no rule: a list with no final drop now shows its open ports, which it did not before. Port ranges are read as the API writes them (`8000:9000`); they were invisible to the audit, the map and the reachability verdict. The map label shows the closed ports when that is the shorter list (`all but 22 3389`). BinaryLane confirmed the behaviour on 23 October 2026.
+- **The Ubuntu .deb update no longer freezes the window** (#323). Restart to update opens the system's password prompt with a message that says what it is for, and BLDesk stays usable behind it; it closes only once the password is accepted, and opens again by itself when the install is done. Cancelling leaves it running with the update still ready. Before installing, BLDesk looks at the feed once more and takes a newer release if one has been published. Checks now run hourly, and when the window gets focus or the computer wakes. The AppArmor profile is kept across upgrades, the install script no longer rebuilds the MIME database, and the updater writes a log in the user-data folder. An installed older version uses its old flow once, for the update that brings this in.
+- **The command palette's backup review shows the temporary-backup terms** (#329, #313): kept up to 48 hours, at most two in any seven days.
+
+### Changed
+- **Backup help describes the temporary-backup allowance as checked live** (#331, #322): a backup taken before a plan change counts toward the two in seven days, and replacing the held backup does not reset it. The GUI mock answers an over-limit take with the API's own refusal.
+
 ## [1.0.62-beta.31] - 2026-10-21
 
 **Enable Daily Backups looks like a button you can press**
