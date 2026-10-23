@@ -13,11 +13,12 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // release.yml runs the whole typecheck on Windows and macOS runners too; these run bash with Linux paths and symlinks.
 const linuxOnly = process.platform === 'linux' ? {} : { skip: 'runs the Linux package scripts, which need Linux' }
 
-const scriptPath = process.env.AFTER_REMOVE ?? new URL('../linux/after-remove.sh', import.meta.url).pathname
+const scriptPath = process.env.AFTER_REMOVE ?? fileURLToPath(new URL('../linux/after-remove.sh', import.meta.url))
 const script = readFileSync(scriptPath, 'utf8')
 
 /** Run the script as dpkg would with `action`, in a fresh sandbox, and report what it did. */
@@ -91,7 +92,7 @@ test('the desktop database is refreshed whatever dpkg is doing', () => {
 test('after-install.sh rebuilds the MIME database only if the package ships a MIME file', () => {
   // update-mime-database rebuilds the whole database (about six seconds, on every install and upgrade). dpkg's own trigger
   // on /usr/share/mime/packages does it for a package that ships a file there, so the script has no reason to.
-  const afterInstall = readFileSync(process.env.AFTER_INSTALL ?? new URL('../linux/after-install.sh', import.meta.url).pathname, 'utf8')
+  const afterInstall = readFileSync(process.env.AFTER_INSTALL ?? fileURLToPath(new URL('../linux/after-install.sh', import.meta.url)), 'utf8')
   const code = afterInstall.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n')
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const shipsMimeFile = JSON.stringify(manifest.build?.deb ?? {}).includes('/usr/share/mime/')

@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // The scripts need GNU coreutils, /proc and polkit, so there is nothing to run on another system.
 if (process.platform !== 'linux') {
@@ -21,8 +22,8 @@ if (process.platform !== 'linux') {
   process.exit(0)
 }
 
-const helperPath = process.env.INSTALL_UPDATE ?? new URL('../linux/update/install-update.sh', import.meta.url).pathname
-const sessionPath = process.env.UPDATE_SESSION ?? new URL('../linux/update/update-session.sh', import.meta.url).pathname
+const helperPath = process.env.INSTALL_UPDATE ?? fileURLToPath(new URL('../linux/update/install-update.sh', import.meta.url))
+const sessionPath = process.env.UPDATE_SESSION ?? fileURLToPath(new URL('../linux/update/update-session.sh', import.meta.url))
 const helperSource = readFileSync(helperPath, 'utf8')
 const sessionSource = readFileSync(sessionPath, 'utf8')
 const myUid = String(process.getuid())
