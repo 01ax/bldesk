@@ -1,8 +1,10 @@
-import { components } from '@shared/api/schema'
+import type { components } from '@shared/api/schema'
 // One implementation of BinaryLane's firewall semantics, shared with the fleet
 // matrix and the network map, so the audit and this verdict never disagree.
-import { isWorld, portsInclude } from './firewallMatrix'
-import { describeFirewallRule } from './diff'
+// The imports name their .ts files (tsconfig.web.json allows it) so that Node can
+// load this module for scripts/test-firewall-match.mjs.
+import { destinationApplies, isWorld, portsInclude } from './firewallMatrix.ts'
+import { describeFirewallRule } from './diff.ts'
 
 type Rule = components['schemas']['AdvancedFirewallRule']
 
@@ -46,10 +48,16 @@ const appliesToAnySource = (rule: Rule): boolean => isWorld(rule.source_addresse
  * Order matters: these are evaluated in sequence, so an earlier `accept` for the
  * same port means a later `drop` never sees the packet. Reporting a drop that is
  * shadowed by an accept above it would point at the wrong line.
+ *
+ * So does the destination: a rule applies to traffic sent to an address it names.
+ * A drop written for the VPC range does not stop a probe of the public address, and
+ * pointing at it would send the reader to a rule that is not the cause. `destination`
+ * is the address that was probed; undefined when that is not known.
  */
 export function explainUnreachablePort(
   rules: Rule[] | undefined,
-  port: number
+  port: number,
+  destination: string | undefined
 ): FirewallVerdict {
   if (rules === undefined) return { kind: 'unknown' }
   if (rules.length === 0) return { kind: 'no-rules' }
@@ -57,6 +65,7 @@ export function explainUnreachablePort(
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!matchesTcp(rule) || !portsInclude(rule.destination_ports, port)) continue
+    if (!destinationApplies(rule.destination_addresses, destination)) continue
     // Only a universal accept shadows a later drop; a source-scoped one may
     // not cover this machine.
     if (rule.action === 'accept') {
