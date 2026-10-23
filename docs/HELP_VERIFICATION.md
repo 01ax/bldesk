@@ -16,6 +16,27 @@ Change Plan's hint on a server whose only free slot is temporary no longer says 
 
 Not checked against a live account: that the limit is enforced as described, what a refusal reads like, and whether a pre-action backup or a replacement counts toward it (the reference does not say, so the help says only what it says). The command palette's `backup` still has no note about the limit and shows the API's refusal as it does any other failure; that, and the live check, are tracked in the issues for temporary-backup wording (#313) and for the live check (#312). The GUI mock refuses a third temporary backup in seven days (`temporaryLimit`) and does not expire them.
 
+## Temporary backup live checks (23 October 2026, #322)
+
+The 21 October temporary-backup entry above records the status at that date. This entry updates the ordinary-take and pre-action checks; the palette note is separate in #329 and shared validation-error presentation remains with #318/#325.
+
+Two direct API sequences used Ubuntu 26.04 with daily, weekly and monthly retention zero and offsite backups disabled. Neither sequence exercised a real BLDesk failure card:
+
+| Sequence | Results |
+| --- | --- |
+| Ordinary take (`temporary`/`none`), ordinary replacement (`temporary`/`oldest`), another ordinary replacement | First two requests returned HTTP 200 and completed. The third returned HTTP 400 without a returned action or a new action in subsequent history. One temporary image remained unchanged. This was [reported on #322](https://github.com/termau/bldesk/issues/322#issuecomment-6353444081). |
+| Ordinary take (`temporary`/`none`), RAM resize 1024 to 2048 MB with `pre_action_backup` (`temporary`/`oldest`), another ordinary take (`temporary`/`oldest`) | Take and resize returned HTTP 200 and completed. Resize replaced the first image with one available temporary image and changed only memory. The next take returned HTTP 400 without a returned action or a new action in immediate or later history; the pre-action image and memory remained unchanged. |
+
+Both refusals contained `type: https://tools.ietf.org/html/rfc7231#section-6.5.1`, `title: One or more validation errors occurred`, `status: 400`, `errors.backup_type: [Temporary backup limit of 2 per 7 day period has been reached.]`, and `message: backup_type: Temporary backup limit of 2 per 7 day period has been reached.` This is observed request validation, not an accepted action that later failed; no conclusion is drawn about internal queue implementation.
+
+The new paragraphs in `backups.md` and `server-change-plan.md` describe the dated sequence rather than claim a new OpenAPI guarantee. The reference supplies the lifetime and allowance; `BackupManager.tsx` and `ChangePlanPanel.tsx` render `TEMPORARY_BACKUP_TERMS`, and the latter supplies the temporary pre-action backup. `lib/backupSlots.ts` supplies the shared text and slot/replacement choices. Their controls and quotes were not changed.
+
+The mock already counted a successful pre-action temporary backup. Its counting is unchanged. A regression now covers the ordinary-take, resize/pre-action replacement, refused-next-take sequence, asserting that a refusal adds no action and changes neither the held image nor the server. Only the ordinary `take_backup` quota response now reproduces the observed validation body. A resize requested after the allowance is exhausted still uses the existing simplified mock response: its live error shape was not checked.
+
+Real Electron, isolated GUI fixtures with that observed body: the palette's backup result line and the Take Backup form's "Backup failed" card both displayed `backup_type: Temporary backup limit of 2 per 7 day period has been reached.` Each request returned HTTP 400 and added no action. At an actual 1024x680 window and 150% Electron zoom, the form's reason wrapped and Cancel remained reachable; native captures were inspected. No renderer exception occurred (the expected HTTP 400 was logged to the console). All four distinct request bodies in the fixture log passed `check-requests.mjs`. This case already has the specific reason in `message`; it does not test a generic message with a useful reason only in `errors`, or replace #325's verification. The 25 mock tests, full typecheck/guards and build pass.
+
+Elapsed 48-hour expiry and seven-day reset, failed-take counting, other replacement strategies, a live resize refusal after exhaustion, and Android were not tested. No provider behaviour is inferred for those cases. No production request, retry or error-formatting code changed here; #330's stale palette warning is unrelated.
+
 ## Notification settings (20 October 2026, after 1.0.62-beta.28)
 
 Branch: `feat/notification-settings`. No new runtime dependencies. One help page added (`settings`), one changed (`tray`); `docs/DEEP_LINKS.md`, `docs/HELP_SPEC.md` and `FEATURES.md` each gained a line.
