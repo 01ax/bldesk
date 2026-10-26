@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.34] - 2026-10-27
+
+**Android no longer resends a write when the answer is lost**
+
+### Fixed
+- **On Android, a request that changes something is sent exactly once** (#334, #196). Android's HTTP layer could silently send a POST a second time on a reused connection when the first answer was lost, so one tap on Create Server could make two servers. BLDesk now ships a small patch to Capacitor Android that streams each JSON body once instead of buffering it, so the native layer cannot replay it. If a connection dies before the request is handled, the request now fails with the existing "check before trying again" message instead of being retried out of sight. Desktop builds are unchanged.
+
+### Changed
+- **The GUI mock refuses a plan change over the temporary-backup allowance the way BinaryLane does** (#333, #322): the same validation body as an ordinary take, with the reason under `pre_action_backup.backup_type`, and a regression that checks the resize does not happen.
+
 ## [1.0.62-beta.33] - 2026-10-24
 
 **Electron 44.9.3, with the block for compromised eMudhra certificates**
