@@ -102,16 +102,22 @@ Optional `--api-port PORT` forwards `/v2/` requests only to a loopback fake API.
 A configuration with `path: /v2/servers` and `method: POST` applies the same
 fault to that route, so the real form can be checked. `when: after` waits for
 the fake API response before losing it. `--cert PATH --key PATH` additionally
-starts HTTPS/HTTP/1.1 on port+2 and an HTTP/2-only TLS listener on port+3; trust
-the generated fixture certificate only in the throwaway test build. Production
-TLS settings must stay unchanged. `--log PATH` records fixture events, not
-request headers. See `patches/README.md` for the versioned fix and its limits.
+starts HTTPS/HTTP/1.1 on port+2 and an HTTP/2-only TLS listener on port+3.
+HTTPS reproduction requires your own certificate/key setup: the fixture does
+not generate them or configure Android trust. Supply a loopback certificate
+valid for 127.0.0.1 and trust it only in the throwaway test build. For the
+example ports also run `adb reverse tcp:8448 tcp:8448` and, when checking
+protocol negotiation, `adb reverse tcp:8449 tcp:8449`. Production TLS settings
+must stay unchanged. `--log PATH` records fixture events and only the
+`content-length`, `transfer-encoding` and `content-type` request headers;
+authorization, cookies and other headers are excluded. See `patches/README.md`
+for the versioned fix and its limits.
 
 `status` and `responseHeaders` configure probe responses, for example a 307
 with `responseHeaders: { location: '/probe?id=target' }` (configure the target
 case too), or a 401 with a `www-authenticate` header.
 
-The fixture's five Node regressions run in `npm run test:api-errors`, without
+The fixture's six Node regressions run in `npm run test:api-errors`, without
 Android or account access.
 
 ### Test Build

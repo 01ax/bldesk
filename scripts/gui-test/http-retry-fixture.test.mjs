@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { startRetryFixture } from './http-retry-fixture.mjs'
 
-const request = (port, path, body, method = body === undefined ? 'GET' : 'POST') => new Promise((resolve, reject) => {
-  const call = http.request({ host: '127.0.0.1', port, path, method, headers: { 'content-type': 'application/json' } }, response => {
+const request = (port, path, body, method = body === undefined ? 'GET' : 'POST', headers = {}) => new Promise((resolve, reject) => {
+  const call = http.request({ host: '127.0.0.1', port, path, method, headers: { 'content-type': 'application/json', ...headers } }, response => {
     const chunks = []
     response.on('data', chunk => chunks.push(chunk))
     response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, data: JSON.parse(Buffer.concat(chunks).toString()) }))
@@ -86,4 +86,23 @@ test('redirects and authentication challenges expose their configured status and
   assert.equal(challenge.status, 401)
   assert.equal(challenge.headers['www-authenticate'], 'Basic realm="fixture"')
   assert.equal((await state(port)).executions, 1)
+})
+
+test('events retain only allowlisted framing headers, never credentials or other headers', async t => {
+  const port = await fixture(t)
+  await configure(port, { drop: 'never' })
+  const body = { fixture: '\u00e9\u2603' }
+  const length = String(Buffer.byteLength(JSON.stringify(body)))
+  await request(port, '/probe?id=case', body, 'POST', {
+    'content-length': length, authorization: 'Bearer fictitious-fixture-token',
+    cookie: 'fixture-session=fictitious', 'x-private-fixture': 'must-not-be-recorded'
+  })
+  const event = (await state(port)).events[0]
+  assert.deepEqual(event.headers, { 'content-length': length, 'content-type': 'application/json' })
+  assert.equal(event.body, JSON.stringify(body))
+  assert.ok(!JSON.stringify(event).includes('fictitious'))
+  await request(port, '/probe?id=case', body, 'POST', { 'transfer-encoding': 'chunked' })
+  assert.deepEqual((await state(port)).events[1].headers, {
+    'transfer-encoding': 'chunked', 'content-type': 'application/json'
+  })
 })

@@ -46,7 +46,12 @@ export async function startRetryFixture({ port = 8446, apiPort, cert, key, log }
       : [...cases.values()].find(item => item.path === url.pathname && (item.method || 'POST') === req.method)
     if (probe && !state) return json(res, 400, { message: 'No configured fixture case' })
     const lose = state && (state.drop === 'always' || (state.drop === 'first' && state.requests === 0))
-    const event = state && { method: req.method, connection: connections.get(req.socket), protocol: req.httpVersion, body, drop: !!lose, execution: false }
+    const event = state && {
+      method: req.method, connection: connections.get(req.socket), protocol: req.httpVersion,
+      body, drop: !!lose, execution: false,
+      headers: Object.fromEntries(['content-length', 'transfer-encoding', 'content-type']
+        .filter(name => req.headers[name] !== undefined).map(name => [name, req.headers[name]]))
+    }
     if (state) { state.requests++; state.events.push(event) }
     req.fixtureClose = state?.close || 'fin'
     const record = () => { if (log && state) appendFileSync(log, JSON.stringify({ id: state.id, ...event }) + '\n') }
