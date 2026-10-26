@@ -1,0 +1,29 @@
+diff --git a/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/CapacitorHttpUrlConnection.java b/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/CapacitorHttpUrlConnection.java
+index 6180d64..5189ea4 100644
+--- a/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/CapacitorHttpUrlConnection.java
++++ b/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/CapacitorHttpUrlConnection.java
+@@ -246,8 +246,11 @@ public class CapacitorHttpUrlConnection implements ICapacitorHttpUrlConnection {
+      * @param body The string value to write to the connection stream.
+      */
+     private void writeRequestBody(String body) throws IOException {
++        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
++        // Buffered bodies can be replayed after a lost response. Stream this body once.
++        connection.setFixedLengthStreamingMode(bytes.length);
+         try (DataOutputStream os = new DataOutputStream(connection.getOutputStream())) {
+-            os.write(body.getBytes(StandardCharsets.UTF_8));
++            os.write(bytes);
+             os.flush();
+         }
+     }
+diff --git a/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/HttpRequestHandler.java b/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/HttpRequestHandler.java
+index 69278bc..41d2bb3 100644
+--- a/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/HttpRequestHandler.java
++++ b/node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/plugin/util/HttpRequestHandler.java
+@@ -434,5 +434,7 @@ public class HttpRequestHandler {
+             if (data.getValue() != null) {
+                 connection.setDoOutput(true);
+                 connection.setRequestBody(call, data, dataType);
++            } else {
++                connection.getHttpConnection().setFixedLengthStreamingMode(0);
+             }
+         }
