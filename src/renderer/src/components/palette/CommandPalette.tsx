@@ -169,11 +169,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // Domains are only fetched once the user is actually typing a dns command.
   const domainsQuery = useDomains(parsed?.kind === 'dns-add' ? client : null)
 
-  // A backup check that is still running when the review is left has nothing to report to.
+  // A backup check that is still running when the review is left has nothing to report to, and what it found belongs to
+  // that review alone: the next one, whatever its command, starts without it.
   useEffect(() => {
     if (stage === 'input') {
       checkRun.current++
       setChecking(false)
+      setReplaceLines([])
+      replaceMap.current = new Map()
     }
   }, [stage])
 
