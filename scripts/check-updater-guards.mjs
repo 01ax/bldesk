@@ -132,6 +132,150 @@ function installOrderProblems(template) {
   return problems
 }
 
+// 8. Installing a Linux package update. The library's own install (`pkexec /bin/bash -c 'dpkg -i <file>'`) froze the
+// window for about ten seconds, asked for permission to run a shell, and installed a file from a folder the user can write
+// to. BLDesk's own helper replaces it, and these checks keep the pieces that make it safe in place and in agreement. Like
+// check 7 they read the text of the scripts, so they cannot follow the logic: the behaviour is in
+// scripts/test-linux-update-scripts.mjs.
+const linuxDir = resolve(root, 'linux')
+const helperText = readFileSync(resolve(linuxDir, 'update/install-update.sh'), 'utf8')
+const sessionText = readFileSync(resolve(linuxDir, 'update/update-session.sh'), 'utf8')
+const policyText = readFileSync(resolve(linuxDir, 'com.termau.bldesk.policy'), 'utf8')
+const afterInstallText = readFileSync(resolve(linuxDir, 'after-install.sh'), 'utf8')
+const linuxInstallText = readFileSync(resolve(root, 'src/main/linuxInstall.ts'), 'utf8')
+const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+const shellCode = (text) => text.split('\n').map((l) => l.replace(/(^|\s)#.*$/, '')).join('\n')
+
+for (const [name, text, shell] of [
+  ['linux/update/install-update.sh', helperText, ['sh', 'dash']],
+  ['linux/update/update-session.sh', sessionText, ['sh', 'dash']],
+  ['linux/after-install.sh', afterInstallText, ['bash']]
+]) {
+  for (const sh of shell) {
+    try {
+      execFileSync(sh, ['-n'], { input: text, stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (err) {
+      if (err.code !== 'ENOENT') failures.push(`${name} failed the ${sh} syntax check: ${String(err.stderr || err.message).trim()}`)
+    }
+  }
+}
+
+const helperCode = shellCode(helperText)
+if (!/\bset -eu\b/.test(helperCode)) failures.push('install-update.sh: must run under `set -eu`')
+if (/\bdpkg\s+-i\b|\bbash\s+-c\b|\bsh\s+-c\b|\beval\b/.test(helperCode)) {
+  failures.push('install-update.sh: runs as root, so it must not run a shell command string, eval, or `dpkg -i` (apt-get installs, and resolves dependencies)')
+}
+const at = (re) => helperCode.search(re)
+const order = [
+  ['the copy, read as the user, into the root-only folder', /"\$SETPRIV" --reuid="\$PKEXEC_UID"[^\n]*head -c[^\n]*"\$PACKAGE" \| cat > "\$COPY"/],
+  ['the checksum comparison', /"\$ACTUAL" = "\$WANT"/],
+  ['the package-name check', /Package 2>\/dev\/null\)" = bldesk/],
+  ['opening the checked copy to apt-get', /chmod 755 "\$WORK"/],
+  ['say AUTHORIZED', /say AUTHORIZED/],
+  ['the wait for BLDesk to exit', /kill -0 "\$APP_PID"/],
+  ['the install', /"\$APT_GET" install/]
+]
+let previous = -1
+for (const [label, re] of order) {
+  const index = at(re)
+  if (index < 0) failures.push(`install-update.sh: ${label} is missing`)
+  else if (index < previous) failures.push(`install-update.sh: ${label} is out of order: the file is copied, then checked, then authorised, then BLDesk is waited for, then installed`)
+  else previous = index
+}
+// The package path is chosen by whoever runs the helper and can be swapped at any moment: root must never open it.
+if (/\bcat\b[^\n]*"\$PACKAGE"|<\s*"\$PACKAGE"|\bcp\b[^\n]*"\$PACKAGE"|\bsha512sum\b[^\n]*"\$PACKAGE"/.test(helperCode)) {
+  failures.push('install-update.sh: must not open the package path as root (read it through "$SETPRIV" as the user, into the root-only copy)')
+}
+// Nor may the unprivileged process be handed an open file as its output: a process of the same user that can attach to it keeps
+// the handle and writes through it after the check. Its output must go down a pipe into root's own cat.
+for (const line of helperCode.split('\n')) {
+  for (const segment of line.split('|')) {
+    if (segment.includes('"$SETPRIV"') && /[>]/.test(segment.replace(/2>&1|>&2/g, ''))) {
+      failures.push('install-update.sh: the output of an unprivileged ("$SETPRIV") command is redirected into a file; pipe it into root\'s own cat instead (an open file handed to it could be written through after the check): ' + line.trim())
+    }
+  }
+}
+if (!/"\$SETPRIV"[^\n]*head -c[^\n]*"\$PACKAGE"\s*\|\s*cat > "\$COPY"/.test(helperCode)) {
+  failures.push('install-update.sh: the package must be read by an unprivileged head whose output is piped into root\'s `cat > "$COPY"`')
+}
+if (!/sha512sum/.test(helperCode)) failures.push('install-update.sh: must check the package against its SHA-512 checksum')
+
+// Where the helper ends up must be where the policy names it: the app's folder (APP_DIR in after-install.sh), then
+// resources/linux, which is where build.linux.extraResources (checked below) and updateScriptPaths put it. The session
+// script finds the helper beside itself.
+const appDir = afterInstallText.match(/^APP_DIR='([^']+)'$/m)?.[1]
+const policyPath = policyText.match(/org\.freedesktop\.policykit\.exec\.path">([^<]+)</)?.[1]
+if (!appDir) failures.push('after-install.sh: APP_DIR was not found, so the helper\'s installed path cannot be checked against the policy')
+if (!policyPath) failures.push('com.termau.bldesk.policy: the exec.path annotation was not found')
+if (appDir && policyPath && policyPath !== `${appDir}/resources/linux/install-update.sh`) {
+  failures.push(`com.termau.bldesk.policy names ${policyPath}, but the package installs the helper at ${appDir}/resources/linux/install-update.sh`)
+}
+if (!/^HELPER=\$\{0%\/\*\}\/install-update\.sh$/m.test(sessionText)) {
+  failures.push('update-session.sh: HELPER must be `${0%/*}/install-update.sh`, the helper beside the script')
+}
+if (!/helper: posix\.join\(resourcesPath, 'linux', 'install-update\.sh'\)/.test(linuxInstallText) || !/session: posix\.join\(resourcesPath, 'linux', 'update-session\.sh'\)/.test(linuxInstallText)) {
+  failures.push('linuxInstall.ts: updateScriptPaths must name resources/linux/install-update.sh and update-session.sh, where the package puts them')
+}
+const privileged = shellCode(sessionText).split('\n').filter((l) => /^\s*pkexec\b/.test(l))
+if (privileged.length !== 1 || !/pkexec --disable-internal-agent "\$HELPER"/.test(privileged[0])) {
+  failures.push('update-session.sh: its one pkexec call must run "$HELPER" and nothing else')
+}
+const sessionCode = shellCode(sessionText)
+if (!/command -v pkexec(?![\w-])/.test(sessionCode) || !/RESULT unavailable/.test(sessionCode) || sessionCode.search(/command -v pkexec(?![\w-])/) > sessionCode.search(/^\s*pkexec\b/m)) {
+  failures.push('update-session.sh: must check that pkexec, apt-get and dpkg-deb exist, and report `RESULT unavailable`, before it calls pkexec')
+}
+const untrustedCall = sessionCode.search(/^if untrusted;/m)
+if (!/^untrusted\(\)/m.test(sessionCode) || !/RESULT untrusted/.test(sessionCode) || untrustedCall < 0 || untrustedCall > sessionCode.search(/^\s*pkexec\b/m)) {
+  failures.push('update-session.sh: must check that the helper and the folders above it belong to root and cannot be written by others (`RESULT untrusted`) before it calls pkexec')
+}
+if (!/<allow_active>auth_admin<\/allow_active>/.test(policyText) || /<allow_(any|inactive|active)>(yes|auth_self)</.test(policyText)) {
+  failures.push('com.termau.bldesk.policy: installing an update must need an administrator\'s password (auth_admin), never yes or auth_self')
+}
+
+// The package ships all of it, to the paths the scripts use.
+const linuxBuild = packageJson.build?.linux?.extraResources ?? []
+if (!linuxBuild.some((r) => r.from === 'linux/update' && r.to === 'linux')) {
+  failures.push('package.json: build.linux.extraResources must copy linux/update to the resources folder\'s linux/ (the helper\'s path)')
+}
+if (!(packageJson.build?.deb?.fpm ?? []).includes('linux/com.termau.bldesk.policy=/usr/share/polkit-1/actions/com.termau.bldesk.policy')) {
+  failures.push('package.json: build.deb.fpm must install linux/com.termau.bldesk.policy to /usr/share/polkit-1/actions/')
+}
+if (!/chmod go-w "\$APP_DIR" "\$APP_DIR\/resources" "\$APP_DIR\/resources\/linux"/.test(afterInstallText)) {
+  failures.push('after-install.sh: the app folder, its resources folder and linux/ (what root runs, and the folders on the way to it) must not be writable by group or others')
+}
+if (!/chmod 0755 "\$APP_DIR\/resources\/linux"/.test(afterInstallText) || !/chmod 0644 \/usr\/share\/polkit-1\/actions\/com\.termau\.bldesk\.policy/.test(afterInstallText)) {
+  failures.push('after-install.sh: must make the helper and its folder writable by root alone (0755) and the policy 0644, whatever umask the package was built under')
+}
+
+// updater.ts: a Linux package never reaches the library's blocking install.
+if (!codeOnly.includes('autoUpdater.autoInstallOnAppQuit=!isLinuxPackage')) {
+  failures.push('updater.ts: autoInstallOnAppQuit must be off for a Linux package (`= !isLinuxPackage`), or quitting installs through the library\'s blocking pkexec flow')
+}
+const linuxBranch = codeOnly.search(/if\(isLinuxPackage\)\{this\.dispatch\(\{type:'restart'\}\);?return\}/)
+if (linuxBranch < 0 || linuxBranch > codeOnly.indexOf('quitAndInstall(')) {
+  failures.push('updater.ts: install() must hand a Linux package to the flow (dispatch restart) before it reaches autoUpdater.quitAndInstall')
+}
+
+// A Linux package's decisions are linuxInstallFlow.ts's, and the shell only carries them out. Restart looks at the feed once more
+// before it asks for the password: a Restart only ever produces the look ('recheck'), and the session for it ('start-session') only
+// ever follows the look's end ('recheck-done').
+const flowText = readFileSync(resolve(root, 'src/main/linuxInstallFlow.ts'), 'utf8')
+const flowCode = flowText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')
+const restartBody = flowCode.slice(flowCode.indexOf('function restart('))
+if (!/type: 'recheck'/.test(restartBody) || /start-session/.test(restartBody)) {
+  failures.push('linuxInstallFlow.ts: restart() must start the look at the feed (a recheck effect) and must not start a session itself')
+}
+const sessionStarts = [...flowCode.matchAll(/type: 'start-session', relaunch: true/g)]
+const recheckDone = flowCode.indexOf("case 'recheck-done'")
+const sessionStarted = flowCode.indexOf("case 'session-started'")
+if (sessionStarts.length !== 1 || !(sessionStarts[0].index > recheckDone && sessionStarts[0].index < sessionStarted)) {
+  failures.push("linuxInstallFlow.ts: a session for Restart may only be started where the look at the feed ends (case 'recheck-done')")
+}
+// updater.ts starts the session script only as the effect the flow asked for, and does not reach into the flow's decisions.
+if ([...codeOnly.matchAll(/this\.startLinuxSession\(/g)].length !== 1 || !/case'start-session':\{constproblem=this\.startLinuxSession\(effect\.relaunch\)/.test(codeOnly)) {
+  failures.push("updater.ts: startLinuxSession() may only be called from the flow's 'start-session' effect")
+}
+
 if (failures.length > 0) {
   console.error('Updater guards failed:\n' + failures.map((f) => `  - ${f}`).join('\n'))
   process.exit(1)
