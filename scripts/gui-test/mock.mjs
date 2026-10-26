@@ -234,6 +234,14 @@ function backupPlan(s, body) {
   if (!plan.error && plan.type === 'temporary' && recentTemporaryTakes(s) >= cfg.temporaryLimit) return { error: 'At most two temporary backups may be taken of a server in any seven day period.', temporaryQuotaExceeded: true }
   return plan
 }
+function temporaryQuotaError(field) {
+  const reason = 'Temporary backup limit of 2 per 7 day period has been reached.'
+  return {
+    type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
+    title: 'One or more validation errors occurred', status: 400,
+    errors: { [field]: [reason] }, message: `${field}: ${reason}`
+  }
+}
 function planBackup(s, body) {
   const list = backupsFor(s), strategy = body.replacement_strategy
   const replaceable = (b) => !b.backup_info.locked && !isAttached(b.id)
@@ -418,18 +426,12 @@ async function handleApi(req, res, u, body) {
     if (sub === '/actions' && m === 'POST') {
       if (body?.type === 'take_backup') {
         const plan = backupPlan(s, body)
-        if (plan.temporaryQuotaExceeded) {
-          const reason = 'Temporary backup limit of 2 per 7 day period has been reached.'
-          return json(res, 400, {
-            type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
-            title: 'One or more validation errors occurred', status: 400,
-            errors: { backup_type: [reason] }, message: `backup_type: ${reason}`
-          })
-        }
+        if (plan.temporaryQuotaExceeded) return json(res, 400, temporaryQuotaError('backup_type'))
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'resize' && body.pre_action_backup) {
         const plan = backupPlan(s, body.pre_action_backup)
+        if (plan.temporaryQuotaExceeded) return json(res, 400, temporaryQuotaError('pre_action_backup.backup_type'))
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })
