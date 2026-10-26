@@ -5,6 +5,13 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.35] - 2026-10-27
+
+**A refused request shows the reason, not just the summary**
+
+### Fixed
+- **When BinaryLane refuses a request, the reason it gave is shown** (#325, #318). A validation refusal can carry a generic summary and the useful reason under the field it concerns, and BLDesk showed only the summary: a backup refused for want of a free slot read "Validation of the request failed." and nothing more. It now reads the summary and then the reason, as `backup_type: There are no free Temporary slots.`, unless the summary already says it. The Take Backup form's failure card, the Download button's card and a template's firewall step built their own text and could print the raw response body; they now use the same wording as the rest of the app, and a body of an unexpected shape reads as a plain failure rather than `[object Object]`.
+
 ## [1.0.62-beta.34] - 2026-10-27
 
 **Android no longer resends a write when the answer is lost**
