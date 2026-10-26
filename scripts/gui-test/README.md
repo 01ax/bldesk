@@ -67,6 +67,63 @@ Not app bugs: usage graphs are synthetic (CPU can exceed 100% on multi-vCPU serv
 
 ## Android
 
+### Native HTTP Replay
+
+`http-retry-fixture.mjs` counts handler executions and can lose the answer
+before JavaScript receives it. Use only an isolated Android fixture build and
+fictitious data, never a live account. Start the loopback fixture:
+
+```sh
+node scripts/gui-test/http-retry-fixture.mjs --port 8446
+curl -X POST http://127.0.0.1:8446/__fault/config -d '{"id":"warm-loss","drop":"first","when":"after","close":"fin"}'
+```
+
+Make the fixture reachable using the Android setup below (`adb reverse
+tcp:8446 tcp:8446` for a physical connection). In that debug WebView, warm the
+connection and then call the native plugin once:
+
+```js
+const base = 'http://127.0.0.1:8446'
+await Capacitor.Plugins.CapacitorHttp.request({ url: `${base}/warm`, method: 'GET' })
+await Capacitor.Plugins.CapacitorHttp.request({
+  url: `${base}/probe?id=warm-loss`, method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, data: { fixture: true }
+})
+```
+
+Read `GET /__fault/state` from the host: a patched write has one request and
+one execution, while the lost response rejects the native call. The unpatched
+warm path can make two executions and resolve successfully. `when: before`
+drops the request before the fixture executes it; `drop: always` loses every
+answer; `close: rst` resets plain HTTP (and abruptly closes HTTPS).
+`/warm?expire=1` closes the idle connection after its answer. Each configuration
+resets its named counter. Events record connection IDs and negotiated HTTP
+versions; do not infer HTTP/2 coverage from a successful HTTPS call.
+
+Optional `--api-port PORT` forwards `/v2/` requests only to a loopback fake API.
+A configuration with `path: /v2/servers` and `method: POST` applies the same
+fault to that route, so the real form can be checked. `when: after` waits for
+the fake API response before losing it. `--cert PATH --key PATH` additionally
+starts HTTPS/HTTP/1.1 on port+2 and an HTTP/2-only TLS listener on port+3.
+HTTPS reproduction requires your own certificate/key setup: the fixture does
+not generate them or configure Android trust. Supply a loopback certificate
+valid for 127.0.0.1 and trust it only in the throwaway test build. For the
+example ports also run `adb reverse tcp:8448 tcp:8448` and, when checking
+protocol negotiation, `adb reverse tcp:8449 tcp:8449`. Production TLS settings
+must stay unchanged. `--log PATH` records fixture events and only the
+`content-length`, `transfer-encoding` and `content-type` request headers;
+authorization, cookies and other headers are excluded. See `patches/README.md`
+for the versioned fix and its limits.
+
+`status` and `responseHeaders` configure probe responses, for example a 307
+with `responseHeaders: { location: '/probe?id=target' }` (configure the target
+case too), or a 401 with a `www-authenticate` header.
+
+The fixture's six Node regressions run in `npm run test:api-errors`, without
+Android or account access.
+
+### Test Build
+
 The Android app is the same UI over Capacitor's HTTP layer, and its API address is fixed in the code, so testing it needs a throwaway build:
 
 1. `node scripts/gui-test/launch.mjs --name android --mock-port 8445 --mock-only --http`. The mock listens on the host's loopback, which the emulator reaches as `10.0.2.2`.
