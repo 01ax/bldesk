@@ -160,6 +160,16 @@ export function hasPendingChanges(rows: readonly DraftRow[]): boolean {
   return c.edited > 0 || c.removed > 0 || c.reordered
 }
 
+/**
+ * Whether a draft still says anything about `rules`, the server's rules as last read. A draft with changes waiting does, and is
+ * judged against them elsewhere (`sameRules`). One with none is only the text of the cells, which may differ from the rules in layout
+ * alone: a line break just typed, a space before the next word. That text is kept while it was typed against these rules, so that the
+ * cell does not take it back, and let go once the rules have moved on, because the cells then show the new rules.
+ */
+export function draftApplies(draft: { base: readonly FwRule[]; rows: readonly DraftRow[] }, rules: readonly FwRule[]): boolean {
+  return hasPendingChanges(draft.rows) || sameRules(draft.base, rules)
+}
+
 /** "2 rules edited, 1 removed, order changed". */
 export function describePending(c: PendingChanges): string {
   const parts: string[] = []

@@ -1,5 +1,5 @@
 import { HelpLink } from '../ui/HelpLink'
-import React, { useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Shield,
   Plus,
@@ -15,14 +15,14 @@ import {
   RefreshCw
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { apiFailure, readFirewallRules, useFirewallRules, useShowFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
+import { apiFailure, fetchFirewallRules, readFirewallRules, useFirewallRules, useShowFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import type { FwRule } from '../../lib/firewallMatrix'
-import { describePending, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, type DraftRow } from '../../lib/firewallDraft'
+import { describePending, draftApplies, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, type DraftRow } from '../../lib/firewallDraft'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
 import { FirewallRulesEditor } from './FirewallRulesEditor'
@@ -52,6 +52,12 @@ interface Draft {
  * does not lose them. Nothing in here is ever written by itself: it is only what the rows show until Save changes.
  */
 let unsavedDrafts: Record<number, Draft> = {}
+
+/**
+ * The edits of a save BinaryLane has accepted and not yet applied, by the id of the action that carries them. If that action then
+ * fails the rules are as they were, so the edits are put back on screen instead of being lost with the table going back to the old rules.
+ */
+let sentDrafts: Record<number, { serverId: number; draft: Draft }> = {}
 
 export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initialServerId, profileId, servers }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -121,7 +127,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       (t.state === 'running' || t.state === 'awaiting-interaction' || t.state === 'blocked-by-invoice')
   )
   // The edits not yet saved for this server, if any. Until the first edit the rows are just the saved rules.
-  const draft = activeServerId != null ? drafts[activeServerId] : undefined
+  const held = activeServerId != null ? drafts[activeServerId] : undefined
+  // A draft is kept while it has changes, and also while it only holds what was typed against these rules: a line break or a trailing space
+  // says nothing new, but the cell must not take it back as it is typed.
+  const draft = held && draftApplies(held, currentRules) ? held : undefined
   const savedRows = useMemo(() => draftFromRules(currentRules), [firewallQuery.data])
   const rows = draft?.rows ?? savedRows
   const pending = !!draft && hasPendingChanges(draft.rows)
@@ -255,28 +264,59 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     }
   }
 
-  // The rows changed in the table. Back to what the server has means nothing is pending.
+  // The rows changed in the table. Back to what the server has means nothing is pending, but the cells keep what was typed, so a separator
+  // typed on the way to the next value (a line break, a space) is not taken back.
   const editRows = (next: DraftRow[]) => {
     if (activeServerId == null) return
-    if (!hasPendingChanges(next)) setDraftFor(activeServerId, null)
-    else setDraftFor(activeServerId, { base: draft?.base ?? currentRules, rows: next })
+    setDraftFor(activeServerId, { base: draft?.base ?? currentRules, rows: next })
   }
 
   const discardDraft = () => {
     if (activeServerId != null) setDraftFor(activeServerId, null)
   }
 
+  // Read the server's rules now and say whether they are still the ones the edits began from. What is on screen can be old: nothing reads
+  // them again by itself, so a change made from another client, or another app, is not in it. Saving writes the whole list, and would put
+  // the old rules back over that change. When the rules cannot be read, or have moved, nothing is sent, the reason is shown, and the edits
+  // stay as they are.
+  const rulesUnchanged = async (serverId: number, base: FwRule[], moment: string): Promise<FwRule[] | null> => {
+    let fresh: FwRule[]
+    try {
+      fresh = await fetchFirewallRules(client!, serverId)
+    } catch (err: any) {
+      notifyFailure("Couldn't save the firewall changes", err, {
+        note: `Saving writes the whole list back, so the server's current rules are read ${moment}, and they could not be read. Nothing was sent, and your changes are still here.`
+      })
+      return null
+    }
+    if (!sameRules(base, fresh)) {
+      // Showing them marks the edits as made against rules that have changed, which is what the bar then says.
+      await showFirewallRules(fresh)
+      notifyFailure("Couldn't save the firewall changes", "The server's rules changed after you started editing.", {
+        note: 'Nothing was sent, and your changes are still here. Discard them to load the current rules, then make them again.'
+      })
+      return null
+    }
+    return fresh
+  }
+
   // Save the edits. Nothing has been sent until here: the whole list is written back after one confirmation that shows it as
-  // it will be, and one History entry records it.
+  // it will be, and one History entry records it. The server's rules are read before the confirmation, so it shows the list that
+  // will be replaced, and again once it is confirmed, because a change can be made while it is open. A read just before the write
+  // narrows the window; it is not an atomic check, which the API does not offer.
   const handleSaveDraft = async () => {
-    if (!activeServerId || !draft || !canSave) return
+    if (!client || !activeServerId || !draft || !canSave) return
     setSaving(true)
     try {
+      const serverId = activeServerId
+      const base = draft.base
       const after = rulesToWrite(draft.rows)
       const counts = pendingChanges(draft.rows)
       // Saving with every rule removed leaves no rules, which is Disable firewall, and it is confirmed as strictly.
       const leavesNone = after.length === 0
       const name = activeServer?.name || String(activeServerId)
+      const before = await rulesUnchanged(serverId, base, 'before it is confirmed')
+      if (!before) return
       const c = await confirmAction({
         title: 'Save firewall rule changes',
         target: fwTarget(),
@@ -286,15 +326,21 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         severity: leavesNone ? 'irreversible' : counts.removed > 0 ? 'destructive' : 'normal',
         helpSlug: leavesNone ? 'firewall#disable-firewall' : 'firewall#edit-reorder-and-remove-rules',
         notes: leavesNone ? ['Export the rules first if you may want them back — there is no undo on the BinaryLane side.'] : undefined,
-        diff: diffLines(currentRules.map(describeFirewallRule), after.map(describeFirewallRule)),
+        diff: diffLines(before.map(describeFirewallRule), after.map(describeFirewallRule)),
         confirmLabel: 'Save changes'
       })
       if (!c.ok) return
+      if (!(await rulesUnchanged(serverId, base, 'again once it is confirmed'))) {
+        void updateChange(c.changeId, { outcome: 'failed', detail: "Not sent: the server's rules could not be confirmed unchanged since the edits began." })
+        return
+      }
       try {
-        await finishFirewall(c.changeId, updateFirewall.mutateAsync(after))
+        const action = await finishFirewall(c.changeId, updateFirewall.mutateAsync(after))
+        // Accepted is not applied: if the action then fails, the edits come back (see the effect on the tracked actions).
+        if (action?.id != null) sentDrafts = { ...sentDrafts, [action.id]: { serverId, draft } }
         // The write lands a few seconds from now; until then a read would show the edits undone.
         await showFirewallRules(after)
-        setDraftFor(activeServerId, null)
+        setDraftFor(serverId, null)
         window.bldeskApi?.sendNotification?.({
           title: 'Firewall Updated',
           body: `Saved the rule changes on ${name}.`
@@ -307,6 +353,19 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       setSaving(false)
     }
   }
+
+  // A save that BinaryLane accepted and then failed to apply left the rules as they were: the edits come back as unsaved changes, so a
+  // failure that happens after the table has moved on costs nothing the person typed. A save that completed no longer needs them.
+  // An action that was lost track of is left alone: whether it landed is not known, and the rules are read again.
+  useEffect(() => {
+    for (const t of tracked) {
+      const sent = sentDrafts[t.actionId]
+      if (!sent || (t.state !== 'errored' && t.state !== 'completed')) continue
+      sentDrafts = { ...sentDrafts }
+      delete sentDrafts[t.actionId]
+      if (t.state === 'errored' && !unsavedDrafts[sent.serverId]) setDraftFor(sent.serverId, sent.draft)
+    }
+  }, [tracked])
 
   // Handle Disable / Flush Firewall
   const handleFlushFirewall = async () => {
@@ -490,6 +549,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             <select
               value={activeServerId || ''}
               onChange={(e) => setSelectedServerId(Number(e.target.value))}
+              // The save in progress is for this server: the write is made for whichever one is chosen when it goes out.
+              disabled={saving}
               className="bg-transparent text-xs text-[#212529] dark:text-white focus:outline-none cursor-pointer max-w-[160px]"
             >
               {servers.map((s) => (
@@ -550,6 +611,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           servers={servers}
           profileId={profileId}
           onSelectServer={(id) => {
+            if (saving) return
             setSelectedServerId(id)
             setView('server')
           }}

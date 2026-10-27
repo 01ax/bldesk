@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   describePending,
+  draftApplies,
   draftFromRules,
   dropGapAt,
   edgePull,
@@ -316,4 +317,19 @@ test('the scroll speed starts slow, rises the longer the rule is held at the edg
   assert.ok(edgeScrollSpeed(1, 1) > edgeScrollSpeed(1, 0.5), 'nearer the edge is faster')
   assert.ok(edgeScrollSpeed(0, 0) > 0, 'once in the zone it always moves')
   assert.equal(edgeScrollSpeed(-3, 1), edgeScrollSpeed(0, 1), 'time never runs backwards')
+})
+
+test('a draft that only holds typed layout is kept against the rules it was typed against, and let go once they move', () => {
+  const rules = [rule('accept', 'tcp', ['22'], { description: 'Operations SSH' })]
+  const rows = draftFromRules(rules)
+  // "Operations SSH" and a space: the next word has not been typed yet, and the rule has not changed
+  const typing = rows.map((r) => ({ ...r, description: 'Operations SSH ', sources: '0.0.0.0/0\n' }))
+  assert.equal(hasPendingChanges(typing), false, 'layout alone is not a change')
+  assert.equal(draftApplies({ base: rules, rows: typing }, rules), true, 'but it is kept, so the cell does not take the space back')
+  assert.equal(draftApplies({ base: rules, rows: typing }, [rule('drop', 'tcp', ['22'], { description: 'Operations SSH' })]), false, 'the rules moved on: the cells show them')
+  // with changes waiting it is kept whatever the rules say: whether they can still be saved over is decided elsewhere
+  const edited = rows.map((r) => ({ ...r, description: 'Operations SSH updated' }))
+  assert.equal(draftApplies({ base: rules, rows: edited }, [rule('drop', 'tcp', ['22'])]), true)
+  assert.equal(ruleOfRow({ ...typing[0] }).description, 'Operations SSH', 'and the layout is not written')
+  assert.equal(rulesToWrite(typing)[0], rules[0], 'a rule that was only typed in layout is written as it came')
 })

@@ -77,7 +77,13 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
   const latest = useRef({ rows, onChange })
   latest.current = { rows, onChange }
 
-  const middles = () => rowEls.current.map((el) => (el ? el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2 : 0))
+  // The middle of every row now in the list, read from the page itself. A list kept in a ref grows with the rows and keeps its length when
+  // some go, so after a rule was removed and saved the places that no longer held a row counted as a row at the top of the page.
+  const middles = () =>
+    Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-rule-row]') ?? []).map((el) => {
+      const r = el.getBoundingClientRect()
+      return r.top + r.height / 2
+    })
   const endTouch = () => {
     const t = touch.current
     if (t?.timer != null) window.clearTimeout(t.timer)
