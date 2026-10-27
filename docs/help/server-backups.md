@@ -23,5 +23,8 @@ Take Backup can replace an existing backup when the slot is full, and asks first
 ## Backup schedule
 The Backup Schedule card says when this server's scheduled backups run, and Change Schedule changes it. See [Backup schedule](help:backups#backup-schedule).
 
+## Import Image
+Import Image downloads an image from an HTTP or HTTPS URL into this server's backup storage. It does not restore or attach it. See [Import Image](help:backups#import-image) for slot selection, replacement, confirmation and progress.
+
 ## Retention
 Use [Change Plan](help:server-change-plan) for purchased backup counts and offsite options. Automatic backup retention is controlled by BinaryLane, not by keeping BLDesk running.

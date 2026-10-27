@@ -1,11 +1,11 @@
 ---
 title: Backups
-summary: Take, attach and restore images while keeping the target clear.
-keywords: [backup, restore, retention, schedule, image, attach, offsite]
+summary: Take, import, attach and restore images while keeping the target clear.
+keywords: [backup, restore, retention, schedule, image, attach, offsite, import, upload, url, iso]
 ---
 
 # Backups
-Choose a server to inspect its images, take a backup, manage automatic backups, attach an image or restore its disk. Inside Server Details the same view is pinned to that server.
+Choose a server to inspect its images, take a backup, import an image from a URL, manage automatic backups, attach an image or restore its disk. Inside Server Details the same view is pinned to that server.
 
 ## Choose the right operation
 Take Backup creates an image; Restore overwrites the server's current disk. Attach exposes an image as a read-only secondary drive for file recovery. Check the image date and target before either operation.
@@ -25,7 +25,7 @@ For temporary backups, the Take Backup dialog retains conditional wording becaus
 
 “If this server has no free temporary slot, this backup replaces its oldest temporary backup that is not locked or attached. The replaced backup will no longer be available.”
 
-The reference also limits how long a temporary backup lives and how often one can be taken: a temporary backup is retained for a maximum of 48 hours (seven days for an uploaded .iso image), and at most two temporary backups may be taken of a server in any seven day period. BLDesk does not upload images, so the seven-day case does not apply to a backup taken here. The slot is listed as “Temporary (kept up to 48 hours)”, and while Temporary is chosen the dialog adds under the slot: “A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.”
+The reference also limits how long a temporary backup lives and how often one can be taken: a temporary backup is retained for a maximum of 48 hours (seven days for an uploaded .iso image), and at most two temporary backups may be taken of a server in any seven day period. The seven-day lifetime is for an imported ISO, not a backup taken here. The slot is listed as “Temporary (kept up to 48 hours)”, and while Temporary is chosen the dialog adds under the slot: “A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.”
 
 An occupied temporary slot and the seven-day allowance are separate limits. In the 23 October 2026 live API check, an ordinary temporary take followed by a temporary pre-action replacement during Change Plan exhausted the allowance; the next take was refused. Replacing the held image did not reset it. See [Change Plan](help:server-change-plan) when planning a backup before a resize.
 
@@ -46,6 +46,23 @@ For a backup you chose under “Replace Existing Image”, it says:
 “Couldn't read this server's backups, so BLDesk can't check whether the backup you chose can still be replaced. If it can, this backup replaces it and the replaced backup will no longer be available.”
 
 The row “Backup you chose” gives its name, ID, slot and date as the list on this page showed them. The button is red and History records the entry as destructive. Cancel sends nothing; confirming sends the request. When the list on this page cannot be read, it says “Couldn't read this server's backups.” with a Retry button, instead of “No Backups Found”.
+
+## Import Image
+Choose Import Image to ask BinaryLane to download an image from an HTTP or HTTPS URL into this server's backup storage. This is a URL import, not a file picker. Importing does not restore the disk or attach the image; those are separate actions once the import finishes.
+
+Enter the image URL and, optionally, a label of up to 250 characters. The default strategy, “Use a free slot only”, never replaces a held image. Choose Temporary or a scheduled slot type enabled in the server's current retention. Temporary imports are kept for up to 48 hours, or up to seven days for an uploaded .iso image. The Take Backup frequency limit is not stated for imports in UploadImageRequest; BLDesk does not impose it on imports.
+
+“Replace oldest if full” and “Replace newest if full” use a free slot first. If that type is full, BinaryLane replaces its oldest or newest unlocked, unattached image. “Replace a specific image” instead asks for one of the server's replaceable images and uses that image's slot type. Download anything you need to keep before choosing replacement.
+
+BLDesk refreshes the backup list and server before asking for confirmation, allowing up to 20 seconds for each read. If a read fails or times out, the slot type was removed, no free slot exists under the default strategy, or a selected replacement is no longer available, it reports a failure and sends no import. The form retains your values. Cancel on the confirmation also sends nothing. Automatic replacement names a current candidate only when every eligible candidate has a valid creation date; that candidate can change before BinaryLane processes the request.
+
+The confirmation title and button are “Import Image”. The free-slot-only confirmation says:
+
+“Downloads an image into a free backup slot without replacing an existing image. This does not restore or attach the imported image.”
+
+Replacement strategies use a red confirmation button and warn that the replaced image will no longer be available. Review the server, source, slot, strategy and label. BLDesk sends the canonical HTTP/HTTPS URL shown in the source row, with any credentials, query string and fragment retained for the request but omitted from that row and its History copy. A pathname can itself contain access details. Messages supplied by BinaryLane may also repeat the submitted URL; this omission is not a guarantee that every error, progress message or notification is free of access details.
+
+Follow the returned action in notifications and [History](help:history). A 4xx API refusal records the failure and keeps the form open. A server-side HTTP 5xx response, a lost or unreadable POST response, or acceptance without an action to follow is an unknown outcome: the form closes and History stays Submitted. Check the server's backups and actions before trying again, because the import may already have started and retrying a replacement could remove another image.
 
 ## Worked example
 Suppose you want to restore example image before-upgrade, ID 123, to the selected server. Take another backup first if you may need its current state. Choose Restore on the intended image.

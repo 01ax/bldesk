@@ -11,10 +11,12 @@ import {
   Disc,
   Clock,
   Download,
+  Upload,
   RefreshCw
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../ui/Modal'
+import { ImportImageModal } from './ImportImageModal'
 import { BinaryLaneClient } from '../../api/client'
 import {
   readServerBackups,
@@ -120,6 +122,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
   // Form & Action states
   const [isTakingBackup, setIsTakingBackup] = useState(false)
+  const [isImportingImage, setIsImportingImage] = useState(false)
   const [backupLabel, setBackupLabel] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('temporary')
   const [actionProcessingId, setActionProcessingId] = useState<number | null>(null)
@@ -140,6 +143,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     setSelectedSlot('temporary')
     setBackupLabel('')
     setIsChangingSchedule(false)
+    setIsImportingImage(false)
   }, [activeServerId])
   // And it only counts while the form can still show it (the backup may have been deleted, or the plan changed).
   const slotOptions = [...availableBackupSlots(activeServer?.selected_size_options), ...backups.map((b) => `replace:${b.id}`)] as string[]
@@ -551,6 +555,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             {takeBackupMutation.isPending || taking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             <span>Take Backup</span>
           </button>
+          <button
+            onClick={() => setIsImportingImage(true)}
+            disabled={!activeServer || !client}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-[#017cb6] border border-[#017cb6] rounded hover:bg-[#017cb6]/10 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Import Image</span>
+          </button>
           <HelpLink slug="backups" />
         </div>
       </div>
@@ -797,6 +809,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           </div>
         )}
       </div>
+
+      {isImportingImage && client && activeServer && (
+        <ImportImageModal key={activeServerId} client={client} server={activeServer} backups={backups} onClose={() => setIsImportingImage(false)} />
+      )}
 
       {/* Backup schedule dialog */}
       {isChangingSchedule && schedule && draft && (
