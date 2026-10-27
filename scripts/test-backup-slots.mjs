@@ -1,9 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { availableBackupSlots, freeBackupSlots, replaceableBackups } from '../src/renderer/src/lib/backupSlots.ts'
+import { availableBackupSlots, freeBackupSlots, replaceableBackups, isIsoBackup } from '../src/renderer/src/lib/backupSlots.ts'
 
 const none = { daily_backups: 0, weekly_backups: 0, monthly_backups: 0 }
 const image = (id, type) => ({ id, backup_info: { type } })
+
+test('only an explicit ISO flag restricts an image to attachment', () => {
+  assert.equal(isIsoBackup({ backup_info: { iso: true } }), true)
+  for (const value of [undefined, null, {}, { backup_info: null }, { backup_info: {} }, { backup_info: { iso: false } }, { backup_info: { iso: null } }]) {
+    assert.equal(isIsoBackup(value), false)
+  }
+})
 
 test('a server without scheduled backups can use its empty temporary slot', () => {
   assert.deepEqual(availableBackupSlots(none), ['temporary'])

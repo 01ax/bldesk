@@ -28,7 +28,7 @@
     "test:deeplink": "node --experimental-strip-types --no-warnings --test scripts/test-deeplink.mjs",
     "test:server-tags": "node --experimental-strip-types --no-warnings --test scripts/test-server-tags.mjs",
     "test:backup-schedule": "node --experimental-strip-types --no-warnings --test scripts/test-backup-schedule.mjs",
-    "test:backup-slots": "node --experimental-strip-types --no-warnings --test scripts/test-backup-slots.mjs",
+    "test:backup-slots": "node --experimental-strip-types --no-warnings --test scripts/test-backup-slots.mjs scripts/test-backup-import.mjs",
     "test:backup-retention": "node --experimental-strip-types --no-warnings --test scripts/test-backup-retention.mjs",
     "test:create-hostname": "node --experimental-strip-types --no-warnings --test scripts/test-create-hostname.mjs",
     "test:terminal-launchers": "node --experimental-strip-types --no-warnings --test scripts/test-terminal-launchers.mjs",

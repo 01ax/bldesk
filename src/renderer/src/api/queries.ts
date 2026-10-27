@@ -989,6 +989,25 @@ export function useDeleteSshKeyMutation(client: BinaryLaneClient | null) {
 
 // --- BACKUPS ---
 
+export function useImportImageMutation(client: BinaryLaneClient | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ serverId, body }: { serverId: number; body: components['schemas']['UploadImageRequest'] }) => {
+      if (!client) throw new Error('No client')
+      const { data, error, response } = await client.POST('/v2/servers/{server_id}/backups', {
+        params: { path: { server_id: serverId } }, body
+      })
+      if (error || !response.ok) throw apiFailure(error, response)
+      return data?.action
+    },
+    onSuccess: (_, { serverId }) => {
+      queryClient.invalidateQueries({ queryKey: ['serverBackups', serverId] })
+      queryClient.invalidateQueries({ queryKey: ['serverActions', serverId] })
+      queryClient.invalidateQueries({ queryKey: ['servers'] })
+    }
+  })
+}
+
 type ServerBackup = NonNullable<components['schemas']['BackupsResponse']['backups']>[number]
 
 /**
