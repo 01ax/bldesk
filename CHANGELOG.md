@@ -5,6 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.36] - 2026-10-27
+
+**The top bar fits a phone, and two notes stop lying**
+
+### Fixed
+- **The top bar fits phone widths** (#339, #293). Its right-hand controls could not shrink, so below about 400 px the account chip and the key button ran off the right edge. Below 640 px the bar now lets its controls drop to a second row when they cannot fit on one, below 420 px the padding tightens, and below 400 px the logo and the shield icon make way for the account name. The Ctrl+K hint shows from 768 px, so the Settings button is no longer cut off at exactly 640 px.
+- **A command review in the palette no longer shows an earlier backup's replacement warning** (#340, #330). After a backup review that named the backup a take would replace, the review of another command, such as a reboot of a different server, kept that amber note and that server's backup. The note is now cleared whenever the palette returns to its input stage, so a review only ever shows what its own check found.
+- **On Android and in the browser, a notification setting saved during a storage outage stays saved** (#338). The settings store keeps a copy in the app preferences and one in localStorage, and a load takes the newer. A save made while the preferences could not be read could tie with the copy they held, and when they recovered the older copy won: notifications switched off came back on. A save's version now also carries the time, so a save made during an outage outranks anything the unreadable store holds once the clock has moved on.
+
 ## [1.0.62-beta.35] - 2026-10-27
 
 **A refused request shows the reason, not just the summary**
