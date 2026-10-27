@@ -548,6 +548,20 @@ export function useUpdateFirewallRulesMutation(client: BinaryLaneClient | null, 
   })
 }
 
+/**
+ * Show `rules` as a server's firewall rules at once. BinaryLane applies a write when its action completes, a few seconds
+ * after it is accepted, and a read before then gives back the rules from before it; the caller of a write that was
+ * accepted uses this so the list does not show the change undone. The read made when the action completes (the action
+ * tracker asks for one) says what the server really has.
+ */
+export function useShowFirewallRules(serverId: number | null) {
+  const queryClient = useQueryClient()
+  return async (rules: FwRule[]) => {
+    await queryClient.cancelQueries({ queryKey: ['firewallRules', serverId] })
+    queryClient.setQueryData(['firewallRules', serverId], rules)
+  }
+}
+
 // --- LOAD BALANCERS ---
 
 export function useLoadBalancers(client: BinaryLaneClient | null) {

@@ -1,15 +1,12 @@
 import { HelpLink } from '../ui/HelpLink'
-import React, { useState, useRef } from 'react'
+import React, { useMemo, useState, useRef } from 'react'
 import {
   Shield,
   Plus,
-  Trash2,
   AlertCircle,
   Loader2,
   Server,
   Unlock,
-  ChevronUp,
-  ChevronDown,
   Download,
   Upload,
   Share2,
@@ -18,15 +15,17 @@ import {
   RefreshCw
 } from 'lucide-react'
 import { BinaryLaneClient } from '../../api/client'
-import { apiFailure, readFirewallRules, useFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
+import { apiFailure, readFirewallRules, useFirewallRules, useShowFirewallRules, useUpdateFirewallRulesMutation } from '../../api/queries'
 import { useConfirm } from '../../context/ConfirmContext'
-import { recordChange, updateChange, type ChangeTarget } from '../../lib/changelog'
+import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import type { FwRule } from '../../lib/firewallMatrix'
+import { describePending, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, type DraftRow } from '../../lib/firewallDraft'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
+import { FirewallRulesEditor } from './FirewallRulesEditor'
 import { notifyFailure } from '../../lib/failures'
 
 interface FirewallManagerProps {
@@ -42,6 +41,18 @@ interface FirewallManagerProps {
   servers: any[]
 }
 
+/** A server's rules as they were when its edits were started, and the rows being edited. */
+interface Draft {
+  base: FwRule[]
+  rows: DraftRow[]
+}
+
+/**
+ * The edits that have not been saved, by server, kept for the session so that leaving the screen or choosing another server
+ * does not lose them. Nothing in here is ever written by itself: it is only what the rows show until Save changes.
+ */
+let unsavedDrafts: Record<number, Draft> = {}
+
 export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initialServerId, profileId, servers }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [view, setView] = useState<'server' | 'matrix'>('server')
@@ -55,6 +66,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
   const firewallQuery = useFirewallRules(client, activeServerId)
   const updateFirewall = useUpdateFirewallRulesMutation(client, activeServerId)
+  const showFirewallRules = useShowFirewallRules(activeServerId)
 
   // Add Rule Form States
   const [isAdding, setIsAdding] = useState(false)
@@ -64,8 +76,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [ruleSource, setRuleSource] = useState('0.0.0.0/0')
   const [ruleDescription, setRuleDescription] = useState('Allow SSH')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  // A reorder is recorded and then written; a second click in between would be built from the same list.
-  const [moving, setMoving] = useState(false)
+  // A save is confirmed and then written; a second press in between would be built from the same list.
+  const [saving, setSaving] = useState(false)
+  const [drafts, setDrafts] = useState<Record<number, Draft>>(() => unsavedDrafts)
+  const setDraftFor = (serverId: number, draft: Draft | null) => {
+    const next = { ...unsavedDrafts }
+    if (draft) next[serverId] = draft
+    else delete next[serverId]
+    unsavedDrafts = next
+    setDrafts(next)
+  }
 
   // Import / Export States
   const [isImportOpen, setIsImportOpen] = useState(false)
@@ -100,11 +120,25 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       t.resourceId === activeServerId &&
       (t.state === 'running' || t.state === 'awaiting-interaction' || t.state === 'blocked-by-invoice')
   )
+  // The edits not yet saved for this server, if any. Until the first edit the rows are just the saved rules.
+  const draft = activeServerId != null ? drafts[activeServerId] : undefined
+  const savedRows = useMemo(() => draftFromRules(currentRules), [firewallQuery.data])
+  const rows = draft?.rows ?? savedRows
+  const pending = !!draft && hasPendingChanges(draft.rows)
+  const badRows = draft ? rowsWithProblems(draft.rows) : 0
+  // The server's rules were read again after the edits were started, and they now say something else: what the edits were
+  // made against is gone, and writing them would put the old rules back over the change.
+  const stale = !!draft && firewallQuery.isSuccess && !firewallQuery.isFetching && !sameRules(draft.base, currentRules)
+  const hasEdits = (serverId: number) => !!drafts[serverId] && hasPendingChanges(drafts[serverId].rows)
   // Every save writes the whole list back, so edits are only offered while the
   // last read of this server's rules succeeded, and no write of its own is still being applied.
   // A failed read is not "no rules".
-  // Also not while the list is being read again, while one of this tab's own writes is going out, or while a reorder is.
-  const canEdit = firewallQuery.isSuccess && !firewallQuery.isFetching && !writePending && !updateFirewall.isPending && !moving
+  // Also not while the list is being read again, while one of this tab's own writes is going out, or while edits are waiting to be saved: Add Rule, Import,
+  // Clone and Disable Firewall would each write a list built without them.
+  const canEdit = firewallQuery.isSuccess && !firewallQuery.isFetching && !writePending && !updateFirewall.isPending && !pending && !saving
+  // The cells of the rows: a read that is still going does not stop typing, but a write in flight, or edits made against rules that have changed, do.
+  const rowsEditable = firewallQuery.isSuccess && !writePending && !updateFirewall.isPending && !saving && !stale
+  const canSave = pending && !stale && badRows === 0 && firewallQuery.isSuccess && !firewallQuery.isFetching && !writePending && !updateFirewall.isPending && !saving
 
   const fwTarget = (): ChangeTarget => ({ kind: 'server', id: activeServerId ?? undefined, name: activeServer?.name || String(activeServerId) })
   /** Run a rule-list write, hand the action to the tracker, and keep the change log honest. */
@@ -221,63 +255,56 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     }
   }
 
-  // Handle Move Up/Down (Re-ordering)
-  const handleMoveRule = async (index: number, direction: 'up' | 'down') => {
-    if (!activeServerId || !canEdit) return
-    const newIndex = direction === 'up' ? index - 1 : index + 1
-    if (newIndex < 0 || newIndex >= currentRules.length) return
-    setMoving(true)
-
-    const reordered = [...currentRules]
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(newIndex, 0, moved)
-
-    // Reordering changes which rule wins; worth a log line but not a dialog.
-    const changeId = await recordChange({
-      label: 'Reorder firewall rules',
-      target: fwTarget(),
-      severity: 'normal',
-      diff: diffLines(currentRules.map(describeFirewallRule), reordered.map(describeFirewallRule)),
-      source: 'ui'
-    })
-    try {
-      await finishFirewall(changeId, updateFirewall.mutateAsync(reordered))
-    } catch (err: any) {
-      notifyFailure('Reorder failed', err)
-    } finally {
-      setMoving(false)
-    }
+  // The rows changed in the table. Back to what the server has means nothing is pending.
+  const editRows = (next: DraftRow[]) => {
+    if (activeServerId == null) return
+    if (!hasPendingChanges(next)) setDraftFor(activeServerId, null)
+    else setDraftFor(activeServerId, { base: draft?.base ?? currentRules, rows: next })
   }
 
-  // Handle Delete
-  const handleDeleteRule = async (index: number) => {
-    if (!activeServerId || !canEdit) return
-    const rule = currentRules[index]
-    const filtered = currentRules.filter((_, i) => i !== index)
-    // Deleting the last rule leaves no rules, which is Disable firewall, and it is confirmed as strictly.
-    const leavesNone = filtered.length === 0
-    const c = await confirmAction({
-      title: 'Delete firewall rule',
-      target: fwTarget(),
-      summary: leavesNone
-        ? `Removes rule #${index + 1} (${rule.description || rule.action}), the last one. With no rules, BinaryLane's external firewall allows all inbound traffic to ${activeServer?.name || activeServerId}.`
-        : `Removes rule #${index + 1} (${rule.description || rule.action}) and writes the remaining rules back to the server.`,
-      severity: leavesNone ? 'irreversible' : 'destructive',
-      helpSlug: leavesNone ? 'firewall#disable-firewall' : undefined,
-      notes: leavesNone ? ['Export the rules first if you may want them back — there is no undo on the BinaryLane side.'] : undefined,
-      diff: diffLines(currentRules.map(describeFirewallRule), filtered.map(describeFirewallRule)),
-      confirmLabel: 'Delete rule'
-    })
-    if (!c.ok) return
+  const discardDraft = () => {
+    if (activeServerId != null) setDraftFor(activeServerId, null)
+  }
 
+  // Save the edits. Nothing has been sent until here: the whole list is written back after one confirmation that shows it as
+  // it will be, and one History entry records it.
+  const handleSaveDraft = async () => {
+    if (!activeServerId || !draft || !canSave) return
+    setSaving(true)
     try {
-      await finishFirewall(c.changeId, updateFirewall.mutateAsync(filtered))
-      window.bldeskApi?.sendNotification?.({
-        title: 'Firewall Rule Removed',
-        body: `Rule #${index + 1} removed.`
+      const after = rulesToWrite(draft.rows)
+      const counts = pendingChanges(draft.rows)
+      // Saving with every rule removed leaves no rules, which is Disable firewall, and it is confirmed as strictly.
+      const leavesNone = after.length === 0
+      const name = activeServer?.name || String(activeServerId)
+      const c = await confirmAction({
+        title: 'Save firewall rule changes',
+        target: fwTarget(),
+        summary: leavesNone
+          ? `Removes every rule. With no rules, BinaryLane's external firewall allows all inbound traffic to ${name}.`
+          : `${describePending(counts)}. Writes the whole rule list back to the server.`,
+        severity: leavesNone ? 'irreversible' : counts.removed > 0 ? 'destructive' : 'normal',
+        helpSlug: leavesNone ? 'firewall#disable-firewall' : 'firewall#edit-reorder-and-remove-rules',
+        notes: leavesNone ? ['Export the rules first if you may want them back — there is no undo on the BinaryLane side.'] : undefined,
+        diff: diffLines(currentRules.map(describeFirewallRule), after.map(describeFirewallRule)),
+        confirmLabel: 'Save changes'
       })
-    } catch (err: any) {
-      notifyFailure('Failed to delete rule', err)
+      if (!c.ok) return
+      try {
+        await finishFirewall(c.changeId, updateFirewall.mutateAsync(after))
+        // The write lands a few seconds from now; until then a read would show the edits undone.
+        await showFirewallRules(after)
+        setDraftFor(activeServerId, null)
+        window.bldeskApi?.sendNotification?.({
+          title: 'Firewall Updated',
+          body: `Saved the rule changes on ${name}.`
+        })
+      } catch (err: any) {
+        // The edits stay on screen, so they can be corrected or tried again.
+        notifyFailure("Couldn't save the firewall changes", err)
+      }
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -467,7 +494,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             >
               {servers.map((s) => (
                 <option key={s.id} value={s.id} className="bg-white dark:bg-[#2b3035]">
-                  {s.name} (#{s.id})
+                  {s.name} (#{s.id}){hasEdits(s.id) ? ' · unsaved changes' : ''}
                 </option>
               ))}
             </select>
@@ -475,7 +502,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
           <button
             onClick={openClone}
-            disabled={!activeServerId || currentRules.length === 0 || writePending}
+            disabled={!activeServerId || currentRules.length === 0 || writePending || pending}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-40"
             title="Clone rules to another server"
           >
@@ -495,7 +522,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
           <button
             onClick={handleExportJson}
-            disabled={currentRules.length === 0}
+            disabled={currentRules.length === 0 || pending}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-40"
             title="Export rules as JSON file"
           >
@@ -666,8 +693,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
       {/* Rules Evaluation List */}
       <div className="bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded-lg p-5 space-y-4 flex-1 shadow-sm">
-        <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+          <div className="flex-1 min-w-[14rem]">
             <h3 className="text-sm font-bold text-[#212529] dark:text-white flex flex-wrap items-baseline gap-x-2 min-w-0">
               <span className="min-w-0 break-words">
                 Evaluated Rules for {activeServer?.name || `Server #${activeServerId}`}
@@ -683,13 +710,19 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
               Rules are evaluated sequentially from top to bottom. The first matching rule applies.
             </p>
+            <p className="text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5 [@media(pointer:coarse)]:hidden">
+              Edit a rule in place, drag it anywhere outside its fields or use the arrows to move it, and remove it with its remove button. Nothing is applied until you press Save changes.
+            </p>
+            <p className="hidden [@media(pointer:coarse)]:block text-[11px] text-[#6c757d] dark:text-slate-400 mt-0.5">
+              Edit a rule in place. To move one, touch and hold it outside its fields until it lifts, then drag it, or use the arrows. Remove it with its remove button. Nothing is applied until you press Save changes.
+            </p>
           </div>
 
           {currentRules.length > 0 && (
             <button
               onClick={handleFlushFirewall}
               disabled={updateFirewall.isPending || !canEdit}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition border border-rose-300 dark:border-rose-800 disabled:opacity-40"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition border border-rose-300 dark:border-rose-800 disabled:opacity-40"
             >
               <Unlock className="w-3.5 h-3.5" />
               <span>Disable Firewall</span>
@@ -754,96 +787,53 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </div>
         )}
 
-        {!firewallQuery.isLoading && currentRules.length > 0 && (
-          <div className="space-y-2">
-            {currentRules.map((rule, idx) => {
-              const isAccept = rule.action === 'accept'
-              const ports = rule.destination_ports?.join(', ') || 'ALL PORTS'
-              const sources = rule.source_addresses?.join(', ') || '0.0.0.0/0'
-
-              return (
-                <div
-                  key={idx}
-                  /* Wraps on a phone. The row is index, action, protocol, port,
-                     source and the controls; at 412px that is ~140px more than
-                     fits, and without wrapping the controls simply spilled out
-                     of the card with no way to reach them. */
-                  className="p-3 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs hover:border-[#017cb6] transition"
+        {(pending || stale) && (
+          <div
+            role={stale ? 'alert' : 'status'}
+            className={`sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 p-3 rounded-lg border text-xs shadow-sm ${
+              stale
+                ? 'border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200'
+                : 'border-[#017cb6]/40 bg-sky-50 dark:bg-[#10242f] text-[#212529] dark:text-slate-100'
+            }`}
+          >
+            {stale ? (
+              <p className="flex-1 min-w-[12rem]">
+                This server's rules changed after you started editing. Discard your changes to load the current rules, then make them again.
+              </p>
+            ) : (
+              <div className="flex-1 min-w-[12rem]">
+                <span className="font-semibold">Unsaved changes</span>
+                <span className="text-[#495057] dark:text-slate-300"> · {draft ? describePending(pendingChanges(draft.rows)) : ''}</span>
+                {badRows > 0 && (
+                  <p className="mt-0.5 text-rose-600 dark:text-rose-400">Fix the rules marked below before saving.</p>
+                )}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={discardDraft}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition disabled:opacity-40"
+              >
+                Discard
+              </button>
+              {!stale && (
+                <button
+                  type="button"
+                  onClick={() => void handleSaveDraft()}
+                  disabled={!canSave}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-40 flex items-center gap-1.5"
                 >
-                  <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-                    {/* Index & Reordering */}
-                    <div className="flex items-center gap-1 bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] px-1.5 py-0.5 rounded">
-                      <span className="font-mono text-[10px] text-[#6c757d] font-bold w-4 text-center">
-                        {idx + 1}
-                      </span>
-                      <div className="flex flex-col">
-                        <button
-                          onClick={() => handleMoveRule(idx, 'up')}
-                          disabled={idx === 0 || !canEdit}
-                          className="text-[#6c757d] hover:text-[#017cb6] disabled:opacity-20 transition"
-                          title="Move Rule Up"
-                        >
-                          <ChevronUp className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => handleMoveRule(idx, 'down')}
-                          disabled={idx === currentRules.length - 1 || !canEdit}
-                          className="text-[#6c757d] hover:text-[#017cb6] disabled:opacity-20 transition"
-                          title="Move Rule Down"
-                        >
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Action Badge */}
-                    <span
-                      className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] tracking-wider uppercase ${
-                        isAccept
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                          : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30'
-                      }`}
-                    >
-                      {rule.action}
-                    </span>
-
-                    {/* Protocol & Ports */}
-                    <span className="px-2 py-0.5 rounded bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] text-[#017cb6] font-mono text-[11px] uppercase font-semibold">
-                      {rule.protocol}
-                    </span>
-
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-[#212529] dark:text-white font-mono text-xs">
-                          {ports}
-                        </span>
-                        <span className="text-[#ced4da]">•</span>
-                        <span className="text-[#6c757d] dark:text-slate-400 font-mono text-[11px]">
-                          from {sources}
-                        </span>
-                      </div>
-                      {rule.description && (
-                        <div className="text-[11px] text-[#6c757d] dark:text-slate-400 font-medium">
-                          {rule.description}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <button
-                    onClick={() => handleDeleteRule(idx)}
-                    disabled={!canEdit}
-                    className="p-1.5 text-[#6c757d] hover:text-rose-500 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition disabled:opacity-30"
-                    title="Delete Rule"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )
-            })}
+                  {(saving || updateFirewall.isPending) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Save changes</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
+
+        {!firewallQuery.isLoading && rows.length > 0 && <FirewallRulesEditor rows={rows} editable={rowsEditable} onChange={editRows} />}
       </div>
 
       {/* Import dialog */}
