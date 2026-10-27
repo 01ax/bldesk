@@ -60,6 +60,73 @@ beforeEach(async () => {
   await request('/__mock/config', { actionMs: 15 })
 })
 
+const upload = (body, id = 9003, status = 200) => request(`/v2/servers/${id}/backups`, { url: 'https://example.com/image.img.zst', ...body }, 'POST', status)
+
+test('URL imports queue upload_image and do not assume the request label names the returned image', async () => {
+  const before = await backups(8100)
+  const queued = await upload({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Imported disk' })
+  assert.equal(queued.action.type, 'upload_image')
+  await completed(queued)
+  const held = await backups(9003)
+  assert.equal(held.length, 1)
+  assert.equal(held[0].name, 'Imported image')
+  assert.notEqual(held[0].name, 'Imported disk')
+  assert.equal(held[0].backup_info.server_id, 9003)
+  assert.deepEqual(await backups(8100), before)
+})
+
+test('URL import slot strategies none, oldest, newest and specified share protection and ownership checks', async () => {
+  await completed(await upload({ backup_type: 'temporary', replacement_strategy: 'none' }))
+  const held = await backups(9003)
+  await upload({ backup_type: 'temporary', replacement_strategy: 'none' }, 9003, 400)
+  assert.deepEqual(await backups(9003), held)
+  for (const strategy of ['oldest', 'newest']) {
+    const before = await backups(9003)
+    await completed(await upload({ backup_type: 'temporary', replacement_strategy: strategy }))
+    assert.equal((await backups(9003)).length, 1)
+    assert.notEqual((await backups(9003))[0].id, before[0].id)
+  }
+  const target = (await backups(9003))[0]
+  await completed(await upload({ replacement_strategy: 'specified', backup_id_to_replace: target.id, backup_type: target.backup_info.type, url: 'https://example.com/install.iso?download=1' }))
+  assert.equal((await backups(9003))[0].backup_info.iso, true)
+  await upload({ replacement_strategy: 'specified', backup_id_to_replace: (await backups(8100))[0].id }, 9003, 400)
+  const daily = (await backups(8100)).find((b) => b.backup_info.type === 'daily')
+  await request(`/v2/images/${daily.id}`, { locked: true }, 'PUT')
+  await upload({ replacement_strategy: 'specified', backup_id_to_replace: daily.id }, 8100, 400)
+  const temp = (await backups(9003))[0]
+  await completed(await request('/v2/servers/9003/actions', { type: 'attach_backup', image: temp.id }))
+  await upload({ replacement_strategy: 'specified', backup_id_to_replace: temp.id }, 9003, 400)
+})
+
+test('invalid URL imports and failed actions do not replace a held image', async () => {
+  const before = await backups(8100)
+  for (const url of ['', 'file:///image.img', 'ftp://example.com/disk.img']) await upload({ url, backup_type: 'temporary', replacement_strategy: 'oldest' }, 8100, 400)
+  await upload({ label: 'a'.repeat(251), backup_type: 'temporary', replacement_strategy: 'oldest' }, 8100, 400)
+  await request('/__mock/config', { actionOutcome: 'errored' })
+  await completed(await upload({ backup_type: 'temporary', replacement_strategy: 'oldest' }, 8100), 'errored')
+  assert.deepEqual(await backups(8100), before)
+})
+
+test('specified URL imports require the matching slot type and return field errors without queuing', async () => {
+  const held = await backups(8100)
+  const target = held.find((b) => b.backup_info.type === 'daily')
+  const beforeActions = (await request('/v2/servers/8100/actions')).actions
+  for (const type of [undefined, 'monthly']) {
+    const result = await upload({ replacement_strategy: 'specified', backup_id_to_replace: target.id, ...(type ? { backup_type: type } : {}) }, 8100, 400)
+    assert.equal(result.status, 400)
+    assert.ok(result.errors['backup_type, backup_id_to_replace'].some((s) => s.includes('match')))
+    assert.match(result.message, /backup_type/)
+  }
+  const badUrl = await upload({ url: 'ftp://example.com/image' }, 8100, 400)
+  assert.ok(badUrl.errors.url)
+  const badLabel = await upload({ label: 'x'.repeat(251), backup_type: 'daily', replacement_strategy: 'oldest' }, 8100, 400)
+  assert.ok(badLabel.errors.label)
+  assert.deepEqual((await request('/v2/servers/8100/actions')).actions, beforeActions)
+  assert.deepEqual(await backups(8100), held)
+  await completed(await upload({ replacement_strategy: 'specified', backup_id_to_replace: target.id, backup_type: 'daily' }, 8100))
+  assert.equal((await backups(8100)).filter((b) => b.backup_info.type === 'daily').length, 1)
+})
+
 test('offered and retired plan backup options match the schema and the public snapshot in #198', async () => {
   const offered = (await request('/v2/sizes?per_page=100')).sizes
   const retired = (await request('/v2/sizes?server_id=9002&per_page=100')).sizes
@@ -278,9 +345,13 @@ test('newest replaces the newest backup when its scheduled slots are full', asyn
   assert.equal(list.filter((b) => b.backup_info.type === 'weekly').length, 2)
 })
 
-test('specified inherits its slot type without backup_type, rejects another server\'s ID', async () => {
+test('a specified take requires its matching slot type and rejects another server\'s ID', async () => {
   const before = await backups(), target = before.find((b) => b.backup_info.type === 'monthly')
-  await completed(await take({ replacement_strategy: 'specified', backup_id_to_replace: target.id, label: 'Named replacement' }))
+  for (const backup_type of [undefined, 'temporary']) {
+    await take({ replacement_strategy: 'specified', backup_id_to_replace: target.id, backup_type }, 8100, 400)
+    assert.deepEqual(await backups(), before)
+  }
+  await completed(await take({ replacement_strategy: 'specified', backup_id_to_replace: target.id, backup_type: 'monthly', label: 'Named replacement' }))
   const list = await backups()
   assert.equal(list.length, before.length)
   assert.ok(!list.some((b) => b.id === target.id))

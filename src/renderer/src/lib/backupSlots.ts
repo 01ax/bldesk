@@ -42,7 +42,7 @@ export function availableBackupSlots(
 
 /**
  * What the API reference says about temporary backups, from BackupSlot ("only retained for a maximum of 48 hours (seven
- * days for an uploaded .iso image)", which BLDesk never uploads) and from the Take Backup action ("At most two temporary
+ * days for an uploaded .iso image)") and from the Take Backup action ("At most two temporary
  * backups may be taken of a server in any seven day period"). Shown wherever Temporary is chosen.
  */
 export const TEMPORARY_BACKUP_TERMS =
@@ -70,7 +70,14 @@ export interface ExistingBackup {
   id: number
   created_at?: string | null
   name?: string | null
-  backup_info?: { type?: string | null; locked?: boolean | null } | null
+  backup_info?: { type?: string | null; locked?: boolean | null; iso?: boolean | null } | null
+}
+
+export const ISO_IMAGE_RESTRICTION = 'ISO images can be attached, but cannot be downloaded or restored.'
+
+/** BackupInfo.iso in the public reference rules out Download and Restore. */
+export function isIsoBackup(image: Pick<ExistingBackup, 'backup_info'> | null | undefined): boolean {
+  return image?.backup_info?.iso === true
 }
 
 type SlottedBackup = ExistingBackup & { backup_info: { type: BackupSlot } }

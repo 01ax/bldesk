@@ -11,10 +11,12 @@ import {
   Disc,
   Clock,
   Download,
+  Upload,
   RefreshCw
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../ui/Modal'
+import { ImportImageModal } from './ImportImageModal'
 import { BinaryLaneClient } from '../../api/client'
 import {
   readServerBackups,
@@ -39,6 +41,8 @@ import {
   availableBackupSlots,
   BACKUP_SLOT_LABELS,
   describeBackup,
+  isIsoBackup,
+  ISO_IMAGE_RESTRICTION,
   NO_SCHEDULED_BACKUPS_EMPTY,
   NO_SCHEDULED_BACKUPS_WARNING,
   replacedByOldest,
@@ -120,6 +124,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
 
   // Form & Action states
   const [isTakingBackup, setIsTakingBackup] = useState(false)
+  const [isImportingImage, setIsImportingImage] = useState(false)
   const [backupLabel, setBackupLabel] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('temporary')
   const [actionProcessingId, setActionProcessingId] = useState<number | null>(null)
@@ -140,6 +145,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
     setSelectedSlot('temporary')
     setBackupLabel('')
     setIsChangingSchedule(false)
+    setIsImportingImage(false)
   }, [activeServerId])
   // And it only counts while the form can still show it (the backup may have been deleted, or the plan changed).
   const slotOptions = [...availableBackupSlots(activeServer?.selected_size_options), ...backups.map((b) => `replace:${b.id}`)] as string[]
@@ -313,6 +319,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Restore from a backup image
   const handleRestore = async (imageId: number, name: string) => {
     if (!activeServerId) return
+    if (isIsoBackup(backups.find((image) => image.id === imageId))) {
+      notifyFailure('Cannot restore ISO image', ISO_IMAGE_RESTRICTION)
+      return
+    }
     const c = await confirmAction({
       title: 'Restore from backup',
       helpSlug: 'backups#worked-example',
@@ -376,6 +386,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
   // Download a backup disk image
   const handleDownload = async (imageId: number, name: string) => {
     if (!activeServerId) return
+    if (isIsoBackup(backups.find((image) => image.id === imageId))) {
+      notifyFailure('Cannot download ISO image', ISO_IMAGE_RESTRICTION)
+      return
+    }
     setActionProcessingId(imageId)
     try {
       // history: n/a — generates a download link; nothing on BinaryLane changes
@@ -550,6 +564,14 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           >
             {takeBackupMutation.isPending || taking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             <span>Take Backup</span>
+          </button>
+          <button
+            onClick={() => setIsImportingImage(true)}
+            disabled={!activeServer || !client}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-[#017cb6] border border-[#017cb6] rounded hover:bg-[#017cb6]/10 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Import Image</span>
           </button>
           <HelpLink slug="backups" />
         </div>
@@ -741,6 +763,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
             <tbody className="divide-y divide-[#ced4da]/60 dark:divide-[#373b3e]">
               {backups.map((img) => {
                 const isProcessing = actionProcessingId === img.id
+                const isIso = isIsoBackup(img)
                 return (
                   <tr key={img.id} className="hover:bg-[#f8f9fa] dark:hover:bg-[#32383e] transition">
                     <td className="py-3 px-4">
@@ -754,39 +777,44 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
                       {img.min_disk_size || activeServer?.disk || 20} GB
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#017cb6]/10 text-[#017cb6] uppercase">
-                        {img.type || 'backup'}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#017cb6]/10 text-[#017cb6] uppercase" title={isIso ? ISO_IMAGE_RESTRICTION : undefined}>
+                        {isIso ? 'ISO' : img.type || 'backup'}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleDownload(img.id, img.name)}
-                          disabled={isProcessing}
-                          className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition flex items-center gap-1"
-                          title="Download compressed disk image"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Download</span>
-                        </button>
+                        {!isIso && (
+                          <button
+                            onClick={() => handleDownload(img.id, img.name)}
+                            disabled={isProcessing}
+                            className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition flex items-center gap-1"
+                            title="Download compressed disk image"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleAttach(img.id, img.name)}
                           disabled={isProcessing}
                           className="px-2.5 py-1 text-[11px] font-medium text-[#212529] dark:text-slate-200 bg-[#f1f1f1] dark:bg-[#343a40] hover:bg-[#e9ecef] rounded transition flex items-center gap-1"
-                          title="Mount as secondary drive to extract files"
+                          title={isIso ? 'Attach ISO as a read-only additional drive' : 'Mount as secondary drive to extract files'}
                         >
                           {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <HardDrive className="w-3 h-3" />}
-                          <span>Mount</span>
+                          <span>{isIso ? 'Attach' : 'Mount'}</span>
                         </button>
-                        <button
-                          onClick={() => handleRestore(img.id, img.name)}
-                          disabled={isProcessing}
-                          className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded transition border border-rose-200 dark:border-rose-800 flex items-center gap-1"
-                          title="Restore server back to this point in time"
-                        >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Restore</span>
-                        </button>
+                        {!isIso && (
+                          <button
+                            onClick={() => handleRestore(img.id, img.name)}
+                            disabled={isProcessing}
+                            className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded transition border border-rose-200 dark:border-rose-800 flex items-center gap-1"
+                            title="Restore server back to this point in time"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Restore</span>
+                          </button>
+                        )}
+                        {isIso && <span className="text-[11px] text-[#6c757d] dark:text-slate-400" title={ISO_IMAGE_RESTRICTION}>Attach only</span>}
                       </div>
                     </td>
                   </tr>
@@ -797,6 +825,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ client, initialSer
           </div>
         )}
       </div>
+
+      {isImportingImage && client && activeServer && (
+        <ImportImageModal key={activeServerId} client={client} server={activeServer} backups={backups} onClose={() => setIsImportingImage(false)} />
+      )}
 
       {/* Backup schedule dialog */}
       {isChangingSchedule && schedule && draft && (
