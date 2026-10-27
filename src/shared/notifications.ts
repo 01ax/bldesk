@@ -90,9 +90,12 @@ function parseStored(raw: string | null): StoredSettings | null {
  *   load takes the highest version from either store (a tie goes to `primary`). So an older copy left in either store,
  *   even one that can be neither removed nor overwritten, can never outrank a newer one after a restart. The time is
  *   what covers a copy that could not be read: a load cannot see the version of a store it cannot read, so a counter
- *   alone could tie with it or fall below it, and once that store recovered its older copy would win. A save made then is
- *   later than anything that store holds, and the time says so. (If the device clock is set back by more than the time
- *   between two saves, that guarantee can fail for a copy that could not be read.)
+ *   alone could tie with it or fall below it, and once that store recovered its older copy would win. While the clock
+ *   moves on between saves, a save made then is later than anything that store holds, and the time says so. There are
+ *   two limits, both for a copy that could not be read: the device clock set back by more than the time between two
+ *   saves, and saves that come faster than the clock ticks (the same millisecond, or a clock that is not moving), which
+ *   let the counter run ahead of the time. Either way a save can tie with that copy or fall below it, and a tie goes to
+ *   `primary`.
  * - A change that could not be saved anywhere still applies, and `set` then rejects with NOTIFICATION_SETTING_UNSAVED.
  */
 export function createNotificationSettingsStore(

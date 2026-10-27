@@ -87,8 +87,8 @@ function memoryStorage({ delay = 5 } = {}) {
     async remove(key) { await wait(); if (fail.remove) throw new Error('remove failed'); data.delete(key) }
   }
 }
-// The device clock, moving on a second at each reading, so saves made at different times get different times.
-const fakeClock = (start = 1_700_000_000_000) => { let t = start; return () => (t += 1000) }
+// The device clock, moving on a second (or `step` milliseconds) at each reading, so saves made at different times get different times.
+const fakeClock = (start = 1_700_000_000_000, step = 1000) => { let t = start; return () => (t += step) }
 const storeOver = (primary, fallback, clock) => createNotificationSettingsStore(primary, fallback, KEY, clock)
 const saved = (storage) => (storage.data.has(KEY) ? JSON.parse(storage.data.get(KEY)).settings : null)
 const versionOf = (storage) => JSON.parse(storage.data.get(KEY)).v
@@ -254,6 +254,36 @@ test('the same when it is the fallback that cannot be read and holds the newer c
   fallback.fail.get = false
   const recovered = await storeOver(primary, fallback, clock).get()
   assert.equal(recovered.notifyUpdates, false, 'the fallback copy that could not be read outranked the newer save')
+})
+
+// The third review's order, on the clock handed in: master on is saved to the primary; the primary refuses and master on goes to the
+// fallback; the primary works again; a restart during an outage of the primary saves master off to the fallback; the primary
+// recovers. Gives what a launch after the recovery reads.
+async function outageThenRecovery(clock) {
+  const primary = memoryStorage(), fallback = memoryStorage()
+  await storeOver(primary, fallback, clock).set('notificationsEnabled', true)
+  primary.fail.set = true
+  await storeOver(primary, fallback, clock).set('notificationsEnabled', true)
+  primary.fail.set = false
+  await storeOver(primary, fallback, clock).set('notificationsEnabled', true)
+  primary.fail.get = primary.fail.set = true
+  await storeOver(primary, fallback, clock).set('notificationsEnabled', false)
+  primary.fail.get = primary.fail.set = false
+  return storeOver(primary, fallback, clock).get()
+}
+
+test('the third review\'s case holds when the clock moves on by only one millisecond between saves', async () => {
+  const recovered = await outageThenRecovery(fakeClock(1_700_000_000_000, 1))
+  assert.equal(recovered.notificationsEnabled, false, 'the older primary copy came back')
+  assert.equal(notificationAllowed(recovered, 'action'), false)
+})
+
+test('the limit: on a clock that does not move the counter runs ahead of it, and a save can tie with a copy that could not be read', async () => {
+  // Saves faster than the clock ticks give versions t, t+1 and t+2 (primary, fallback, primary); the save made during the outage is
+  // t+2 as well, the tie goes to the primary, and its older copy wins. This pins the limit that the comment on
+  // createNotificationSettingsStore states. If it fails because the case is now handled, narrow that comment to match.
+  const recovered = await outageThenRecovery(() => 5_000_000)
+  assert.equal(recovered.notificationsEnabled, true, 'the case is handled now: update the limit in the comment on createNotificationSettingsStore')
 })
 
 test('a version is above every copy seen and no lower than the clock, and two saves in one millisecond differ', async () => {
