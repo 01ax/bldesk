@@ -1,5 +1,16 @@
 # Help verification
 
+## Palette: another command's review no longer shows an earlier backup's replacement warning (27 October 2026, #330)
+
+`CommandPalette.tsx` only. No help page or other user-facing text changed.
+
+The amber note that names the backup a take may replace was cleared only when a backup check started. After a backup review that listed a backup, the review of another command, such as a reboot of a different server, showed the note with the first server's backup under it, though Run sends only the reboot and nothing is replaced. `replaceLines` and `replaceMap` are now also cleared when the palette returns to its input stage, which every way out of a review passes through: Back, Escape, closing the palette and opening it again. A backup review starts a new check, so it still shows what its own check found.
+
+`docs/help/palette.md` is unchanged and still true: the amber note is the one a backup review shows for targets that hold a temporary backup, and “the amber note does not appear when no target has a line”. The lifetime and limit note is not affected, because it follows the command being reviewed and not this state.
+
+- Real Electron 44.9.3 against the GUI harness mock, `main` and this change, the same six steps each: `backup edge-web-syd-01` (occupied slot); then, palette closed and reopened, `restart api-syd-01`; the same without closing the palette (Back, then another command); `backup stopped-batch-01` (no backups); `backup edge-web-syd-01,api-syd-01`; and a `backup` review after a `restart` review. On `main` the two `restart` reviews carry the note and `edge-web-syd-01`'s backup. With this change they show only the target. The other four reviews read the same on both: the note and the backup lines where a target holds a temporary backup, none for the empty slot, one line for each of two servers, and the note again for a backup review after the reboot one.
+- There is no unit test: the repository has no component test tooling, and the issue allowed a GUI check.
+- Not exercised: leaving a review while its backup check is still running. The existing run counter that ignores a late result is unchanged.
 ## Top bar at phone widths (22 October 2026, #293)
 
 `TitleBar.tsx` only; `UpdateMenu.tsx` is not touched, because its width changes with its state. No user-facing text changed.
