@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Trash2, Undo2 } from 'lucide-react'
-import { dropGapAt, dropIndexAt, edgePull, edgeScrollSpeed, isEdited, moveRow, problemsOf, ROW_HOLD_MS, type DraftRow, type RowProblems } from '../../lib/firewallDraft'
+import { dropGapAt, dropIndexAt, edgePull, edgeScrollSpeed, isEdited, joinList, moveRow, problemsOf, ROW_HOLD_MS, type DraftRow, type RowProblems } from '../../lib/firewallDraft'
+import { PORT_CHOICES, type PickChoice } from '../../lib/firewallPicks'
+import { PickMenu } from './PickMenu'
 import { HOLD_TICK_VIBRATION_MS, holdMovedTooFar } from '../../lib/tags'
 
 interface FirewallRulesEditorProps {
   rows: DraftRow[]
   /** Whether the cells, the move controls and the remove button work. The rows are still shown when they do not. */
   editable: boolean
+  /** What the magnifier under a source or destination offers: this server's addresses and the account's other servers'. */
+  addressChoices: readonly PickChoice[]
   onChange: (rows: DraftRow[]) => void
 }
 
@@ -54,13 +58,14 @@ function visibleBand(scroller: HTMLElement): { top: number; bottom: number } {
   return { top, bottom }
 }
 
-const lines = (text: string) => Math.min(6, Math.max(1, text.split('\n').length))
+/** How many lines a cell shows: a line to a value, from one to six. */
+export const lines = (text: string) => Math.min(6, Math.max(1, text.split('\n').length))
 
 /**
  * A server's firewall rules as a table of editable rows. It holds nothing and writes nothing: the rows come in, a changed
  * list goes out (`onChange`), and whoever owns the rows decides when anything is saved.
  */
-export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, editable, onChange }) => {
+export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, editable, addressChoices, onChange }) => {
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   // A rule lifted by a held finger, as opposed to dragged by a mouse.
@@ -349,6 +354,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { sources: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
+              <PickMenu label={`${label.toLowerCase()} source addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { sources: joinList(c.values) })} />
             </Field>
 
             <Field caption="Destination" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.destinations}>
@@ -363,6 +369,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { destinations: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
+              <PickMenu label={`${label.toLowerCase()} destination addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { destinations: joinList(c.values) })} />
             </Field>
 
             <Field caption="Destination ports" short="Dest. ports" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.ports}>
@@ -377,6 +384,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { ports: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
+              <PickMenu label={`${label.toLowerCase()} destination ports`} choices={PORT_CHOICES} disabled={off || row.protocol === 'icmp'} onPick={(c) => patch(i, { ports: joinList(c.values) })} />
             </Field>
 
             <Field caption="Protocol" className="col-span-2 sm:col-span-2 xl:col-span-1">
