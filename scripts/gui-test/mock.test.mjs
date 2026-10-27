@@ -405,6 +405,8 @@ test('firewall writes are checked against the rule schema, and a write lands whe
   assert.match((await write([noDestination], 400)).message, /destination_addresses/)
   assert.match((await write([{ ...rule, destination_addresses: [] }], 400)).message, /destination_addresses/)
   assert.match((await write([{ ...rule, action: 'allow' }], 400)).message, /action/)
+  // A hundred and one rules are refused, as the live API does; a hundred are accepted (below).
+  assert.equal((await write(Array(101).fill(rule), 400)).message, 'Firewall rules are limited to 100 per server; 101 were submitted.')
   const before = (await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules
 
   // The change is applied when the action completes, not when it is queued.
@@ -415,6 +417,8 @@ test('firewall writes are checked against the rule schema, and a write lands whe
   assert.deepEqual((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules, [rule])
   assert.equal((await request(`/v2/actions/${queued.action.id}`)).action.status, 'completed')
   assert.deepEqual((await write([], 200)).action.type, 'change_advanced_firewall_rules')
+  await sleep(100)
+  assert.equal((await write(Array(100).fill(rule), 200)).action.type, 'change_advanced_firewall_rules')
 })
 
 for (const outcome of ['completed', 'errored']) {

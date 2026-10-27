@@ -22,6 +22,13 @@ export function ruleCount(n: number): string {
 }
 
 /**
+ * The most rules BinaryLane keeps for one server. mPanel says so beside its New Rule button, and the API refuses a longer list with
+ * "Firewall rules are limited to 100 per server; 101 were submitted." The reference does not state it.
+ */
+export const MAX_RULES = 100
+export const RULE_LIMIT_NOTE = 'Firewall rules are limited to 100 per server.'
+
+/**
  * The destination sent for a rule that names none. The API reference requires at least one destination address on every
  * rule, and the firewall already belongs to one server, so "any" is the only value that adds no condition of its own.
  */
@@ -63,6 +70,7 @@ export function isIpv4OrRange(value: string): boolean {
  */
 export function readImportedRules(parsed: unknown): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
   if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
+  if (parsed.length > MAX_RULES) return { error: `The file has ${ruleCount(parsed.length)}. ${RULE_LIMIT_NOTE}` }
   const rules: RuleRequest[] = []
   for (let i = 0; i < parsed.length; i++) {
     const r = parsed[i] as Record<string, unknown> | null

@@ -459,6 +459,8 @@ async function handleApi(req, res, u, body) {
         return json(res, 202)
       }
       if (body?.type === 'change_advanced_firewall_rules') {
+        // The live API refuses a list of more than 100 rules: "Firewall rules are limited to 100 per server; 101 were submitted." (the reference does not say so).
+        if (Array.isArray(body.firewall_rules) && body.firewall_rules.length > 100) return json(res, 400, { id: 'bad_request', message: `Firewall rules are limited to 100 per server; ${body.firewall_rules.length} were submitted.` })
         // AdvancedFirewallRuleRequest requires action, protocol, source_addresses and destination_addresses, each address list with at least one entry.
         const bad = (Array.isArray(body.firewall_rules) ? body.firewall_rules : [null]).map((r, i) => {
           if (!r || typeof r !== 'object') return `firewall_rules[${i}] must be a rule.`
