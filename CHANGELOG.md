@@ -5,6 +5,14 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.62-beta.37] - 2026-10-27
+
+**Edit firewall rules in place, and import images from a URL**
+
+### Added
+- **Firewall rules can be edited where they are, dragged into order, and saved explicitly** (#342). Each rule in a server's list is now a row with editable source, destination, ports, protocol, action and description; drag a rule by any part that is not a field, or touch and hold it on a phone, or use the arrows. Nothing is sent until Save changes, which shows the whole list's diff in one confirmation and writes once, with one History entry. Before this a rule could not be edited at all, and the move arrows wrote to BinaryLane on every click without asking. Save reads the server's rules before and after the confirmation and sends nothing if they changed under the edits; a save BinaryLane accepts and then fails puts the edits back. Unsaved edits are kept per server while BLDesk is open.
+- **Import an image from an HTTP or HTTPS URL into a backup slot** (#341, #308). Import Image on the Backups page asks BinaryLane to download an image into a free slot, or to replace the oldest, newest or a chosen image, with an optional label. The backup list and server are read again before one confirmation, the returned action is tracked, and an unknown outcome stays Submitted in History while the lists refresh rather than retrying. An ISO image is marked ISO and offers Attach only, as the public reference says it cannot be restored or downloaded.
+
 ## [1.0.62-beta.36] - 2026-10-27
 
 **The top bar fits a phone, and two notes stop lying**
