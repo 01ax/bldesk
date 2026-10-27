@@ -231,15 +231,15 @@ const recentTemporaryTakes = (s) => (temporaryTakes.get(s.id) || []).filter((at)
 const noteTemporaryTake = (s) => temporaryTakes.set(s.id, [...(temporaryTakes.get(s.id) || []), Date.now()])
 function backupPlan(s, body) {
   const plan = planBackup(s, body)
-  // Shared by ordinary takes and resize pre-action backups. The live ordinary Take Backup check
-  // in HELP_VERIFICATION.md needs the replaced image's matching type.
-  // UploadImageRequest is a separate operation: do not infer its validator from this observation.
-  if (!plan.error && body.replacement_strategy === 'specified' && body.backup_type !== plan.type) return { error: 'backup_type must match the specified backup.' }
+  // Shared by ordinary takes and resize pre-action backups; imports do not use the take quota.
   if (!plan.error && plan.type === 'temporary' && recentTemporaryTakes(s) >= cfg.temporaryLimit) return { error: 'At most two temporary backups may be taken of a server in any seven day period.', temporaryQuotaExceeded: true }
   return plan
 }
 function temporaryQuotaError(field) {
   const reason = 'Temporary backup limit of 2 per 7 day period has been reached.'
+  return validationError(field, reason)
+}
+function validationError(field, reason) {
   return {
     type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
     title: 'One or more validation errors occurred', status: 400,
@@ -253,6 +253,8 @@ function planBackup(s, body) {
     const replace = list.find((b) => b.id === body.backup_id_to_replace)
     if (!replace) return { error: 'The specified backup does not belong to this server.' }
     if (!replaceable(replace)) return { error: 'The specified backup is locked or attached.' }
+    // Separate dated take and upload checks are recorded in HELP_VERIFICATION.md.
+    if (body.backup_type !== replace.backup_info.type) return { error: 'backup_type must match the specified backup.' }
     return { type: replace.backup_info.type, replace }
   }
   if (!['none', 'oldest', 'newest'].includes(strategy)) return { error: 'Invalid backup replacement strategy.' }
@@ -316,10 +318,11 @@ function applyAction(a, server) {
     setBackups(server, [...backupsFor(server).filter((image) => image !== plan.replace), makeBackup(server, plan.type, b.label || 'Manual backup')])
     if (plan.type === 'temporary') noteTemporaryTake(server)
   }
-  if (a.type === 'upload_backup') {
+  if (a.type === 'upload_image') {
     const plan = planBackup(server, b)
     if (plan.error) { a.outcome = 'errored'; a.error = plan.error; return }
-    const image = makeBackup(server, plan.type, b.label || 'Imported image')
+    // Do not assume an upload's request label becomes the returned image name.
+    const image = makeBackup(server, plan.type, 'Imported image')
     image.backup_info.iso = new URL(b.url).pathname.toLowerCase().endsWith('.iso')
     setBackups(server, [...backupsFor(server).filter((held) => held !== plan.replace), image])
   }
@@ -474,12 +477,15 @@ async function handleApi(req, res, u, body) {
     if (sub === '/backups' && m === 'POST') {
       let source
       try { source = new URL(body?.url) } catch { /* checked below */ }
-      if (!source || !['http:', 'https:'].includes(source.protocol)) return json(res, 400, { message: 'Only HTTP and HTTPS image sources are supported.' })
-      if (body.label != null && (typeof body.label !== 'string' || body.label.length > 250)) return json(res, 400, { message: 'The image label must be 250 characters or fewer.' })
+      if (!source || !['http:', 'https:'].includes(source.protocol)) return json(res, 400, validationError('url', 'Only HTTP and HTTPS image sources are supported.'))
+      if (body.label != null && (typeof body.label !== 'string' || body.label.length > 250)) return json(res, 400, validationError('label', 'The image label must be 250 characters or fewer.'))
       // UploadImageRequest shares slot/replacement rules, not Take Backup's take quota. Never fetch the source URL.
       const plan = planBackup(s, body)
-      if (plan.error) return json(res, 400, { message: plan.error })
-      return json(res, 200, { action: actionView(actions.get(newAction('upload_backup', s, body))) })
+      if (plan.error) {
+        const field = body.replacement_strategy === 'specified' ? 'backup_type, backup_id_to_replace' : S.BackupReplacementStrategy.enum.includes(body.replacement_strategy) ? 'backup_type' : 'replacement_strategy'
+        return json(res, 400, validationError(field, plan.error))
+      }
+      return json(res, 200, { action: actionView(actions.get(newAction('upload_image', s, body))) })
     }
     if (sub === '/console') return json(res, 200, { console: { iframe: cfg.consoleUrl || `https://api.binarylane.com.au/__console/${s.id}`, browser: cfg.consoleUrl || `https://api.binarylane.com.au/__console/${s.id}`, width: 1024, height: 768, expiry: new Date(Date.now() + 600000).toISOString() } })
     if (sub === '/software') return json(res, 200, page(s.image.distribution === 'Windows' ? [mk('LicensedSoftwaresResponse', 'licensed_software', { licence_count: 2, incompatible: false, software: softwareFor('windows-2022')[0] })] : [], q, 'licensed_software'))

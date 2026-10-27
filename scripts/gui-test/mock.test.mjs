@@ -62,12 +62,15 @@ beforeEach(async () => {
 
 const upload = (body, id = 9003, status = 200) => request(`/v2/servers/${id}/backups`, { url: 'https://example.com/image.img.zst', ...body }, 'POST', status)
 
-test('URL imports queue an action then create the labelled image on only the requested server', async () => {
+test('URL imports queue upload_image and do not assume the request label names the returned image', async () => {
   const before = await backups(8100)
-  await completed(await upload({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Imported disk' }))
+  const queued = await upload({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Imported disk' })
+  assert.equal(queued.action.type, 'upload_image')
+  await completed(queued)
   const held = await backups(9003)
   assert.equal(held.length, 1)
-  assert.equal(held[0].name, 'Imported disk')
+  assert.equal(held[0].name, 'Imported image')
+  assert.notEqual(held[0].name, 'Imported disk')
   assert.equal(held[0].backup_info.server_id, 9003)
   assert.deepEqual(await backups(8100), before)
 })
@@ -102,6 +105,26 @@ test('invalid URL imports and failed actions do not replace a held image', async
   await request('/__mock/config', { actionOutcome: 'errored' })
   await completed(await upload({ backup_type: 'temporary', replacement_strategy: 'oldest' }, 8100), 'errored')
   assert.deepEqual(await backups(8100), before)
+})
+
+test('specified URL imports require the matching slot type and return field errors without queuing', async () => {
+  const held = await backups(8100)
+  const target = held.find((b) => b.backup_info.type === 'daily')
+  const beforeActions = (await request('/v2/servers/8100/actions')).actions
+  for (const type of [undefined, 'monthly']) {
+    const result = await upload({ replacement_strategy: 'specified', backup_id_to_replace: target.id, ...(type ? { backup_type: type } : {}) }, 8100, 400)
+    assert.equal(result.status, 400)
+    assert.ok(result.errors['backup_type, backup_id_to_replace'].some((s) => s.includes('match')))
+    assert.match(result.message, /backup_type/)
+  }
+  const badUrl = await upload({ url: 'ftp://example.com/image' }, 8100, 400)
+  assert.ok(badUrl.errors.url)
+  const badLabel = await upload({ label: 'x'.repeat(251), backup_type: 'daily', replacement_strategy: 'oldest' }, 8100, 400)
+  assert.ok(badLabel.errors.label)
+  assert.deepEqual((await request('/v2/servers/8100/actions')).actions, beforeActions)
+  assert.deepEqual(await backups(8100), held)
+  await completed(await upload({ replacement_strategy: 'specified', backup_id_to_replace: target.id, backup_type: 'daily' }, 8100))
+  assert.equal((await backups(8100)).filter((b) => b.backup_info.type === 'daily').length, 1)
 })
 
 test('offered and retired plan backup options match the schema and the public snapshot in #198', async () => {

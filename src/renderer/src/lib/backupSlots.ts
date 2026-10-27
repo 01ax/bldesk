@@ -70,7 +70,14 @@ export interface ExistingBackup {
   id: number
   created_at?: string | null
   name?: string | null
-  backup_info?: { type?: string | null; locked?: boolean | null } | null
+  backup_info?: { type?: string | null; locked?: boolean | null; iso?: boolean | null } | null
+}
+
+export const ISO_IMAGE_RESTRICTION = 'ISO images can be attached, but cannot be downloaded or restored.'
+
+/** BackupInfo.iso in the public reference rules out Download and Restore. */
+export function isIsoBackup(image: Pick<ExistingBackup, 'backup_info'> | null | undefined): boolean {
+  return image?.backup_info?.iso === true
 }
 
 type SlottedBackup = ExistingBackup & { backup_info: { type: BackupSlot } }

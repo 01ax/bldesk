@@ -10,6 +10,8 @@ This is the Backups view pinned to the selected server. Check its header before 
 ## Restore versus attach
 Restore replaces the live disk. Attach mounts an image as a read-only secondary drive so you can recover files without replacing the current disk.
 
+ISO rows are marked ISO and show Attach only. ISO images cannot be downloaded or restored; see [Choose the right operation](help:backups#choose-the-right-operation).
+
 ## Worked example
 For an example backup named before-upgrade with image ID 123, Restore shows:
 

@@ -20,7 +20,8 @@ interface Props {
   onClose: () => void
 }
 
-const fieldClass = 'w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-xs px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]'
+const fieldClass = 'w-full bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] text-[#212529] dark:text-white text-xs px-3 py-2 rounded focus:outline-none focus:border-[#017cb6]'
+const labelClass = 'block font-medium mb-1 text-[#495057] dark:text-[#ced4da]'
 
 export function ImportImageModal({ client, server, backups, onClose }: Props) {
   const [url, setUrl] = useState('')
@@ -69,7 +70,7 @@ export function ImportImageModal({ client, server, backups, onClose }: Props) {
           { label: 'Image URL', to: source },
           { label: 'Slot', to: importedSlot ?? 'Selected image slot' },
           { label: 'Replacement', to: IMPORT_STRATEGIES[strategy] },
-          ...(plan.replaced ? [{ label: automatic ? 'Candidate image' : 'Replaced image', from: `${plan.replaced.name ?? 'Image'} (#${plan.replaced.id}), ${describeBackup(plan.replaced)}`, to: label.trim() || 'Imported image' }] : []),
+          ...(plan.replaced ? [{ label: automatic ? 'Candidate image' : 'Replaced image', from: `${plan.replaced.name ?? 'Image'} (#${plan.replaced.id}), ${describeBackup(plan.replaced)}`, to: 'Imported image' }] : []),
           ...(label.trim() ? [{ label: 'Label', to: label.trim() }] : [])
         ],
         notes: [
@@ -84,6 +85,8 @@ export function ImportImageModal({ client, server, backups, onClose }: Props) {
       if (result.kind === 'queued') track(result.action, 'Import Image', current.data.server.name, changeId)
       else {
         void updateChange(changeId, { detail: result.detail })
+        void queryClient.invalidateQueries({ queryKey: ['serverBackups', server.id] })
+        void queryClient.invalidateQueries({ queryKey: ['serverActions', server.id] })
         notifyFailure('Import outcome unknown', result.detail)
       }
       onClose()
@@ -110,24 +113,24 @@ export function ImportImageModal({ client, server, backups, onClose }: Props) {
       <fieldset disabled={busy} className="p-5 space-y-4 text-xs min-w-0">
         <p className="text-[#6c757d] dark:text-slate-400">Import an image from an HTTP or HTTPS URL into a backup slot on {server.name}.</p>
         <div>
-          <label htmlFor="import-image-url" className="block font-medium mb-1">Image URL</label>
+          <label htmlFor="import-image-url" className={labelClass}>Image URL</label>
           <input id="import-image-url" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/image" className={fieldClass} autoComplete="off" spellCheck={false} />
         </div>
         <div>
-          <label htmlFor="import-image-strategy" className="block font-medium mb-1">Replacement strategy</label>
+          <label htmlFor="import-image-strategy" className={labelClass}>Replacement strategy</label>
           <select id="import-image-strategy" value={strategy} onChange={(e) => setStrategy(e.target.value as ImportStrategy)} className={fieldClass}>
             {Object.entries(IMPORT_STRATEGIES).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
           </select>
         </div>
         {strategy === 'specified' ? <div>
-          <label htmlFor="import-image-replacement" className="block font-medium mb-1">Image to replace</label>
+          <label htmlFor="import-image-replacement" className={labelClass}>Image to replace</label>
           <select id="import-image-replacement" value={replacementId ?? ''} onChange={(e) => setReplacementId(Number(e.target.value) || null)} required className={fieldClass}>
             <option value="">Choose an image</option>
             {replacementId && !replacements.some((b) => b.id === replacementId) && <option value={replacementId} disabled>Selected image is unavailable</option>}
             {replacements.map((b) => <option key={b.id} value={b.id}>{b.name ?? 'Image'} (#{b.id}) - {describeBackup(b)}</option>)}
           </select>
         </div> : <div>
-          <label htmlFor="import-image-slot" className="block font-medium mb-1">Backup slot</label>
+          <label htmlFor="import-image-slot" className={labelClass}>Backup slot</label>
           <select id="import-image-slot" value={slot} onChange={(e) => setSlot(e.target.value as BackupSlot)} className={fieldClass}>
             {!slots.includes(slot) && <option value={slot} disabled>Selected slot is unavailable</option>}
             {slots.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
@@ -136,7 +139,7 @@ export function ImportImageModal({ client, server, backups, onClose }: Props) {
         {(strategy === 'specified' ? replacements.find((b) => b.id === replacementId)?.backup_info.type === 'temporary' : slot === 'temporary') &&
           <p className="text-[11px] text-[#6c757d] dark:text-slate-400">{IMPORT_TEMPORARY_TERMS}</p>}
         <div>
-          <label htmlFor="import-image-label" className="block font-medium mb-1">Label (optional)</label>
+          <label htmlFor="import-image-label" className={labelClass}>Label (optional)</label>
           <input id="import-image-label" value={label} maxLength={250} onChange={(e) => setLabel(e.target.value)} className={fieldClass} />
         </div>
       </fieldset>
