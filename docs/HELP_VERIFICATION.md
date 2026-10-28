@@ -1,5 +1,41 @@
 # Help verification
 
+## Tags: export and import as a JSON file (29 October 2026, after 1.0.63-beta.1)
+
+Branch: `feat/tags-import-export`. No new runtime dependencies and no API calls. `docs/help/settings.md` has a new “Tags” section and a new summary and keywords; `servers.md` and `server-settings.md` each gained a sentence pointing at it; `docs/HELP_SPEC.md` and `FEATURES.md` each gained a clause.
+
+Tags are local (the API has none), kept per account profile in local storage. Settings is where the notification switches live, so the Tags card sits beside them. The file format is `lib/tags.ts` (`buildTagsFile`, `readTagsFile`, `planTagsImport`, all pure and unit-tested); `SettingsView.tsx` is the card, the file chooser and the confirmation; `applyTagsImport` in `lib/serverGroups.ts` writes the result.
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “Tags”, “Export and import tags”, “Export tags”, “Import tags” | `SettingsView.tsx`: the `Card` title, the row heading, the two buttons | New. |
+| “how many tags are on how many servers, or that no server has a tag yet, or that the account has no servers listed” | `tagSummary` in `SettingsView.tsx`; the count is `liveTagCounts` over the listed servers, so a tag left on a deleted server is not counted | New. |
+| Export is greyed out while no listed server has a tag; Import while no server is listed | `disabled` on the two buttons | New. |
+| “a file named bldesk-tags- followed by today's date” | `TAGS_FILE_NAME` (local date, `YYYY-MM-DD`) | New. |
+| “one entry for each listed server that carries a tag, with its id, name and tags, and the colour of each of those tags that has one”; tags of deleted servers not exported | `buildTagsFile` | New. The example file has the shape of the file the real button wrote (checked against it); its ids, names and time are invented. |
+| “up to 1 MB” | `TAGS_FILE_MAX_BYTES`, checked against `file.size` before the file is read | New. |
+| A file that is not a tags file, is not valid JSON, or has an entry it cannot read is “refused as a whole”, “Could not import tags” | `readTagsFile` (every refusal returns its reason, none imports in part); `notifyFailure('Could not import tags', …)` | New. |
+| “Prod and @prod both become prod” | `normaliseTag`, the same function the tag editor uses, called by `readTagsFile` | New. |
+| Adds, never removes, never changes a colour a tag has, skips servers this account does not list, refuses a file in which none match | `planTagsImport` (union of the two lists; a colour is set only `if (!now)`; `liveIds` check; `plan.missing === read.servers.length` in the card) | New. |
+| A new tag with no colour in the file “gets a colour the way any new tag does” | `applyTagsImport` writes colours first, then `saveTags` with its default `autoColor` | New. Seen: `batch` took `slate`, the first preset no tag in use had. |
+| “Nothing to import: the servers in the file already have these tags.” | The literal in `importTags`, shown when no server changes and no colour is set | New. |
+| The “Import tags” dialog, “Before → after”, the three notes | `confirmAction` in `importTags` (`severity: 'normal'`, `log: false`, `helpSlug: 'settings#tags'`), `diff` and `notes` built from the plan | New. Not written to History: `log: false`, as for other local tag changes. |
+| “Afterwards the card says how many tags were added to how many servers” | The `setTagStatus` after `applyTagsImport` | New. |
+
+### Checks performed
+
+- `npm run typecheck` (guards, help guard with 185 quotes, 60 tag tests of which 10 are new) and `npm run build`, in a throwaway Ubuntu 24.04 VM. Breaking the logic on purpose made the tests fail each time and restoring it made them pass: importing onto servers the account lacks (3 fail), replacing instead of adding (1), a file colour overwriting an existing one (1), exporting colours of tags not in use (1).
+- Real Electron against the GUI mock, fictitious token, isolated user data, driven over the debugging port, with seeded tags (including one on a server that does not exist):
+  - The card with no tags (Export off, Import on), and with tags (“3 tags on 3 servers in Atlas Demo (fictitious).”, the deleted server's tag left out of the count).
+  - Export through the real button wrote `bldesk-tags-<date>.json`: three servers in id order with sorted tags, colours for the two tags that had one, none for the deleted server's tag.
+  - Import of a file with an added tag, `Prod` and `@Batch` (other case, and an @), a server this account lacks, and colours that agree, disagree and are missing: the dialog read “Adds 3 tags to 2 servers from valid.json. No tag is removed.” with the three notes and the two changed servers; Cancel left local storage as it was; Import added exactly those tags, the one colour from the file (`db`) and a colour for the new tag the file left uncoloured (`batch`), and the card said “Imported: added 3 tags to 2 servers.”
+  - The same file again, and a file whose servers already have its tags: “Nothing to import…”, no dialog. Refused with the reason in a failure card and local storage unchanged: not JSON, another kind of file, a tag with no usable characters, a colour that is not a colour, no matching server (one server and several), no tagged server, a file over 1 MB.
+  - Round trip: export, clear every tag (the card went back to “No server has a tag yet.” and Export to off), import the file: the tags and colours of the listed servers came back exactly.
+  - The mock saw no request other than reads during the import checks.
+  - The card and the dialog in both themes. `layoutReport` was clean at 1600×1000, 1024×672, 853×560, 683×453 (1024×680 at 150%) and 390×844 (phone), and the dialog with a 28-server, 84-tag diff at 683×453 scrolled its list with Cancel and Import still on screen.
+
+Not tested: the Android app and the browser build on a device (the card uses the same hidden file input and `<a download>` as the firewall and template import and export, so what they do there is what this does); Windows and macOS; what the operating system's save dialog does after Export (a CDP download setting wrote the file directly, so the real dialog was not seen). A file from another account has no matching server and is refused; whether a server id could ever repeat across accounts is not something the API reference says, so the help does not claim it either way.
+
 ## Firewall: the Add Rule form, the address and port pickers, and the 100-rule limit (28 October 2026)
 
 `FirewallManager.tsx` (the Add Rule form and the header), `FirewallRulesEditor.tsx` (the rows), the new `PickMenu.tsx` and `lib/firewallPicks.ts`, and `lib/firewallRules.ts` (`MAX_RULES`, `RULE_LIMIT_NOTE`, `rulesAllowed`, `ruleLimitNote`, the import check). `docs/help/firewall.md` has a new paragraph under Edit, reorder and remove rules and two rewritten paragraphs under Add, import and clone. The Add form had Action, Protocol, Port(s), Source CIDR and Label, with no destination, and a single-line source and ports. Every rule row, and mPanel's rule row, has source, destination, destination ports, protocol, action and description, and under each address and ports cell a magnifier with a caret that fills the cell from a list. A server at 100 rules could still open the Add form and was refused by the API (“Failed to save rule: Firewall rules are limited to 100 per server; 101 were submitted.”).

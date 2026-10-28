@@ -430,6 +430,158 @@ export function autoColorNewTags(prev: TagMap, next: TagMap, colors: TagColorMap
   return out
 }
 
+// --- tags files: export and import -----------------------------------------
+
+/** What a tags file says it is, as a template bundle does, so a file of something else is not read as tags. */
+export const TAGS_FILE_KIND = 'bldesk/tags@1'
+/** The largest file Import tags reads. A real one is a few lines per tagged server. */
+export const TAGS_FILE_MAX_BYTES = 1024 * 1024
+
+export interface TagsFileServer {
+  id: number
+  /** For a person reading the file; import goes by `id`. */
+  name: string
+  tags: string[]
+}
+
+export interface TagsFile {
+  kind: typeof TAGS_FILE_KIND
+  exported_at: string
+  servers: TagsFileServer[]
+  /** tag name → a preset key or a `#rrggbb`, for the tags in `servers` that have a colour. */
+  colors: TagColorMap
+}
+
+/**
+ * The tags file for `servers` (the ones that exist; the tags of deleted servers stay in the store but are not exported):
+ * the servers that carry a tag, by id, and the colour of each tag in use. Servers and tags are sorted so exporting twice
+ * gives the same file.
+ */
+export function buildTagsFile(tags: TagMap, colors: TagColorMap, servers: ReadonlyArray<{ id: number; name: string }>, now: Date = new Date()): TagsFile {
+  const rows: TagsFileServer[] = []
+  const used = new Set<string>()
+  for (const s of [...servers].sort((a, b) => a.id - b.id)) {
+    const own = [...tagsOf(tags, s.id)].sort()
+    if (!own.length) continue
+    rows.push({ id: s.id, name: s.name, tags: own })
+    for (const t of own) used.add(t)
+  }
+  const out = newColorMap()
+  for (const t of [...used].sort()) {
+    const c = colorOf(colors, t)
+    if (c) out[t] = c
+  }
+  return { kind: TAGS_FILE_KIND, exported_at: now.toISOString(), servers: rows, colors: out }
+}
+
+export type TagsFileRead = { ok: true; servers: Array<{ id: number; tags: string[] }>; colors: TagColorMap } | { ok: false; error: string }
+
+/**
+ * A parsed tags file, checked. Tag names go through normaliseTag as they do when typed (`Prod` and `@prod` are `prod`),
+ * and a colour may be a preset or any hex form. A file that is not a tags file, or has an entry that cannot be read, is
+ * refused whole with the reason, never imported in part. Colours for tags no server in the file carries are left out.
+ */
+export function readTagsFile(raw: unknown): TagsFileRead {
+  const bad = (error: string): TagsFileRead => ({ ok: false, error })
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad(`This is not a BLDesk tags file. A tags file is a JSON object with "kind": "${TAGS_FILE_KIND}", as Export tags writes it.`)
+  const file = raw as Record<string, unknown>
+  if (file.kind !== TAGS_FILE_KIND) return bad(`This is not a BLDesk tags file: its "kind" is not "${TAGS_FILE_KIND}".`)
+  if (!Array.isArray(file.servers)) return bad('The file has no "servers" list.')
+
+  const byId = new Map<number, Set<string>>()
+  for (const [i, entry] of file.servers.entries()) {
+    const where = `Server ${i + 1} in the file`
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return bad(`${where} is not an object with an "id" and "tags".`)
+    const { id, tags } = entry as Record<string, unknown>
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 0) return bad(`${where} has no whole-number "id".`)
+    if (!Array.isArray(tags)) return bad(`${where} (id ${id}) has no "tags" list.`)
+    const own = byId.get(id) ?? new Set<string>()
+    for (const t of tags) {
+      if (typeof t !== 'string') return bad(`${where} (id ${id}) has a tag that is not text.`)
+      const name = normaliseTag(t)
+      if (!name) return bad(`${where} (id ${id}): ${tagNameProblem(t)}`)
+      own.add(name)
+    }
+    byId.set(id, own)
+  }
+
+  const servers = [...byId.entries()].filter(([, own]) => own.size > 0).map(([id, own]) => ({ id, tags: [...own].sort() }))
+  const inFile = new Set(servers.flatMap((s) => s.tags))
+  const colors = newColorMap()
+  const rawColors = file.colors
+  if (rawColors !== undefined) {
+    if (!rawColors || typeof rawColors !== 'object' || Array.isArray(rawColors)) return bad('"colors" is not an object of tag name → colour.')
+    for (const key of Object.keys(rawColors)) {
+      const name = normaliseTag(key)
+      const value = (rawColors as Record<string, unknown>)[key]
+      const color = typeof value === 'string' ? (isTagColorKey(value) ? value : normaliseHex(value)) : null
+      if (!color) return bad(`The colour for tag "${key}" is not one of the presets (${TAG_COLOR_KEYS.join(', ')}) or a hex colour such as #1e90ff.`)
+      if (name && inFile.has(name)) colors[name] = canonicalColor(color)
+    }
+  }
+  return { ok: true, servers, colors }
+}
+
+export interface TagsImportPlan {
+  /** The whole tag map and colour map after the import, with what the import did not touch as it was. */
+  tags: TagMap
+  colors: TagColorMap
+  /** Servers whose tags change, with their tags before and after. */
+  changed: Array<{ id: number; before: string[]; after: string[] }>
+  /** Servers in the file that this account does not have. They are left out. */
+  missing: number
+  /** Tags no server on this account carried before. */
+  newTags: string[]
+  /** Colours the import sets, for tags that had none. */
+  colorsSet: number
+  /** Tags the file colours differently from how they are coloured now: the colour they have stays. */
+  colorsKept: number
+}
+
+/**
+ * What importing a tags file does: its tags are ADDED to the servers that carry them in `liveIds` (a server's tags are
+ * the union of what it has and what the file gives it, and nothing is ever taken off), and a colour from the file goes
+ * to a tag that has none. A tag that is coloured already keeps its colour. Servers in the file that are not in `liveIds`
+ * are counted and left out, so a file from another account changes nothing.
+ */
+export function planTagsImport(
+  current: TagMap,
+  currentColors: TagColorMap,
+  file: { servers: ReadonlyArray<{ id: number; tags: readonly string[] }>; colors: TagColorMap },
+  liveIds: ReadonlySet<number>
+): TagsImportPlan {
+  const tags = copyTagMap(current)
+  const changed: TagsImportPlan['changed'] = []
+  const touched = new Set<string>()
+  let missing = 0
+  for (const s of file.servers) {
+    if (!liveIds.has(s.id)) {
+      missing++
+      continue
+    }
+    for (const t of s.tags) touched.add(t)
+    const before = tagsOf(current, s.id)
+    const after = [...new Set([...before, ...s.tags])].sort()
+    if (after.length === before.length) continue
+    tags[s.id] = after
+    changed.push({ id: s.id, before: [...before], after })
+  }
+  const had = new Set(Object.values(current).flat())
+  const newTags = [...new Set(changed.flatMap((c) => c.after))].filter((t) => !had.has(t)).sort()
+  const colors = copyColorMap(currentColors)
+  let colorsSet = 0
+  let colorsKept = 0
+  for (const t of Object.keys(file.colors)) {
+    if (!touched.has(t)) continue
+    const now = colorOf(colors, t)
+    if (!now) {
+      colors[t] = file.colors[t]
+      colorsSet++
+    } else if (canonicalColor(now) !== canonicalColor(file.colors[t])) colorsKept++
+  }
+  return { tags, colors, changed, missing, newTags, colorsSet, colorsKept }
+}
+
 // --- saved custom colours ---------------------------------------------------
 
 /** How many custom colours can be saved at once. */

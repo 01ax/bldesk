@@ -36,7 +36,7 @@ Local results come first, the BinaryLane answer underneath. Typing `port 22 unre
 | `palette.md` | Every verb in `VERB_SPECS` with at least one example, the target grammar (`TARGET_HELP`), `@group`/`@tag`, the two-Enter rule |
 | `shortcuts.md` | Every keyboard shortcut in the app, including zoom (80–150%) |
 | `confirm-and-history.md` | The confirm dialog severities (normal / destructive / irreversible, type-to-confirm), what History records, where the log lives |
-| `settings.md` | The Settings view: the notification master switch and one switch per kind |
+| `settings.md` | The Settings view: the notification master switch and one switch per kind, and the Tags card (export and import tags as JSON) |
 | `tray.md` | Tray menu, notifications, settings file |
 | `deep-links.md` | `bldesk://` links (summarise `docs/DEEP_LINKS.md`, link to it) |
 | `troubleshooting.md` | "Port 22 unreachable", "server shows running but is down", Linux AppArmor install error, macOS unsigned build, update channel |

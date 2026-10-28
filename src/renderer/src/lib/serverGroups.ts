@@ -9,7 +9,8 @@ import {
   type Rng,
   type ServerGroup,
   type TagColorMap,
-  type TagMap
+  type TagMap,
+  type TagsImportPlan
 } from './tags'
 
 /**
@@ -111,6 +112,15 @@ export function saveTagColors(profileId: string, colors: TagColorMap): void {
   } catch {
     // no window
   }
+}
+
+/**
+ * Write what importing a tags file decided (planTagsImport). The colours go first, so a new tag that the file coloured
+ * keeps that colour and saveTags only gives a colour to a new tag the file left without one, as it does for any new tag.
+ */
+export function applyTagsImport(profileId: string, plan: TagsImportPlan): void {
+  saveTagColors(profileId, plan.colors)
+  saveTags(profileId, plan.tags)
 }
 
 /** The saved custom colours: `#rrggbb`, at most eight. */

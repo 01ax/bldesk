@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 const norm = (x) => (Array.isArray(x) ? x.map(norm) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).map((k) => [k, norm(x[k])])) : x)
 const eq = (actual, expected, message) => assert.deepEqual(norm(actual), norm(expected), message)
 import {
+  TAGS_FILE_KIND,
   CHIP_SURFACES,
   HOLD_DELETE_MS,
   HOLD_MOVE_TOLERANCE_PX,
@@ -16,6 +17,7 @@ import {
   TAG_PRESET_HEX,
   addCustomColour,
   allTags,
+  buildTagsFile,
   autoColorNewTags,
   canonicalColor,
   cleanCustomColours,
@@ -48,7 +50,9 @@ import {
   normaliseTag,
   parseTagSearch,
   pickAutoColor,
+  planTagsImport,
   pruneTagColors,
+  readTagsFile,
   removeCustomColour,
   renameTag,
   resolveGroup,
@@ -560,6 +564,128 @@ test('a finger that moves more than eight pixels is dragging, not holding', () =
 // ---------------------------------------------------------------------------------------------------------------------
 // Names that are also members of every object: constructor, __proto__, and the rest
 // ---------------------------------------------------------------------------------------------------------------------
+
+// --- tags files -------------------------------------------------------------
+
+const FLEET = [
+  { id: 1, name: 'web-1' },
+  { id: 2, name: 'web-2' },
+  { id: 3, name: 'db-1' }
+]
+
+test('a tags file lists the servers that carry tags, by id with their name, and the colours of the tags in use, sorted', () => {
+  const tags = { 3: ['prod', 'db'], 1: ['web', 'prod'], 99: ['gone'] }
+  const colors = { prod: 'red', web: '#1e90ff', gone: 'blue', unused: 'teal' }
+  const file = buildTagsFile(tags, colors, [...FLEET].reverse(), new Date('2026-10-29T01:02:03Z'))
+  assert.equal(file.kind, TAGS_FILE_KIND)
+  assert.equal(file.exported_at, '2026-10-29T01:02:03.000Z')
+  eq(file.servers, [
+    { id: 1, name: 'web-1', tags: ['prod', 'web'] },
+    { id: 3, name: 'db-1', tags: ['db', 'prod'] }
+  ])
+  eq(file.colors, { prod: 'red', web: '#1e90ff' })
+  eq(buildTagsFile({}, {}, FLEET).servers, [])
+})
+
+test('a tags file survives JSON text and is read back as it was written', () => {
+  const tags = { 1: ['prod', 'web'], 2: ['web'] }
+  const colors = { prod: 'red', web: '#1e90ff' }
+  const read = readTagsFile(JSON.parse(JSON.stringify(buildTagsFile(tags, colors, FLEET))))
+  assert.equal(read.ok, true)
+  eq(read.servers, [{ id: 1, tags: ['prod', 'web'] }, { id: 2, tags: ['web'] }])
+  eq(read.colors, colors)
+})
+
+test('reading a tags file normalises names and colours as typing them does, and merges a server listed twice', () => {
+  const read = readTagsFile({
+    kind: TAGS_FILE_KIND,
+    servers: [{ id: 1, tags: ['@Prod', 'web', 'WEB'] }, { id: 1, tags: ['db'] }, { id: 2, tags: [] }],
+    colors: { Prod: 'red', web: '1E90FF', db: '#2563EB', nobody: 'pink' }
+  })
+  assert.equal(read.ok, true)
+  eq(read.servers, [{ id: 1, tags: ['db', 'prod', 'web'] }])
+  eq(read.colors, { prod: 'red', web: '#1e90ff', db: 'blue' }, 'a hex that is a preset is that preset; a colour for a tag nobody has is left out')
+})
+
+test('a file that is not a tags file, or has an entry that cannot be read, is refused whole with the reason', () => {
+  const refused = (raw, pattern) => {
+    const read = readTagsFile(raw)
+    assert.equal(read.ok, false, JSON.stringify(raw))
+    assert.match(read.error, pattern)
+  }
+  for (const raw of [null, 5, 'tags', [], [{ id: 1, tags: ['a'] }]]) refused(raw, /not a BLDesk tags file/)
+  refused({ servers: [] }, /not a BLDesk tags file/)
+  refused({ kind: 'bldesk/template-bundle@1', servers: [] }, /not a BLDesk tags file/)
+  refused({ kind: TAGS_FILE_KIND }, /no "servers" list/)
+  refused({ kind: TAGS_FILE_KIND, servers: {} }, /no "servers" list/)
+  refused({ kind: TAGS_FILE_KIND, servers: [null] }, /Server 1 .*not an object/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: '1', tags: ['a'] }] }, /Server 1 .*no whole-number "id"/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: 1.5, tags: ['a'] }] }, /no whole-number "id"/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: -1, tags: ['a'] }] }, /no whole-number "id"/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: 2 ** 60, tags: ['a'] }] }, /no whole-number "id"/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: 1, tags: 'a' }] }, /no "tags" list/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: 1, tags: ['a', 5] }] }, /not text/)
+  refused({ kind: TAGS_FILE_KIND, servers: [{ id: 1, tags: ['ok'] }, { id: 2, tags: ['!!!'] }] }, /Server 2 .*"!!!" has no usable characters/)
+  refused({ kind: TAGS_FILE_KIND, servers: [], colors: [] }, /"colors" is not an object/)
+  refused({ kind: TAGS_FILE_KIND, servers: [], colors: { web: 'url(x)' } }, /colour for tag "web" is not one of the presets/)
+  refused({ kind: TAGS_FILE_KIND, servers: [], colors: { web: 5 } }, /colour for tag "web"/)
+})
+
+test('importing adds a file\'s tags to the servers that exist and never takes one off', () => {
+  const current = { 1: ['prod'], 2: ['staging'], 50: ['old'] }
+  const file = { servers: [{ id: 1, tags: ['prod', 'web'] }, { id: 3, tags: ['db'] }, { id: 77, tags: ['elsewhere'] }], colors: newColorMap() }
+  const plan = planTagsImport(current, {}, file, new Set([1, 2, 3]))
+  eq(plan.tags, { 1: ['prod', 'web'], 2: ['staging'], 3: ['db'], 50: ['old'] })
+  eq(plan.changed, [{ id: 1, before: ['prod'], after: ['prod', 'web'] }, { id: 3, before: [], after: ['db'] }])
+  assert.equal(plan.missing, 1, 'a server this account does not have is counted and left out')
+  assert.deepEqual(plan.newTags, ['db', 'web'])
+  eq(current, { 1: ['prod'], 2: ['staging'], 50: ['old'] }, 'the stored map is not changed')
+})
+
+test('importing a file that gives nothing new changes nothing, and a file from another account matches no server', () => {
+  const current = { 1: ['prod', 'web'] }
+  const same = planTagsImport(current, {}, { servers: [{ id: 1, tags: ['web'] }], colors: newColorMap() }, new Set([1]))
+  assert.deepEqual(same.changed, [])
+  eq(same.tags, current)
+  const other = planTagsImport(current, {}, { servers: [{ id: 8, tags: ['web'] }, { id: 9, tags: ['db'] }], colors: newColorMap() }, new Set([1]))
+  assert.deepEqual(other.changed, [])
+  assert.equal(other.missing, 2)
+})
+
+test('importing gives a colour to a tag that has none and leaves a tag that is coloured alone', () => {
+  const colors = newColorMap()
+  colors.web = 'green'
+  const fileColors = newColorMap()
+  Object.assign(fileColors, { web: 'red', db: '#1e90ff', same: 'teal', away: 'pink' })
+  const file = { servers: [{ id: 1, tags: ['web', 'db', 'same'] }, { id: 99, tags: ['away'] }], colors: fileColors }
+  const plan = planTagsImport({ 1: ['same'] }, { same: '#0d9488' }, file, new Set([1]))
+  eq(plan.colors, { same: '#0d9488', web: 'red', db: '#1e90ff' })
+  assert.equal(plan.colorsSet, 2)
+  assert.equal(plan.colorsKept, 0, 'same is teal in the file and #0d9488 here, the same colour')
+  const kept = planTagsImport({ 1: ['web'] }, colors, file, new Set([1]))
+  assert.equal(colorOf(kept.colors, 'web'), 'green', 'the colour it has stays')
+  assert.equal(kept.colorsKept, 1)
+  assert.equal(colorOf(kept.colors, 'away'), undefined, 'a colour for a tag only on a server this account lacks is not taken')
+})
+
+for (const name of ['constructor', '__proto__', 'hasownproperty']) {
+  test(`a tag named ${name} goes through a tags file as an ordinary tag`, () => {
+    const colors = newColorMap()
+    colors[name] = 'purple'
+    const tags = newTagMap()
+    tags[1] = [name, 'web']
+    const text = JSON.stringify(buildTagsFile(tags, colors, FLEET))
+    const read = readTagsFile(JSON.parse(text))
+    assert.equal(read.ok, true)
+    eq(read.servers, [{ id: 1, tags: [name, 'web'].sort() }])
+    assert.equal(colorOf(read.colors, name), 'purple')
+    const plan = planTagsImport(newTagMap(), newColorMap(), read, new Set([1]))
+    eq(plan.tags, { 1: [name, 'web'].sort() })
+    assert.equal(colorOf(plan.colors, name), 'purple')
+    assert.equal(Object.getPrototypeOf({}), Object.prototype)
+    assert.equal({}.polluted, undefined)
+  })
+}
 
 const PROTO_NAMES = ['constructor', '__proto__', 'prototype', 'hasownproperty', 'tostring', 'valueof', '__definegetter__']
 const untouched = () => {
