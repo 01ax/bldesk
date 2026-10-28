@@ -6,19 +6,24 @@ import ts from 'typescript'
 import createClient from 'openapi-fetch'
 import { ApiError, apiFailure } from '../src/renderer/src/api/errors.ts'
 
-// Execute the real hook's mutation against openapi-fetch, without rendering React or making a network request.
+// Execute the real hooks' mutations against openapi-fetch, without rendering React or making a network request.
 const source = readFileSync(new URL('../src/renderer/src/api/queries.ts', import.meta.url), 'utf8')
 const file = ts.createSourceFile('queries.ts', source, ts.ScriptTarget.Latest, true)
-const hook = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'useTakeBackupMutation')
-assert.ok(hook, 'useTakeBackupMutation must still exist')
-const compiled = ts.transpileModule(hook.getText(file), {
+const hooks = ['useTakeBackupMutation', 'useImageDownloadMutation'].map(name => {
+  const hook = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)
+  assert.ok(hook, `${name} must still exist`)
+  return hook.getText(file)
+})
+const compiled = ts.transpileModule(hooks.join('\n'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
 }).outputText
 
 function fixture(status, body, headers = {}) {
   const requests = [], invalidations = [], module = { exports: {} }
   const client = createClient({ baseUrl: 'https://backup-fixture.invalid', fetch: async request => {
-    requests.push({ method: request.method, url: request.url, body: await request.json() })
+    const recorded = { method: request.method, url: request.url }
+    if (request.body !== null) recorded.body = await request.json()
+    requests.push(recorded)
     return new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
   } })
   runInNewContext(compiled, {
@@ -26,7 +31,7 @@ function fixture(status, body, headers = {}) {
     useQueryClient: () => ({ invalidateQueries: key => invalidations.push(key) }),
     useMutation: options => options
   })
-  return { mutation: module.exports.useTakeBackupMutation(client), requests, invalidations }
+  return { mutation: module.exports.useTakeBackupMutation(client), download: module.exports.useImageDownloadMutation(client), requests, invalidations }
 }
 
 test('Take Backup rejects an empty HTTP failure instead of returning a successful undefined action', async () => {
@@ -84,4 +89,40 @@ test('a named replacement still sends the selected backup type and id', async ()
   assert.deepEqual(requests[0].body, {
     type: 'take_backup', replacement_strategy: 'specified', backup_type: 'temporary', backup_id_to_replace: 71001
   })
+})
+
+test('Download rejects an empty HTTP failure with its status after one GET', async () => {
+  for (const status of [400, 403, 429, 500, 504]) {
+    const { download, requests } = fixture(status)
+    await assert.rejects(download.mutationFn(71001), error => {
+      assert.ok(error instanceof ApiError)
+      assert.equal(error.status, status)
+      return true
+    })
+    assert.deepEqual(requests, [{ method: 'GET', url: 'https://backup-fixture.invalid/v2/images/71001/download' }])
+  }
+})
+
+test('Download preserves the API reason instead of returning a missing link', async () => {
+  const { download, requests } = fixture(400, { message: 'Fixture validation failed.', errors: { image_id: ['Fixture image unavailable.'] } })
+  await assert.rejects(download.mutationFn(71001), {
+    name: 'ApiError', status: 400, message: 'Fixture validation failed. image_id: Fixture image unavailable.'
+  })
+  assert.equal(requests.length, 1)
+})
+
+test('a successful Download returns the link and makes no cache invalidations', async () => {
+  const link = { disks: [{ compressed_url: 'https://download-fixture.invalid/image.gz', raw_url: 'https://download-fixture.invalid/image.raw' }] }
+  const { download, requests, invalidations } = fixture(200, { link })
+  assert.deepEqual(await download.mutationFn(71001), link)
+  assert.deepEqual(requests, [{ method: 'GET', url: 'https://backup-fixture.invalid/v2/images/71001/download' }])
+  assert.deepEqual(invalidations, [])
+})
+
+test('a successful Download without a link retains the caller missing-URL fallback', async () => {
+  for (const [status, body] of [[200, {}], [204, undefined]]) {
+    const { download, requests } = fixture(status, body)
+    assert.equal(await download.mutationFn(71001), undefined)
+    assert.equal(requests.length, 1)
+  }
 })

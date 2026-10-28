@@ -12,6 +12,8 @@ Take Backup creates an image; Restore overwrites the server's current disk. Atta
 
 ISO images are marked ISO and cannot be downloaded or restored, as described by `BackupInfo.iso` in the public API reference. Their rows show Attach and an attachment-only note instead of Download and Restore. Attach uses this page's existing read-only additional-drive operation; it is not a Restore action.
 
+A refused download-link request shows the API's reason, or the HTTP status when an error response has no reason. A successful response without a usable URL reports that no download URL was returned.
+
 Purchased daily, weekly and monthly counts and offsite options are in Change Plan. The hour and days the scheduled backups run are shown and changed on this page, under [Backup schedule](help:backups#backup-schedule). BinaryLane describes automated backups in its [automated backups article](https://support.binarylane.com.au/support/solutions/articles/11000033794-automated-backups). Keeping BLDesk open is not required for the schedule.
 
 ## Take Backup
