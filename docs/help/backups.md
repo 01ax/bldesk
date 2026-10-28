@@ -12,6 +12,8 @@ Take Backup creates an image; Restore overwrites the server's current disk. Atta
 
 ISO images are marked ISO and cannot be downloaded or restored, as described by `BackupInfo.iso` in the public API reference. Their rows show Attach and an attachment-only note instead of Download and Restore. Attach uses this page's existing read-only additional-drive operation; it is not a Restore action.
 
+A refused download-link request shows the API's reason, or the HTTP status when an error response has no reason. A successful response without a usable URL reports that no download URL was returned.
+
 Purchased daily, weekly and monthly counts and offsite options are in Change Plan. The hour and days the scheduled backups run are shown and changed on this page, under [Backup schedule](help:backups#backup-schedule). BinaryLane describes automated backups in its [automated backups article](https://support.binarylane.com.au/support/solutions/articles/11000033794-automated-backups). Keeping BLDesk open is not required for the schedule.
 
 ## Take Backup
@@ -48,6 +50,11 @@ For a backup you chose under “Replace Existing Image”, it says:
 “Couldn't read this server's backups, so BLDesk can't check whether the backup you chose can still be replaced. If it can, this backup replaces it and the replaced backup will no longer be available.”
 
 The row “Backup you chose” gives its name, ID, slot and date as the list on this page showed them. The button is red and History records the entry as destructive. Cancel sends nothing; confirming sends the request. When the list on this page cannot be read, it says “Couldn't read this server's backups.” with a Retry button, instead of “No Backups Found”.
+
+### If the request is refused
+The form shows “Backup failed” with BinaryLane's reason and keeps your choices open. The command palette shows the reason beside the affected server. Both record the failed request and its reason in History, without retrying automatically. If an unsuccessful HTTP response has no body, BLDesk reports its status instead of treating the request as submitted.
+
+For a refused backup-first step during a resize, see [Change Plan](help:server-change-plan#before-applying).
 
 ## Import Image
 Choose Import Image to ask BinaryLane to download an image from an HTTP or HTTPS URL into this server's backup storage. This is a URL import, not a file picker. Importing stores the image; it does not restore or attach it. Afterward, use the actions available for the returned image. For an ISO, only Attach is available; Download and Restore are not supported.

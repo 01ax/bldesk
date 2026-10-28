@@ -27,7 +27,7 @@ Backup-model regressions can also run without Electron or Playwright:
 node --test scripts/gui-test/mock.test.mjs
 ```
 
-This starts a local HTTP mock on a free port with a fictitious token, then stops it. It checks plan backup options, per-server ownership, free and full slots, replacement strategies, locked/attached images, failed actions and reset.
+This starts a local HTTP mock on a free port with a fictitious token, then stops it. It checks plan backup options, per-server ownership, free and full slots, replacement strategies, locked/attached images, failed actions and reset. The default download response is also checked against the public response schemas, including its requested image identity and disk URLs.
 
 `launch.mjs` options: `--name NAME` (run several at once; default `default`), `--mock-port` (8443), `--cdp-port` (9333), `--bin PATH` (an installed BLDesk instead of this checkout, to test the packaged app with its production CSP), `--mock-only`, `--http`, `--stop`. Everything for a run, including the mock log (`mock.log`, every request with its body), the app log and screenshots, is in `<tmp>/bldesk-gui-test/NAME/`.
 

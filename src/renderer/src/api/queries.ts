@@ -1143,7 +1143,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null) {
         params: { path: { server_id: serverId } },
         body
       })
-      if (error) throw apiFailure(error, response)
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: (_, { serverId }) => {
@@ -1161,7 +1161,7 @@ export function useImageDownloadMutation(client: BinaryLaneClient | null) {
       const { data, error, response } = await client.GET('/v2/images/{image_id}/download', {
         params: { path: { image_id: imageId } }
       })
-      if (error) throw apiFailure(error, response)
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.link
     }
   })
