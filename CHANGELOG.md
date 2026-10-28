@@ -5,6 +5,16 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.63-beta.1] - 2026-10-28
+
+**Add a firewall rule with a destination and a picker, and a refused backup says so**
+
+### Added
+- **The Add Rule form has the same fields as a rule, and a list under every address and ports field** (#344). The form now takes Source, Destination, Destination ports, Protocol, Action and Description, in the order the table and mPanel use, one address or port to a line. A magnifier under each address field, on the form and on every rule in the table, lists any address, the account's other servers and each of their addresses, and this server's own public, private and all addresses; the ports magnifier lists the usual ports and the system, user and dynamic ranges. A choice is added to what the field holds without repeating a value. On a rule it is an edit like any other, held until Save changes. Add Rule is switched off at BinaryLane's limit of 100 rules per server, with the reason shown; a server that already has more may keep, edit or remove its rules, and an import that would exceed what it has is refused before any confirmation. The vendored API reference is updated to 0.46.0, which states the limit. mPanel's Current IP entry is not offered: the public API has no way to learn the caller's address.
+
+### Fixed
+- **Take Backup and Download report a refusal that comes with no body** (#343, #313). An error response labelled JSON but empty was taken as success: the Take Backup form closed and History stayed Submitted, and Download said no URL was returned. Both now report the HTTP status, Take Backup keeps the form open and records Failed, and the reason BinaryLane gives is shown when there is one. The help for Backups and Change Plan explains what a refusal shows and that a reason under `pre_action_backup` refers to the Backup first step.
+
 ## [1.0.62-beta.37] - 2026-10-27
 
 **Edit firewall rules in place, and import images from a URL**
