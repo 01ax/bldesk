@@ -428,6 +428,8 @@ test('firewall writes are checked against the rule schema, and a write lands whe
   assert.match((await write([noDestination], 400)).message, /destination_addresses/)
   assert.match((await write([{ ...rule, destination_addresses: [] }], 400)).message, /destination_addresses/)
   assert.match((await write([{ ...rule, action: 'allow' }], 400)).message, /action/)
+  // A hundred and one rules are refused, as the live API does; a hundred are accepted (below).
+  assert.equal((await write(Array(101).fill(rule), 400)).message, 'Firewall rules are limited to 100 per server; 101 were submitted.')
   const before = (await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules
 
   // The change is applied when the action completes, not when it is queued.
@@ -438,6 +440,8 @@ test('firewall writes are checked against the rule schema, and a write lands whe
   assert.deepEqual((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules, [rule])
   assert.equal((await request(`/v2/actions/${queued.action.id}`)).action.status, 'completed')
   assert.deepEqual((await write([], 200)).action.type, 'change_advanced_firewall_rules')
+  await sleep(100)
+  assert.equal((await write(Array(100).fill(rule), 200)).action.type, 'change_advanced_firewall_rules')
 })
 
 for (const outcome of ['completed', 'errored']) {
@@ -458,6 +462,32 @@ for (const outcome of ['completed', 'errored']) {
   })
 }
 
+
+test('a server that already has more than 100 rules may keep, edit or reduce them but not exceed what it has', async () => {
+  const write = (rules, status = 200) => request('/v2/servers/8100/actions', { type: 'change_advanced_firewall_rules', firewall_rules: rules }, 'POST', status)
+  const rule = (i) => ({ action: 'accept', protocol: 'tcp', source_addresses: ['192.0.2.1/32'], destination_addresses: ['0.0.0.0/0'], destination_ports: [String(1000 + i)] })
+  const rules = (n) => Array.from({ length: n }, (_, i) => rule(i))
+  await request('/__mock/reset', {})
+  await request('/__mock/config', { actionMs: 20 })
+  // The write cannot make such a server: 101 is refused when it has fewer.
+  assert.match((await write(rules(101), 400)).message, /limited to 100 per server; 101 were submitted/)
+  await request('/__mock/firewall', { server_id: 8100, firewall_rules: rules(110) })
+  assert.equal((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules.length, 110)
+  // Kept, edited or reduced: accepted, though above 100.
+  assert.equal((await write(rules(110))).action.type, 'change_advanced_firewall_rules')
+  assert.equal((await write(rules(105))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  assert.equal((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules.length, 105)
+  // Not grown beyond what it has now (105, no longer 110).
+  assert.match((await write(rules(106), 400)).message, /105 this server already has; 106 were submitted/)
+  assert.equal((await write(rules(105))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  // Reduced to 100, the server is an ordinary one again: 101 is refused with the usual text.
+  assert.equal((await write(rules(100))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  assert.equal((await write(rules(101), 400)).message, 'Firewall rules are limited to 100 per server; 101 were submitted.')
+  await request('/__mock/reset', {})
+})
 test('proceed replaces the original timer before applying an action', async () => {
   const before = await server()
   await request('/__mock/config', { actionMs: 30, interaction: 'continue-after-ping-failure' })

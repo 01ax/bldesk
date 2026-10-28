@@ -1,6 +1,13 @@
 import { Capacitor } from '@capacitor/core'
 
 /*
+ * What the back button closes before it changes screen: a dialog, or a menu or popover (the tag lists, a rule's address and port
+ * lists), that has said it closes on Escape. Back sends it Escape. A popup that sets data-dismissible and a role that is not listed
+ * here is skipped, and Back leaves the screen under it; scripts/check-ui-guards.mjs fails on one.
+ */
+export const DISMISSIBLE_SELECTOR = '[role="dialog"][data-dismissible="true"], [role="menu"][data-dismissible="true"]'
+
+/*
  * Android's back button. BLDesk switches views with React state, not browser
  * history, so without this back had nothing to go back to and closed the app
  * from any screen. `onBack` steps back through the app's own navigation and

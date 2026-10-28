@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { installAndroidBackButton } from './lib/androidBack'
+import { DISMISSIBLE_SELECTOR, installAndroidBackButton } from './lib/androidBack'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TitleBar } from './components/layout/TitleBar'
 import { SettingsView } from './components/settings/SettingsView'
@@ -122,7 +122,7 @@ function MainDashboard() {
 
   /*
    * Android back: undo the most recent step in the app's own navigation, in
-   * this order - an open dialog (closed the way Escape closes it), the command
+   * this order - an open dialog or menu (closed the way Escape closes it), the command
    * palette, the navigation drawer, the vault (once an account exists), a
    * server's sub-tab, the server itself, then any tab back to Servers. Only
    * with nothing left does the app go to the background. See androidBack.ts.
@@ -131,7 +131,7 @@ function MainDashboard() {
   backRef.current = () => {
     if (isPaletteOpen) { setIsPaletteOpen(false); return true }
     // Not a dialog that has to be answered (no Escape closes it), and not the vault while there is no account to go back to.
-    if (document.querySelector('[role="dialog"][data-dismissible="true"]') && !(isAuthOpen && profiles.length === 0)) {
+    if (document.querySelector(DISMISSIBLE_SELECTOR) && !(isAuthOpen && profiles.length === 0)) {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       return true
     }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Cheap source checks for the zoom regressions in #18. TypeScript is already
+// Cheap source checks for the zoom regressions in #18, and for the Android Back
+// button skipping a popup that closes on Escape. TypeScript is already
 // installed for typechecking; its parser avoids matching comments or prose.
 // These check ownership and wiring, not whether a rendered layout fits.
 import { readdirSync, readFileSync } from 'node:fs'
@@ -10,8 +11,24 @@ import ts from 'typescript'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const ZOOM_OWNER = 'src/main/zoom.ts'
 const ZOOM_ROLES = new Set(['zoomIn', 'zoomOut', 'resetZoom'])
+const BACK_FILE = 'src/renderer/src/lib/androidBack.ts'
+const BACK_SELECTOR = 'DISMISSIBLE_SELECTOR'
 
-export function checkUiSource(path, source) {
+/** The roles the Android Back button closes: each `[role="x"][data-dismissible="true"]` in the DISMISSIBLE_SELECTOR string. */
+export function backRoles(source) {
+  const file = ts.createSourceFile(BACK_FILE, source, ts.ScriptTarget.Latest, true)
+  const roles = new Set()
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === BACK_SELECTOR && node.initializer && ts.isStringLiteralLike(node.initializer)) {
+      for (const m of node.initializer.text.matchAll(/\[role="([\w-]+)"\]\[data-dismissible="true"\]/g)) roles.add(m[1])
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return roles
+}
+
+export function checkUiSource(path, source, roles = backRoles(readFileSync(join(ROOT, BACK_FILE), 'utf8'))) {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true)
   const failures = []
   const wired = new Set()
@@ -47,9 +64,22 @@ export function checkUiSource(path, source) {
         ts.isStringLiteral(node.initializer) && ZOOM_ROLES.has(node.initializer.text)) {
       fail(node, `built-in ${node.initializer.text} ignores custom click handlers and bypasses bounds; use the commands in ${ZOOM_OWNER}.`)
     }
+    // A popup that says it closes on Escape is closed by Android's Back button, but only for a role that DISMISSIBLE_SELECTOR lists.
+    if (ts.isJsxAttribute(node) && node.name.getText(file) === 'data-dismissible') {
+      const role = node.parent.properties.find(p => ts.isJsxAttribute(p) && p.name.getText(file) === 'role')
+      const value = role?.initializer && ts.isStringLiteral(role.initializer) ? role.initializer.text : undefined
+      if (value === undefined) {
+        fail(node, `give an element with data-dismissible a role written as a string, so the Back button's ${BACK_SELECTOR} can be checked against it.`)
+      } else if (!roles.has(value)) {
+        fail(node, `Android Back skips role="${value}": ${BACK_SELECTOR} in ${BACK_FILE} lists only ${[...roles].map(r => `"${r}"`).join(', ')}, so Back would leave the screen with this open.`)
+      }
+    }
     ts.forEachChild(node, visit)
   }
   visit(file)
+  if (path === 'src/renderer/src/App.tsx' && !/\bDISMISSIBLE_SELECTOR\b/.test(source)) {
+    failures.push(`${path}: the Back handler must find an open popup with ${BACK_SELECTOR} from ${BACK_FILE}.`)
+  }
   if (path === 'src/main/index.ts') {
     for (const name of ['installWindowZoom', 'installZoomMenu']) {
       if (!wired.has(name)) failures.push(`${path}: keep ${name}() wired into startup; see AGENTS.md → Zoom and layout.`)

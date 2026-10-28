@@ -20,12 +20,14 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
-import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, toRuleRequest } from '../../lib/firewallRules'
+import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, ruleLimitNote, rulesAllowed, toRuleRequest } from '../../lib/firewallRules'
+import { addressChoicesFor, PORT_CHOICES, presetRule, withChoice, type PresetName } from '../../lib/firewallPicks'
 import type { FwRule } from '../../lib/firewallMatrix'
-import { describePending, draftApplies, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, type DraftRow } from '../../lib/firewallDraft'
+import { describePending, draftApplies, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, splitList, type DraftRow } from '../../lib/firewallDraft'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
-import { FirewallRulesEditor } from './FirewallRulesEditor'
+import { FirewallRulesEditor, lines } from './FirewallRulesEditor'
+import { PickMenu } from './PickMenu'
 import { notifyFailure } from '../../lib/failures'
 
 interface FirewallManagerProps {
@@ -79,7 +81,9 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [ruleAction, setRuleAction] = useState<'accept' | 'drop'>('accept')
   const [ruleProtocol, setRuleProtocol] = useState<'tcp' | 'udp' | 'icmp' | 'all'>('tcp')
   const [rulePorts, setRulePorts] = useState('22')
-  const [ruleSource, setRuleSource] = useState('0.0.0.0/0')
+  // Source and Destination start empty: an empty one is written as the any-address (handleAddRule), and a choice from a list is added to what a cell holds.
+  const [ruleSource, setRuleSource] = useState('')
+  const [ruleDestination, setRuleDestination] = useState('')
   const [ruleDescription, setRuleDescription] = useState('Allow SSH')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // A save is confirmed and then written; a second press in between would be built from the same list.
@@ -116,6 +120,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [cloneError, setCloneError] = useState<string | null>(null)
 
   const currentRules: FwRule[] = firewallQuery.data || []
+  // A server may have 100 rules, or the number it already has if that is more (rulesAllowed): with that many, one more is over.
+  const atRuleLimit = currentRules.length + 1 > rulesAllowed(currentRules.length)
+  const limitNote = ruleLimitNote(currentRules.length)
+  const addressPicks = useMemo(() => addressChoicesFor(activeServer, servers), [activeServer, servers])
   const confirmAction = useConfirm()
   const { track, tracked } = useTrackedActions()
   // A write is applied when its action completes, not when it is queued, so until then the list on screen is the one from
@@ -162,44 +170,14 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       throw err
     }
   }
-  const applyPreset = (preset: 'ssh' | 'http_https' | 'openvpn' | 'wireguard' | 'drop_all') => {
-    switch (preset) {
-      case 'ssh':
-        setRuleAction('accept')
-        setRuleProtocol('tcp')
-        setRulePorts('22')
-        setRuleSource('0.0.0.0/0')
-        setRuleDescription('Allow SSH')
-        break
-      case 'http_https':
-        setRuleAction('accept')
-        setRuleProtocol('tcp')
-        setRulePorts('80, 443')
-        setRuleSource('0.0.0.0/0')
-        setRuleDescription('Allow Web HTTP/HTTPS')
-        break
-      case 'openvpn':
-        setRuleAction('accept')
-        setRuleProtocol('udp')
-        setRulePorts('1194')
-        setRuleSource('0.0.0.0/0')
-        setRuleDescription('Allow OpenVPN')
-        break
-      case 'wireguard':
-        setRuleAction('accept')
-        setRuleProtocol('udp')
-        setRulePorts('51820')
-        setRuleSource('0.0.0.0/0')
-        setRuleDescription('Allow WireGuard VPN')
-        break
-      case 'drop_all':
-        setRuleAction('drop')
-        setRuleProtocol('all')
-        setRulePorts('')
-        setRuleSource('0.0.0.0/0')
-        setRuleDescription('Default Drop Inbound')
-        break
-    }
+  const applyPreset = (preset: PresetName) => {
+    const rule = presetRule(preset, activeServer)
+    setRuleAction(rule.action)
+    setRuleProtocol(rule.protocol)
+    setRulePorts(rule.ports)
+    setRuleSource(rule.source)
+    setRuleDestination(rule.destination)
+    setRuleDescription(rule.description)
   }
 
   // Handle Adding Rule
@@ -208,22 +186,22 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     setErrorMsg(null)
 
     if (!activeServerId || !canEdit) return
+    if (atRuleLimit) {
+      setErrorMsg(limitNote)
+      return
+    }
 
+    // One address or port to a line; commas and spaces separate them as well.
     const newRule: FwRule = toRuleRequest({
       action: ruleAction,
       protocol: ruleProtocol,
-      source_addresses: ruleSource
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
+      source_addresses: splitList(ruleSource),
+      destination_addresses: splitList(ruleDestination),
       description: ruleDescription.trim() || undefined
     })
 
     if (ruleProtocol === 'tcp' || ruleProtocol === 'udp') {
-      const ports = rulePorts
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean)
+      const ports = splitList(rulePorts)
       // "," or " " has text but names no port, and a rule with no ports matches all of them.
       if (ports.length === 0) {
         setErrorMsg('Destination port(s) are required for TCP/UDP rules.')
@@ -237,6 +215,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
     }
     if (!newRule.source_addresses.every(isIpv4OrRange)) {
       setErrorMsg('Source must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.')
+      return
+    }
+    if (!newRule.destination_addresses.every(isIpv4OrRange)) {
+      setErrorMsg('Destination must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.')
       return
     }
 
@@ -413,7 +395,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
     try {
       // What is written is checked against the API reference first: a rule list it would refuse is never sent.
-      const read = readImportedRules(JSON.parse(importJsonText))
+      const read = readImportedRules(JSON.parse(importJsonText), currentRules.length)
       if (read.error !== undefined) throw new Error(read.error)
       const parsed = read.rules
       if (parsed.length === 0 && currentRules.length === 0) throw new Error('The file has no rules, and this server has none, so there is nothing to import.')
@@ -593,7 +575,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
           <button
             onClick={() => setIsAdding((prev) => !prev)}
-            disabled={!canEdit && !isAdding}
+            disabled={(!canEdit || atRuleLimit) && !isAdding}
+            title={atRuleLimit && !isAdding ? limitNote : undefined}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-40"
           >
             <Plus className="w-4 h-4" />
@@ -604,6 +587,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           <HelpLink slug="firewall" />
         </div>
       </div>
+      {/* Under the buttons, not among them: inside the row it made the row so wide that the heading wrapped. */}
+      {view === 'server' && atRuleLimit && <p className="-mt-3 md:text-right text-[11px] text-[#6c757d] dark:text-slate-400">{limitNote}</p>}
 
       {view === 'matrix' ? (
         <FirewallMatrix
@@ -624,14 +609,14 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           onSubmit={handleAddRule}
           className="p-5 bg-white dark:bg-[#2b3035] border border-[#017cb6]/40 rounded-lg space-y-4 text-xs shadow-md"
         >
-          <div className="flex items-center justify-between border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[#ced4da] dark:border-[#373b3e] pb-3">
             <h3 className="font-bold text-sm text-[#212529] dark:text-white flex items-center gap-2">
               <Plus className="w-4 h-4 text-[#017cb6]" />
               <span>Add Inbound Firewall Rule</span>
             </h3>
 
             {/* Presets */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-[#6c757d] mr-1">Presets:</span>
               <button
                 type="button"
@@ -664,29 +649,61 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </div>
           </div>
 
-          {errorMsg && (
+          {(errorMsg ?? (atRuleLimit ? limitNote : null)) && (
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
+              <span>{errorMsg ?? limitNote}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-6 gap-3 items-start">
             <div>
-              <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Action</label>
-              <select
-                value={ruleAction}
-                onChange={(e) => setRuleAction(e.target.value as FwRule['action'])}
-                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white font-medium focus:outline-none focus:border-[#017cb6]"
-              >
-                <option value="accept">ACCEPT</option>
-                <option value="drop">DROP</option>
-              </select>
+              <label htmlFor="fw-add-source" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Source</label>
+              <textarea
+                id="fw-add-source"
+                rows={lines(ruleSource)}
+                placeholder="0.0.0.0/0"
+                spellCheck={false}
+                value={ruleSource}
+                onChange={(e) => setRuleSource(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6]"
+              />
+              <PickMenu label="source addresses" choices={addressPicks} onPick={(c) => setRuleSource((held) => withChoice(held, c.values))} />
             </div>
 
             <div>
-              <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Protocol</label>
+              <label htmlFor="fw-add-destination" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Destination</label>
+              <textarea
+                id="fw-add-destination"
+                rows={lines(ruleDestination)}
+                placeholder="0.0.0.0/0"
+                spellCheck={false}
+                value={ruleDestination}
+                onChange={(e) => setRuleDestination(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6]"
+              />
+              <PickMenu label="destination addresses" choices={addressPicks} onPick={(c) => setRuleDestination((held) => withChoice(held, c.values))} />
+            </div>
+
+            <div>
+              <label htmlFor="fw-add-ports" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Destination ports</label>
+              <textarea
+                id="fw-add-ports"
+                rows={lines(rulePorts)}
+                disabled={ruleProtocol === 'icmp' || ruleProtocol === 'all'}
+                placeholder="22 or 80, 443"
+                spellCheck={false}
+                value={rulePorts}
+                onChange={(e) => setRulePorts(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6] disabled:opacity-40"
+              />
+              <PickMenu label="destination ports" choices={PORT_CHOICES} disabled={ruleProtocol === 'icmp' || ruleProtocol === 'all'} onPick={(c) => setRulePorts((held) => withChoice(held, c.values))} />
+            </div>
+
+            <div>
+              <label htmlFor="fw-add-protocol" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Protocol</label>
               <select
+                id="fw-add-protocol"
                 value={ruleProtocol}
                 onChange={(e) => setRuleProtocol(e.target.value as FwRule['protocol'])}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white uppercase font-mono focus:outline-none focus:border-[#017cb6]"
@@ -699,31 +716,22 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </div>
 
             <div>
-              <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Port(s)</label>
-              <input
-                type="text"
-                disabled={ruleProtocol === 'icmp' || ruleProtocol === 'all'}
-                placeholder="22 or 80, 443"
-                value={rulePorts}
-                onChange={(e) => setRulePorts(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white font-mono focus:outline-none focus:border-[#017cb6] disabled:opacity-40"
-              />
+              <label htmlFor="fw-add-action" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Action</label>
+              <select
+                id="fw-add-action"
+                value={ruleAction}
+                onChange={(e) => setRuleAction(e.target.value as FwRule['action'])}
+                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white font-medium focus:outline-none focus:border-[#017cb6]"
+              >
+                <option value="accept">ACCEPT</option>
+                <option value="drop">DROP</option>
+              </select>
             </div>
 
             <div>
-              <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Source CIDR</label>
+              <label htmlFor="fw-add-description" className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Description</label>
               <input
-                type="text"
-                placeholder="0.0.0.0/0"
-                value={ruleSource}
-                onChange={(e) => setRuleSource(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white font-mono focus:outline-none focus:border-[#017cb6]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-[#495057] dark:text-[#ced4da] block mb-1">Label</label>
-              <input
+                id="fw-add-description"
                 type="text"
                 placeholder="Description"
                 value={ruleDescription}
@@ -743,7 +751,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </button>
             <button
               type="submit"
-              disabled={updateFirewall.isPending || !canEdit}
+              disabled={updateFirewall.isPending || !canEdit || atRuleLimit}
               className="px-4 py-1.5 bg-[#017cb6] hover:bg-[#016594] text-white text-xs font-medium rounded transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
             >
               {updateFirewall.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -895,7 +903,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </div>
         )}
 
-        {!firewallQuery.isLoading && rows.length > 0 && <FirewallRulesEditor rows={rows} editable={rowsEditable} onChange={editRows} />}
+        {!firewallQuery.isLoading && rows.length > 0 && <FirewallRulesEditor rows={rows} editable={rowsEditable} addressChoices={addressPicks} onChange={editRows} />}
       </div>
 
       {/* Import dialog */}

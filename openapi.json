@@ -8,7 +8,7 @@
       "url": "https://support.binarylane.com.au/support/home",
       "email": "support@binarylane.com.au"
     },
-    "version": "0.45.0",
+    "version": "0.46.0",
     "x-logo": {
       "url": "https://www.binarylane.com.au/res/images/binarylane/logo.png",
       "backgroundColor": "#000000",
@@ -9037,7 +9037,7 @@
             "items": {
               "$ref": "#/components/schemas/AdvancedFirewallRuleRequest"
             },
-            "description": "A list of rules for the server. NB: that any existing rules that are not included will be removed. Submit an empty list to clear all rules."
+            "description": "A list of rules for the server. NB: that any existing rules that are not included will be removed. Submit an empty list to clear all rules. A server may have up to 100 rules, which together may match up to 1000 combinations of source address, destination address, protocol and destination port: an address in CIDR notation or a port range counts as one, a rule using the \"all\" protocol counts its ports for both TCP and UDP, and an ICMP rule counts each ICMP type it covers. A server that already exceeds either limit may keep, edit or remove its rules, but not exceed what it already has."
           }
         },
         "description": "Change the Advanced Firewall Rules for a Server"
