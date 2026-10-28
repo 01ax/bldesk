@@ -62,6 +62,29 @@ beforeEach(async () => {
 
 const upload = (body, id = 9003, status = 200) => request(`/v2/servers/${id}/backups`, { url: 'https://example.com/image.img.zst', ...body }, 'POST', status)
 
+test('the default download response matches ImageDownload and leaves backups and actions unchanged', async () => {
+  const { validatorFor } = await import('./spec.mjs')
+  const validate = validatorFor('/components/schemas/ImageDownloadResponse')
+  const before = await backups(), multiDisk = await backups(9001), actionsBefore = await request('/v2/actions')
+  assert.ok(before.length >= 2, 'two fixture backups are needed to check the returned image identity')
+  assert.ok(multiDisk[0]?.backup_info.backup_disks.length > 1, 'a multi-disk backup is needed to check every returned disk')
+  for (const image of [...before.slice(0, 2), multiDisk[0]]) {
+    const response = await request(`/v2/images/${image.id}/download`)
+    assert.ok(validate(response), JSON.stringify(validate.errors))
+    assert.equal(response.link.id, image.id)
+    assert.ok(Date.parse(response.link.expiry) > Date.now())
+    assert.ok(response.link.disks.length > 0)
+    assert.deepEqual(response.link.disks.map(disk => disk.id), image.backup_info.backup_disks.map(disk => disk.id))
+    for (const disk of response.link.disks) {
+      assert.equal(new URL(disk.compressed_url).protocol, 'https:')
+      assert.equal(new URL(disk.raw_url).protocol, 'https:')
+    }
+  }
+  assert.deepEqual(await backups(), before)
+  assert.deepEqual(await backups(9001), multiDisk)
+  assert.deepEqual(await request('/v2/actions'), actionsBefore)
+})
+
 test('URL imports queue upload_image and do not assume the request label names the returned image', async () => {
   const before = await backups(8100)
   const queued = await upload({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Imported disk' })

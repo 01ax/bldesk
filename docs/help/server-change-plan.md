@@ -26,6 +26,8 @@ Reducing scheduled retention deletes the oldest backups above the new limit, inc
 
 Keeping the image preserves it; choosing to reinstall destroys the disks. Do not confuse reinstall with an in-place upgrade. BinaryLane controls plan eligibility and address allocation; see [changing a plan](https://support.binarylane.com.au/support/solutions/articles/1000015174-can-i-change-my-plan-).
 
+If BinaryLane refuses the request, the “Action failed” card and History show its reason, including any field-level details. A reason under `pre_action_backup` identifies the “Backup first” step. BLDesk does not retry automatically; review the reason before submitting again.
+
 ## Worked example
 Suppose a server has a primary address and an extra address 192.0.2.25. Reduce its IPv4 count by one, then select that extra address for release. The primary address is not offered: it is tied to the server's lease, as described in the [resize API](https://api.binarylane.com.au/reference/#tag/ServerActions).
 

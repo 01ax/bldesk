@@ -400,7 +400,11 @@ async function handleApi(req, res, u, body) {
       return json(res, 200, { image })
     }
   }
-  if (m === 'GET' && /^\/v2\/images\/\d+\/download$/.test(p)) return json(res, 200, { link: 'https://example.com/download/image.raw.gz' })
+  if (m === 'GET' && (mt = p.match(/^\/v2\/images\/(\d+)\/download$/))) {
+    const id = +mt[1], disks = backupImage(id)?.backup_info.backup_disks || [{ id: 1 }]
+    return json(res, 200, { link: { id, expiry: new Date(Date.now() + 3600_000).toISOString(),
+      disks: disks.map(disk => ({ id: disk.id, compressed_url: `https://example.com/download/${disk.id}.raw.gz`, raw_url: `https://example.com/download/${disk.id}.raw` })) } })
+  }
   if (m === 'GET' && p === '/v2/regions') return json(res, 200, page(regions, q, 'regions'))
   if (m === 'GET' && p === '/v2/sizes') {
     let list = sizes.map((s) => ({ ...s }))
