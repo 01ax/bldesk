@@ -95,17 +95,26 @@ test('a choice with no address behind it is left out, and any address is always 
 test('a preset\'s destination is all of the server\'s addresses, the same as the menu\'s Server All Addresses', () => {
   assert.deepEqual(ownAddressesOf(me), ['198.51.100.10', '172.26.8.82'])
   assert.deepEqual(ownAddressesOf(me), byLabel(addressChoicesFor(me, [me, a, b, c]), 'Server All Addresses').values)
-  // A server with a second public address and a failover one: the public addresses first, then the private one.
+  // A server with a second public address: the public addresses first, then the private one. Its failover address is not among them.
   const multi = server(13, 'multi', [net('198.51.100.90', 'public'), net('198.51.100.91', 'public'), net('172.26.8.90', 'private')], { failover_ips: ['198.51.100.92'] })
-  assert.deepEqual(ownAddressesOf(multi), ['198.51.100.90', '198.51.100.91', '198.51.100.92', '172.26.8.90'])
+  assert.deepEqual(ownAddressesOf(multi), ['198.51.100.90', '198.51.100.91', '172.26.8.90'])
   // None to offer: not known, or no networks read.
   assert.deepEqual(ownAddressesOf(undefined), [])
   assert.deepEqual(ownAddressesOf({ id: 14, name: 'unread', failover_ips: [] }), [])
 })
 
-test('a failover address counts as a public address, and an address is listed once', () => {
+test('a failover address is not offered anywhere, and an address is listed once', () => {
   const withFailover = server(5, 'fo', [net('198.51.100.50', 'public'), net('198.51.100.50', 'public')], { failover_ips: ['198.51.100.51'] })
-  assert.deepEqual(byLabel(addressChoicesFor(withFailover, [withFailover]), 'Server Public Addresses').values, ['198.51.100.50', '198.51.100.51'])
+  const own = addressChoicesFor(withFailover, [withFailover])
+  assert.deepEqual(byLabel(own, 'Server Public Addresses').values, ['198.51.100.50'])
+  assert.ok(!own.some((c) => c.values.includes('198.51.100.51') || c.label.includes('198.51.100.51')), 'not in this server\'s own entries')
+  // Nor in another server's entries, whichever server the lists are for, and a server with only a failover address has no public entry.
+  const elsewhere = addressChoicesFor(me, [me, withFailover])
+  assert.ok(!elsewhere.some((c) => c.values.includes('198.51.100.51') || c.label.includes('198.51.100.51')), 'not in the other servers\' entries')
+  assert.deepEqual(byLabel(elsewhere, 'My Other Public Addresses').values, ['198.51.100.50'])
+  const onlyFailover = server(6, 'only-fo', [net('172.26.8.60', 'private')], { failover_ips: ['198.51.100.61'] })
+  assert.equal(byLabel(addressChoicesFor(onlyFailover, [onlyFailover]), 'Server Public Addresses'), undefined)
+  assert.deepEqual(ownAddressesOf(onlyFailover), ['172.26.8.60'])
   // Two other servers that list the same address give it once, and so does a server that lists it twice.
   const twin1 = server(11, 'twin-a', [net('198.51.100.70', 'public'), net('10.9.0.7', 'private'), net('10.9.0.7', 'private')])
   const twin2 = server(12, 'twin-b', [net('198.51.100.70', 'public'), net('10.9.0.7', 'private')])
@@ -184,27 +193,25 @@ test('a server that already has more than 100 rules may keep, edit or reduce the
 
 test('a choice is added to what the cell holds, as in mPanel, without repeating a value', () => {
   // An empty cell takes the choice, whatever blank it holds.
-  assert.equal(withChoice('', ['198.51.100.1'], true), '198.51.100.1')
-  assert.equal(withChoice(' \n ', ['198.51.100.1', '10.0.0.5'], true), '198.51.100.1\n10.0.0.5')
+  assert.equal(withChoice('', ['198.51.100.1']), '198.51.100.1')
+  assert.equal(withChoice(' \n ', ['198.51.100.1', '10.0.0.5']), '198.51.100.1\n10.0.0.5')
   // A populated cell keeps its values, in order, and the choice goes after them.
-  assert.equal(withChoice('203.0.113.9', ['198.51.100.1', '10.0.0.5'], true), '203.0.113.9\n198.51.100.1\n10.0.0.5')
-  assert.equal(withChoice('22', ['80', '443'], false), '22\n80\n443')
+  assert.equal(withChoice('203.0.113.9', ['198.51.100.1', '10.0.0.5']), '203.0.113.9\n198.51.100.1\n10.0.0.5')
+  assert.equal(withChoice('22', ['80', '443']), '22\n80\n443')
   // A value the cell already has is not added again, and what was typed is not reordered or de-duplicated.
-  assert.equal(withChoice('198.51.100.1\n203.0.113.9', ['203.0.113.9', '10.0.0.5'], true), '198.51.100.1\n203.0.113.9\n10.0.0.5')
-  assert.equal(withChoice('80\n80', ['80'], false), '80\n80')
-  assert.equal(withChoice('203.0.113.9', ['203.0.113.9'], true), '203.0.113.9')
+  assert.equal(withChoice('198.51.100.1\n203.0.113.9', ['203.0.113.9', '10.0.0.5']), '198.51.100.1\n203.0.113.9\n10.0.0.5')
+  assert.equal(withChoice('80\n80', ['80']), '80\n80')
+  assert.equal(withChoice('203.0.113.9', ['203.0.113.9']), '203.0.113.9')
   // Commas and spaces separate values in a cell, and it is written back one to a line.
-  assert.equal(withChoice('203.0.113.9, 203.0.113.10 ', ['10.0.0.5'], true), '203.0.113.9\n203.0.113.10\n10.0.0.5')
+  assert.equal(withChoice('203.0.113.9, 203.0.113.10 ', ['10.0.0.5']), '203.0.113.9\n203.0.113.10\n10.0.0.5')
 })
 
-test('an address cell that holds only the any-address is replaced by the choice, because adding to it would still match every address', () => {
-  assert.equal(withChoice('0.0.0.0/0', ['198.51.100.1', '10.0.0.5'], true), '198.51.100.1\n10.0.0.5')
-  assert.equal(withChoice(' 0.0.0.0/0\n', ['198.51.100.1'], true), '198.51.100.1')
-  assert.equal(withChoice('0.0.0.0/0', ['0.0.0.0/0'], true), '0.0.0.0/0')
-  // Any address among other values was put there on purpose: it stays, and the choice is added.
-  assert.equal(withChoice('203.0.113.9\n0.0.0.0/0', ['198.51.100.1'], true), '203.0.113.9\n0.0.0.0/0\n198.51.100.1')
-  // And choosing any address for a populated cell adds it after the others.
-  assert.equal(withChoice('203.0.113.9', ['0.0.0.0/0'], true), '203.0.113.9\n0.0.0.0/0')
-  // Ports have no such value: the same text in a ports cell is just a value.
-  assert.equal(withChoice('0.0.0.0/0', ['80'], false), '0.0.0.0/0\n80')
+test('the any-address is a value like any other: a choice is added after it, and it is added after the others', () => {
+  assert.equal(withChoice('0.0.0.0/0', ['198.51.100.1', '10.0.0.5']), '0.0.0.0/0\n198.51.100.1\n10.0.0.5')
+  assert.equal(withChoice(' 0.0.0.0/0\n', ['198.51.100.1']), '0.0.0.0/0\n198.51.100.1')
+  assert.equal(withChoice('0.0.0.0/0', ['0.0.0.0/0']), '0.0.0.0/0')
+  assert.equal(withChoice('203.0.113.9', ['0.0.0.0/0']), '203.0.113.9\n0.0.0.0/0')
+  assert.equal(withChoice('203.0.113.9\n0.0.0.0/0', ['198.51.100.1']), '203.0.113.9\n0.0.0.0/0\n198.51.100.1')
+  // And in a ports cell it is only text.
+  assert.equal(withChoice('0.0.0.0/0', ['80']), '0.0.0.0/0\n80')
 })

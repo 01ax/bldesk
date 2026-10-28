@@ -354,7 +354,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { sources: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} source addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { sources: withChoice(row.sources, c.values, true) })} />
+              <PickMenu label={`${label.toLowerCase()} source addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { sources: withChoice(row.sources, c.values) })} />
             </Field>
 
             <Field caption="Destination" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.destinations}>
@@ -369,7 +369,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { destinations: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} destination addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { destinations: withChoice(row.destinations, c.values, true) })} />
+              <PickMenu label={`${label.toLowerCase()} destination addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { destinations: withChoice(row.destinations, c.values) })} />
             </Field>
 
             <Field caption="Destination ports" short="Dest. ports" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.ports}>
@@ -384,7 +384,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { ports: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} destination ports`} choices={PORT_CHOICES} disabled={off || row.protocol === 'icmp'} onPick={(c) => patch(i, { ports: withChoice(row.ports, c.values, false) })} />
+              <PickMenu label={`${label.toLowerCase()} destination ports`} choices={PORT_CHOICES} disabled={off || row.protocol === 'icmp'} onPick={(c) => patch(i, { ports: withChoice(row.ports, c.values) })} />
             </Field>
 
             <Field caption="Protocol" className="col-span-2 sm:col-span-2 xl:col-span-1">
