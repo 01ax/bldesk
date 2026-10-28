@@ -2,7 +2,8 @@
 // the TypeScript directly: node --test scripts/test-firewall-picks.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, privateAddressesOf, withChoice } from '../src/renderer/src/lib/firewallPicks.ts'
+import { exposureLabel, publicAddressesOf as auditedAddressesOf } from '../src/renderer/src/lib/firewallMatrix.ts'
+import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, presetRule, privateAddressesOf, withChoice } from '../src/renderer/src/lib/firewallPicks.ts'
 import { isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE, ruleLimitNote, rulesAllowed } from '../src/renderer/src/lib/firewallRules.ts'
 
 const net = (ip, type, extra = {}) => ({ ip_address: ip, type, netmask: '255.255.255.0', gateway: null, ...extra })
@@ -214,4 +215,40 @@ test('the any-address is a value like any other: a choice is added after it, and
   assert.equal(withChoice('203.0.113.9\n0.0.0.0/0', ['198.51.100.1']), '203.0.113.9\n0.0.0.0/0\n198.51.100.1')
   // And in a ports cell it is only text.
   assert.equal(withChoice('0.0.0.0/0', ['80']), '0.0.0.0/0\n80')
+})
+
+// What a rule's destination list reaches: the any-address reaches every address, otherwise an address has to be listed.
+const reaches = (destination, address) => destination.split('\n').some((d) => d === '0.0.0.0/0' || d === address)
+
+test('Drop All reaches every address the server has, a failover address and one added later included', () => {
+  // A server with a failover address, which the lists do not offer: the preset is judged by the rule it writes, not by the picker's entries.
+  const fo = server(21, 'fo', [net('198.51.100.20', 'public'), net('172.26.8.20', 'private')], { failover_ips: ['198.51.100.21'] })
+  assert.ok(!ownAddressesOf(fo).includes('198.51.100.21'), 'the failover address is not one of the picker\'s addresses')
+  const drop = presetRule('drop_all', fo)
+  assert.deepEqual({ action: drop.action, protocol: drop.protocol, ports: drop.ports, source: drop.source }, { action: 'drop', protocol: 'all', ports: '', source: '0.0.0.0/0' })
+  for (const address of ['198.51.100.20', '172.26.8.20', '198.51.100.21', '203.0.113.99']) assert.ok(reaches(drop.destination, address), `Drop All reaches ${address}`)
+  assert.equal(drop.destination, '0.0.0.0/0')
+  // Through the app's own exposure model, which counts a failover address as public: the rule the preset writes closes every port on every address.
+  const asRule = (p) => ({ action: p.action, protocol: p.protocol, source_addresses: [p.source], destination_addresses: p.destination.split('\n') })
+  assert.ok(auditedAddressesOf(fo).includes('198.51.100.21'), 'the audit counts the failover address')
+  assert.equal(exposureLabel([asRule(drop)], auditedAddressesOf(fo)), 'none')
+  // The control: a Drop All for only the addresses the picker lists leaves the failover address open, which is what the review reproduced.
+  assert.notEqual(exposureLabel([{ ...asRule(drop), destination_addresses: ownAddressesOf(fo) }], auditedAddressesOf(fo)), 'none')
+  // The same for a server whose networks were not read, and for one with no failover address.
+  assert.equal(presetRule('drop_all', undefined).destination, '0.0.0.0/0')
+  assert.equal(presetRule('drop_all', { id: 22, name: 'unread' }).destination, '0.0.0.0/0')
+  assert.equal(presetRule('drop_all', me).destination, '0.0.0.0/0')
+})
+
+test('an accept preset is for this server: all of its addresses, with the failover address typed in, and the any-address when they are not known', () => {
+  const fo = server(21, 'fo', [net('198.51.100.20', 'public'), net('172.26.8.20', 'private')], { failover_ips: ['198.51.100.21'] })
+  const expected = { ssh: ['tcp', '22', 'Allow SSH'], http_https: ['tcp', '80\n443', 'Allow Web HTTP/HTTPS'], openvpn: ['udp', '1194', 'Allow OpenVPN'], wireguard: ['udp', '51820', 'Allow WireGuard VPN'] }
+  for (const [name, [protocol, ports, description]] of Object.entries(expected)) {
+    const rule = presetRule(name, fo)
+    assert.deepEqual([rule.action, rule.protocol, rule.ports, rule.source, rule.description], ['accept', protocol, ports, '0.0.0.0/0', description], name)
+    assert.equal(rule.destination, '198.51.100.20\n172.26.8.20', `${name}: the server's own addresses, public first`)
+    assert.equal(rule.destination, byLabel(addressChoicesFor(fo, [fo]), 'Server All Addresses').values.join('\n'), `${name}: the same as Server All Addresses`)
+    assert.ok(!reaches(rule.destination, '198.51.100.21'), `${name} does not reach the failover address`)
+    assert.equal(presetRule(name, undefined).destination, '0.0.0.0/0', `${name}: any address when the server's addresses are not known`)
+  }
 })

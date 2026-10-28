@@ -18,6 +18,43 @@ export interface PickChoice {
 
 const unique = (values: string[]) => [...new Set(values)]
 
+/** The Add form's presets. */
+export type PresetName = 'ssh' | 'http_https' | 'openvpn' | 'wireguard' | 'drop_all'
+
+/** What a preset fills the Add form with: the cells as text, one value to a line. */
+export interface PresetRule {
+  action: 'accept' | 'drop'
+  protocol: 'tcp' | 'udp' | 'all'
+  ports: string
+  source: string
+  destination: string
+  description: string
+}
+
+/**
+ * The rule a preset fills the form with for `server`. An accept preset is for this server: its destination is all of the server's addresses,
+ * the same as "Server All Addresses" in the menu (any address when they are not known), so it does not cover a failover address, which
+ * is typed in. Drop All is the rule that has to leave nothing open, so its destination is the any-address, which covers every address the
+ * server has now or is given later, a failover address included, without BLDesk having to know them.
+ */
+export function presetRule(preset: PresetName, server: PickServer | undefined): PresetRule {
+  const own = ownAddressesOf(server)
+  const destination = joinList(own.length > 0 ? own : [ANY_ADDRESS])
+  const accept = (protocol: 'tcp' | 'udp', ports: string, description: string): PresetRule => ({ action: 'accept', protocol, ports, source: ANY_ADDRESS, destination, description })
+  switch (preset) {
+    case 'ssh':
+      return accept('tcp', '22', 'Allow SSH')
+    case 'http_https':
+      return accept('tcp', '80\n443', 'Allow Web HTTP/HTTPS')
+    case 'openvpn':
+      return accept('udp', '1194', 'Allow OpenVPN')
+    case 'wireguard':
+      return accept('udp', '51820', 'Allow WireGuard VPN')
+    case 'drop_all':
+      return { action: 'drop', protocol: 'all', ports: '', source: ANY_ADDRESS, destination: ANY_ADDRESS, description: 'Default Drop Inbound' }
+  }
+}
+
 /**
  * A choice from a magnifier's menu put into the cell `current`, one value to a line. The choice is added after what the cell already holds,
  * and a value the cell already has (the same text) is not added again. That includes the any-address: a cell that holds it has it still,

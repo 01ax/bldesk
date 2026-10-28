@@ -21,9 +21,9 @@ import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, ruleLimitNote, rulesAllowed, toRuleRequest } from '../../lib/firewallRules'
-import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, withChoice } from '../../lib/firewallPicks'
+import { addressChoicesFor, PORT_CHOICES, presetRule, withChoice, type PresetName } from '../../lib/firewallPicks'
 import type { FwRule } from '../../lib/firewallMatrix'
-import { describePending, draftApplies, draftFromRules, hasPendingChanges, joinList, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, splitList, type DraftRow } from '../../lib/firewallDraft'
+import { describePending, draftApplies, draftFromRules, hasPendingChanges, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, splitList, type DraftRow } from '../../lib/firewallDraft'
 import { Modal } from '../ui/Modal'
 import { FirewallMatrix } from './FirewallMatrix'
 import { FirewallRulesEditor, lines } from './FirewallRulesEditor'
@@ -170,51 +170,14 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
       throw err
     }
   }
-  const applyPreset = (preset: 'ssh' | 'http_https' | 'openvpn' | 'wireguard' | 'drop_all') => {
-    // A preset is for this server: its destination is all of the server's addresses, as "Server All Addresses" in the menu (any address when they are not known).
-    const presetDestination = joinList(ownAddressesOf(activeServer).length > 0 ? ownAddressesOf(activeServer) : ['0.0.0.0/0'])
-    switch (preset) {
-      case 'ssh':
-        setRuleAction('accept')
-        setRuleProtocol('tcp')
-        setRulePorts('22')
-        setRuleSource('0.0.0.0/0')
-        setRuleDestination(presetDestination)
-        setRuleDescription('Allow SSH')
-        break
-      case 'http_https':
-        setRuleAction('accept')
-        setRuleProtocol('tcp')
-        setRulePorts('80\n443')
-        setRuleSource('0.0.0.0/0')
-        setRuleDestination(presetDestination)
-        setRuleDescription('Allow Web HTTP/HTTPS')
-        break
-      case 'openvpn':
-        setRuleAction('accept')
-        setRuleProtocol('udp')
-        setRulePorts('1194')
-        setRuleSource('0.0.0.0/0')
-        setRuleDestination(presetDestination)
-        setRuleDescription('Allow OpenVPN')
-        break
-      case 'wireguard':
-        setRuleAction('accept')
-        setRuleProtocol('udp')
-        setRulePorts('51820')
-        setRuleSource('0.0.0.0/0')
-        setRuleDestination(presetDestination)
-        setRuleDescription('Allow WireGuard VPN')
-        break
-      case 'drop_all':
-        setRuleAction('drop')
-        setRuleProtocol('all')
-        setRulePorts('')
-        setRuleSource('0.0.0.0/0')
-        setRuleDestination(presetDestination)
-        setRuleDescription('Default Drop Inbound')
-        break
-    }
+  const applyPreset = (preset: PresetName) => {
+    const rule = presetRule(preset, activeServer)
+    setRuleAction(rule.action)
+    setRuleProtocol(rule.protocol)
+    setRulePorts(rule.ports)
+    setRuleSource(rule.source)
+    setRuleDestination(rule.destination)
+    setRuleDescription(rule.description)
   }
 
   // Handle Adding Rule
