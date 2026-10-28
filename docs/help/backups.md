@@ -49,6 +49,11 @@ For a backup you chose under “Replace Existing Image”, it says:
 
 The row “Backup you chose” gives its name, ID, slot and date as the list on this page showed them. The button is red and History records the entry as destructive. Cancel sends nothing; confirming sends the request. When the list on this page cannot be read, it says “Couldn't read this server's backups.” with a Retry button, instead of “No Backups Found”.
 
+### If the request is refused
+The form shows “Backup failed” with BinaryLane's reason and keeps your choices open. The command palette shows the reason beside the affected server. Both record the failed request and its reason in History, without retrying automatically. If an unsuccessful HTTP response has no body, BLDesk reports its status instead of treating the request as submitted.
+
+For a refused backup-first step during a resize, see [Change Plan](help:server-change-plan#before-applying).
+
 ## Import Image
 Choose Import Image to ask BinaryLane to download an image from an HTTP or HTTPS URL into this server's backup storage. This is a URL import, not a file picker. Importing stores the image; it does not restore or attach it. Afterward, use the actions available for the returned image. For an ISO, only Attach is available; Download and Restore are not supported.
 

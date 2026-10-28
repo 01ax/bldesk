@@ -1143,7 +1143,7 @@ export function useTakeBackupMutation(client: BinaryLaneClient | null) {
         params: { path: { server_id: serverId } },
         body
       })
-      if (error) throw apiFailure(error, response)
+      if (error || !response.ok) throw apiFailure(error, response)
       return data?.action
     },
     onSuccess: (_, { serverId }) => {
