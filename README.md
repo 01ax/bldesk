@@ -1,0 +1,1 @@
+Screenshots for the pull request that adds export and import of tags to Settings (fictitious demo capture, app area only). Before is `main` at f279b04, after is the branch on top of it: same fixture fleet, same seeded tags, 1280x840, light theme. The refusal shot was taken after the successful import in the same run, so its tag count is higher than in the first image.
