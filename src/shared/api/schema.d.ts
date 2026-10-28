@@ -7778,7 +7778,7 @@ export interface components {
              * @enum {string}
              */
             type: "change_advanced_firewall_rules";
-            /** @description A list of rules for the server. NB: that any existing rules that are not included will be removed. Submit an empty list to clear all rules. */
+            /** @description A list of rules for the server. NB: that any existing rules that are not included will be removed. Submit an empty list to clear all rules. A server may have up to 100 rules, which together may match up to 1000 combinations of source address, destination address, protocol and destination port: an address in CIDR notation or a port range counts as one, a rule using the "all" protocol counts its ports for both TCP and UDP, and an ICMP rule counts each ICMP type it covers. A server that already exceeds either limit may keep, edit or remove its rules, but not exceed what it already has. */
             firewall_rules: components["schemas"]["AdvancedFirewallRuleRequest"][];
         };
         /** @description Change the Backup Schedule of a Server */
