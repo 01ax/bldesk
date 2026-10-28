@@ -25,10 +25,18 @@ export function privateAddressesOf(server: Pick<Server, 'networks'>): string[] |
   return unique(v4.filter((n) => n.type === 'private' && isIpv4OrRange(n.ip_address)).map((n) => n.ip_address))
 }
 
+/** Every IPv4 address a server has, public ones first: what "Server All Addresses" puts in. None when it has none or its networks were not read. */
+export function ownAddressesOf(server: PickServer | undefined): string[] {
+  return server ? unique([...(publicAddressesOf(server) ?? []), ...(privateAddressesOf(server) ?? [])]) : []
+}
+
 /**
- * The choices for a source or destination on `server`'s firewall: other servers on the account first (each, then all their addresses
- * together, public ones, private ones), then this server's own addresses, then any address. A choice with no address behind it is left out,
- * such as the server's public addresses when it is only in a VPC.
+ * The choices for a source or destination on `server`'s firewall, in the order mPanel lists them: any address, then every other server on the
+ * account (all their addresses, the public ones, the private ones), then each address of each other server on its own, then this server's own
+ * addresses. The other servers are in plain character order by name, as mPanel has them (capitals before lower case), and a server's public
+ * addresses come before its private ones. A choice with no address behind it is left out, such as the server's public addresses when it is
+ * only in a VPC. mPanel also offers the address the person is on, "(Current IP)", straight after any address: that one is not here, because
+ * neither the API nor the app knows it.
  */
 export function addressChoicesFor(server: PickServer | undefined, servers: readonly PickServer[]): PickChoice[] {
   const choices: PickChoice[] = []
@@ -36,25 +44,23 @@ export function addressChoicesFor(server: PickServer | undefined, servers: reado
     if (values.length > 0) choices.push({ id, label, values })
   }
 
-  const others = servers.filter((s) => s.id !== server?.id)
+  const others = servers.filter((s) => s.id !== server?.id).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id - b.id))
   const eachPublic = others.map((s) => publicAddressesOf(s) ?? [])
   const eachPrivate = others.map((s) => privateAddressesOf(s) ?? [])
+
+  add('any', 'Any address', [ANY_ADDRESS])
   add('others-all', 'My Other Addresses', unique(others.flatMap((_, i) => [...eachPublic[i], ...eachPrivate[i]])))
   add('others-public', 'My Other Public Addresses', unique(eachPublic.flat()))
   add('others-private', 'My Other Private Addresses', unique(eachPrivate.flat()))
-  // A server is named with the address another server on its private network would use, and with its public one when it has none.
   others.forEach((s, i) => {
-    const address = eachPrivate[i][0] ?? eachPublic[i][0]
-    if (address) add(`server-${s.id}`, `Server: ${s.name} (${address})`, [address])
+    for (const address of unique([...eachPublic[i], ...eachPrivate[i]])) add(`server-${s.id}-${address}`, `Server: ${s.name} (${address})`, [address])
   })
 
   const own = server ? { public: publicAddressesOf(server) ?? [], private: privateAddressesOf(server) ?? [] } : { public: [], private: [] }
   add('this-public', 'Server Public Addresses', own.public)
   add('this-private', 'Server Private Addresses', own.private)
-  add('this-all', 'Server All Addresses', unique([...own.public, ...own.private]))
-  for (const a of unique([...own.public, ...own.private])) add(`this-${a}`, `Server Address: ${a}`, [a])
-
-  add('any', 'Any address', [ANY_ADDRESS])
+  add('this-all', 'Server All Addresses', ownAddressesOf(server))
+  for (const a of ownAddressesOf(server)) add(`this-${a}`, `Server Address: ${a}`, [a])
   return choices
 }
 

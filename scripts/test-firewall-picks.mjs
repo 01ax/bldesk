@@ -2,7 +2,7 @@
 // the TypeScript directly: node --test scripts/test-firewall-picks.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressChoicesFor, PORT_CHOICES, privateAddressesOf } from '../src/renderer/src/lib/firewallPicks.ts'
+import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, privateAddressesOf } from '../src/renderer/src/lib/firewallPicks.ts'
 import { isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE } from '../src/renderer/src/lib/firewallRules.ts'
 
 const net = (ip, type, extra = {}) => ({ ip_address: ip, type, netmask: '255.255.255.0', gateway: null, ...extra })
@@ -13,21 +13,24 @@ const b = server(3, 'bravo', [net('203.0.113.30', 'public', { nat_target: '10.24
 const c = server(4, 'charlie', [net('203.0.113.40', 'public')])
 const byLabel = (choices, label) => choices.find((x) => x.label === label)
 
-test('a server with its own addresses offers them, and any address, after the other servers', () => {
+test('the entries come in mPanel\'s order: any address, the other servers, then this server', () => {
   const labels = addressChoicesFor(me, [me, a, b, c]).map((x) => x.label)
   assert.deepEqual(labels, [
+    'Any address',
     'My Other Addresses',
     'My Other Public Addresses',
     'My Other Private Addresses',
+    'Server: alpha (198.51.100.20)',
+    'Server: alpha (198.51.100.21)',
     'Server: alpha (172.26.8.20)',
+    'Server: bravo (203.0.113.30)',
     'Server: bravo (10.240.0.30)',
     'Server: charlie (203.0.113.40)',
     'Server Public Addresses',
     'Server Private Addresses',
     'Server All Addresses',
     'Server Address: 198.51.100.10',
-    'Server Address: 172.26.8.82',
-    'Any address'
+    'Server Address: 172.26.8.82'
   ])
 })
 
@@ -36,9 +39,10 @@ test("this server's choices hold its own addresses, and not another server's", (
   assert.deepEqual(byLabel(picks, 'Server Public Addresses').values, ['198.51.100.10'])
   assert.deepEqual(byLabel(picks, 'Server Private Addresses').values, ['172.26.8.82'])
   assert.deepEqual(byLabel(picks, 'Server All Addresses').values, ['198.51.100.10', '172.26.8.82'])
+  assert.deepEqual(byLabel(picks, 'Server Address: 198.51.100.10').values, ['198.51.100.10'])
   assert.deepEqual(byLabel(picks, 'Server Address: 172.26.8.82').values, ['172.26.8.82'])
   assert.deepEqual(byLabel(picks, 'Any address').values, ['0.0.0.0/0'])
-  for (const x of picks.filter((p) => p.label.startsWith('Server'))) assert.ok(!x.label.includes('alpha') || x.values.every((v) => v === '172.26.8.20'))
+  assert.equal(picks.filter((p) => p.label.startsWith('Server Address:')).length, 2)
 })
 
 test('the other servers never include this one, and public and private are told apart', () => {
@@ -47,23 +51,56 @@ test('the other servers never include this one, and public and private are told 
   assert.deepEqual(byLabel(picks, 'My Other Private Addresses').values, ['172.26.8.20', '10.240.0.30'])
   // Every address of every other server, a server at a time: its public ones, then its private ones.
   assert.deepEqual(byLabel(picks, 'My Other Addresses').values, ['198.51.100.20', '198.51.100.21', '172.26.8.20', '203.0.113.30', '10.240.0.30', '203.0.113.40'])
-  for (const x of picks.filter((p) => p.id.startsWith('others'))) assert.ok(!x.values.includes('198.51.100.10') && !x.values.includes('172.26.8.82'))
+  for (const x of picks.filter((p) => p.id.startsWith('others') || p.label.startsWith('Server: '))) assert.ok(!x.values.includes('198.51.100.10') && !x.values.includes('172.26.8.82'))
 })
 
-test('a server is named by its private address, or its public one when it has none', () => {
-  const picks = addressChoicesFor(me, [me, a, c])
-  assert.deepEqual(byLabel(picks, 'Server: alpha (172.26.8.20)').values, ['172.26.8.20'])
-  assert.deepEqual(byLabel(picks, 'Server: charlie (203.0.113.40)').values, ['203.0.113.40'])
+test('every address of another server is an entry of its own: its public ones, then its private ones, each putting in that address', () => {
+  const picks = addressChoicesFor(me, [me, a, b, c])
+  const each = picks.filter((p) => p.label.startsWith('Server: '))
+  assert.equal(each.length, 6)
+  for (const x of each) assert.deepEqual(x.values, [/\(([^)]+)\)$/.exec(x.label)[1]])
+  // The NATed public address of a VPC server and its private one are both there.
+  assert.deepEqual(byLabel(picks, 'Server: bravo (203.0.113.30)').values, ['203.0.113.30'])
+  assert.deepEqual(byLabel(picks, 'Server: bravo (10.240.0.30)').values, ['10.240.0.30'])
+  assert.equal(new Set(each.map((x) => x.id)).size, each.length, 'each entry has an id of its own')
 })
 
-test('a choice with no address behind it is left out', () => {
+test('the other servers are in plain character order by name, capitals first, in the entries and in the lists', () => {
+  const names = ['lb1', 'cPenial', 'GS1', 'AAAfieldtest', 'kb.01ax.io', 'BLNMAP-ControlRoom', 'kb-diskbench-adl']
+  const others = names.map((n, i) => server(20 + i, n, [net(`198.51.100.${100 + i}`, 'public'), net(`172.26.1.${100 + i}`, 'private')]))
+  const picks = addressChoicesFor(me, [...others, me])
+  assert.deepEqual(
+    picks.filter((p) => p.label.startsWith('Server: ')).map((p) => /^Server: (.+) \(/.exec(p.label)[1]).filter((n, i, all) => all.indexOf(n) === i),
+    ['AAAfieldtest', 'BLNMAP-ControlRoom', 'GS1', 'cPenial', 'kb-diskbench-adl', 'kb.01ax.io', 'lb1']
+  )
+  const sorted = ['AAAfieldtest', 'BLNMAP-ControlRoom', 'GS1', 'cPenial', 'kb-diskbench-adl', 'kb.01ax.io', 'lb1'].map((n) => others[names.indexOf(n)])
+  assert.deepEqual(byLabel(picks, 'My Other Public Addresses').values, sorted.map((s) => s.networks.v4[0].ip_address))
+  assert.deepEqual(byLabel(picks, 'My Other Private Addresses').values, sorted.map((s) => s.networks.v4[1].ip_address))
+  assert.deepEqual(byLabel(picks, 'My Other Addresses').values, sorted.flatMap((s) => s.networks.v4.map((n) => n.ip_address)))
+  // Servers with the same name keep their id order.
+  const twins = [server(31, 'same', [net('198.51.100.131', 'public')]), server(30, 'same', [net('198.51.100.130', 'public')])]
+  assert.deepEqual(byLabel(addressChoicesFor(me, [me, ...twins]), 'My Other Public Addresses').values, ['198.51.100.130', '198.51.100.131'])
+})
+
+test('a choice with no address behind it is left out, and any address is always there', () => {
   const vpcOnly = server(9, 'inner', [net('10.240.0.9', 'private')])
   const picks = addressChoicesFor(vpcOnly, [vpcOnly])
-  assert.deepEqual(picks.map((x) => x.label), ['Server Private Addresses', 'Server All Addresses', 'Server Address: 10.240.0.9', 'Any address'])
+  assert.deepEqual(picks.map((x) => x.label), ['Any address', 'Server Private Addresses', 'Server All Addresses', 'Server Address: 10.240.0.9'])
   assert.deepEqual(addressChoicesFor(undefined, []).map((x) => x.label), ['Any address'])
   // A server whose networks were not read offers nothing of its own, and is not counted among the others.
   const unread = { id: 8, name: 'unread', failover_ips: [] }
-  assert.deepEqual(addressChoicesFor(me, [me, unread]).map((x) => x.label), ['Server Public Addresses', 'Server Private Addresses', 'Server All Addresses', 'Server Address: 198.51.100.10', 'Server Address: 172.26.8.82', 'Any address'])
+  assert.deepEqual(addressChoicesFor(me, [me, unread]).map((x) => x.label), ['Any address', 'Server Public Addresses', 'Server Private Addresses', 'Server All Addresses', 'Server Address: 198.51.100.10', 'Server Address: 172.26.8.82'])
+})
+
+test('a preset\'s destination is all of the server\'s addresses, the same as the menu\'s Server All Addresses', () => {
+  assert.deepEqual(ownAddressesOf(me), ['198.51.100.10', '172.26.8.82'])
+  assert.deepEqual(ownAddressesOf(me), byLabel(addressChoicesFor(me, [me, a, b, c]), 'Server All Addresses').values)
+  // A server with a second public address and a failover one: the public addresses first, then the private one.
+  const multi = server(13, 'multi', [net('198.51.100.90', 'public'), net('198.51.100.91', 'public'), net('172.26.8.90', 'private')], { failover_ips: ['198.51.100.92'] })
+  assert.deepEqual(ownAddressesOf(multi), ['198.51.100.90', '198.51.100.91', '198.51.100.92', '172.26.8.90'])
+  // None to offer: not known, or no networks read.
+  assert.deepEqual(ownAddressesOf(undefined), [])
+  assert.deepEqual(ownAddressesOf({ id: 14, name: 'unread', failover_ips: [] }), [])
 })
 
 test('a failover address counts as a public address, and an address is listed once', () => {
