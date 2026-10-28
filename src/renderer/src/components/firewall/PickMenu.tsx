@@ -6,8 +6,8 @@ const WIDTH = 288
 const MAX_HEIGHT = 320
 
 /**
- * The magnifier and caret under a rule's source, destination or ports. It opens a list of ready-made values, and the one chosen
- * replaces what the field holds. The list is placed against the window, so a row at the bottom of a scrolling list does not clip it.
+ * The magnifier and caret under a rule's source, destination or ports. It opens a list of ready-made values, and the one chosen is
+ * added to what the field holds (the caller does that: `withChoice`). The list is placed against the window, so a row at the bottom of a scrolling list does not clip it.
  *
  * Opening it asks BinaryLane for nothing: the list is what BLDesk already holds (its server list refreshes on its own), as in mPanel,
  * where a server created in another tab is not in the menu until the page is loaded again. It is taken as the menu opens and kept until it

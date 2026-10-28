@@ -21,7 +21,7 @@ import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
 import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, ruleLimitNote, rulesAllowed, toRuleRequest } from '../../lib/firewallRules'
-import { addressChoicesFor, ownAddressesOf, PORT_CHOICES } from '../../lib/firewallPicks'
+import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, withChoice } from '../../lib/firewallPicks'
 import type { FwRule } from '../../lib/firewallMatrix'
 import { describePending, draftApplies, draftFromRules, hasPendingChanges, joinList, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, splitList, type DraftRow } from '../../lib/firewallDraft'
 import { Modal } from '../ui/Modal'
@@ -704,7 +704,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 onChange={(e) => setRuleSource(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6]"
               />
-              <PickMenu label="source addresses" choices={addressPicks} onPick={(c) => setRuleSource(joinList(c.values))} />
+              <PickMenu label="source addresses" choices={addressPicks} onPick={(c) => setRuleSource((held) => withChoice(held, c.values, true))} />
             </div>
 
             <div>
@@ -718,7 +718,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 onChange={(e) => setRuleDestination(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6]"
               />
-              <PickMenu label="destination addresses" choices={addressPicks} onPick={(c) => setRuleDestination(joinList(c.values))} />
+              <PickMenu label="destination addresses" choices={addressPicks} onPick={(c) => setRuleDestination((held) => withChoice(held, c.values, true))} />
             </div>
 
             <div>
@@ -733,7 +733,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
                 onChange={(e) => setRulePorts(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-[#f8f9fa] dark:bg-[#212529] border border-[#ced4da] dark:border-[#373b3e] rounded text-[#212529] dark:text-white resize-none font-mono focus:outline-none focus:border-[#017cb6] disabled:opacity-40"
               />
-              <PickMenu label="destination ports" choices={PORT_CHOICES} disabled={ruleProtocol === 'icmp' || ruleProtocol === 'all'} onPick={(c) => setRulePorts(joinList(c.values))} />
+              <PickMenu label="destination ports" choices={PORT_CHOICES} disabled={ruleProtocol === 'icmp' || ruleProtocol === 'all'} onPick={(c) => setRulePorts((held) => withChoice(held, c.values, false))} />
             </div>
 
             <div>

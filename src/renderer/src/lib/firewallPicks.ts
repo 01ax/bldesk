@@ -3,13 +3,14 @@
 
 import type { components } from '@shared/api/schema'
 import { publicAddressesOf } from './firewallMatrix.ts'
+import { joinList, splitList } from './firewallDraft.ts'
 import { ANY_ADDRESS, isIpv4OrRange } from './firewallRules.ts'
 
 type Server = components['schemas']['Server']
 /** What is read of a server: its name, to label it, and its networks, for its addresses. */
 export type PickServer = Pick<Server, 'id' | 'name' | 'networks' | 'failover_ips'>
 
-/** One entry of a magnifier's menu: what it says, and the values it puts in the field (one to a line). */
+/** One entry of a magnifier's menu: what it says, and the values it adds to the field (one to a line). */
 export interface PickChoice {
   id: string
   label: string
@@ -17,6 +18,18 @@ export interface PickChoice {
 }
 
 const unique = (values: string[]) => [...new Set(values)]
+
+/**
+ * A choice from a magnifier's menu put into the cell `current`, one value to a line. As in mPanel, the choice is added after what the cell
+ * already holds, and a value the cell already has is not added again. The exception is an address cell that holds only the any-address
+ * (what a new rule starts with): adding to it would leave the rule matching every address, so the choice replaces it. `addresses` is false
+ * for the ports, where there is no such value.
+ */
+export function withChoice(current: string, values: readonly string[], addresses: boolean): string {
+  const held = splitList(current)
+  const base = addresses && held.length === 1 && held[0] === ANY_ADDRESS ? [] : held
+  return joinList([...base, ...values.filter((v) => !base.includes(v))])
+}
 
 /** The private IPv4 addresses a server has: its private network and, in a VPC, its address there. `undefined` when its networks were not read. */
 export function privateAddressesOf(server: Pick<Server, 'networks'>): string[] | undefined {

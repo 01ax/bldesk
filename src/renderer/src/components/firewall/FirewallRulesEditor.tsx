@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Trash2, Undo2 } from 'lucide-react'
-import { dropGapAt, dropIndexAt, edgePull, edgeScrollSpeed, isEdited, joinList, moveRow, problemsOf, ROW_HOLD_MS, type DraftRow, type RowProblems } from '../../lib/firewallDraft'
-import { PORT_CHOICES, type PickChoice } from '../../lib/firewallPicks'
+import { dropGapAt, dropIndexAt, edgePull, edgeScrollSpeed, isEdited, moveRow, problemsOf, ROW_HOLD_MS, type DraftRow, type RowProblems } from '../../lib/firewallDraft'
+import { PORT_CHOICES, withChoice, type PickChoice } from '../../lib/firewallPicks'
 import { PickMenu } from './PickMenu'
 import { HOLD_TICK_VIBRATION_MS, holdMovedTooFar } from '../../lib/tags'
 
@@ -354,7 +354,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { sources: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} source addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { sources: joinList(c.values) })} />
+              <PickMenu label={`${label.toLowerCase()} source addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { sources: withChoice(row.sources, c.values, true) })} />
             </Field>
 
             <Field caption="Destination" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.destinations}>
@@ -369,7 +369,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { destinations: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} destination addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { destinations: joinList(c.values) })} />
+              <PickMenu label={`${label.toLowerCase()} destination addresses`} choices={addressChoices} disabled={off} onPick={(c) => patch(i, { destinations: withChoice(row.destinations, c.values, true) })} />
             </Field>
 
             <Field caption="Destination ports" short="Dest. ports" className="col-span-2 sm:col-span-2 xl:col-span-1" problem={problems.ports}>
@@ -384,7 +384,7 @@ export const FirewallRulesEditor: React.FC<FirewallRulesEditorProps> = ({ rows, 
                 onChange={(e) => patch(i, { ports: e.target.value })}
                 className={`${cell} ${mono} resize-none`}
               />
-              <PickMenu label={`${label.toLowerCase()} destination ports`} choices={PORT_CHOICES} disabled={off || row.protocol === 'icmp'} onPick={(c) => patch(i, { ports: joinList(c.values) })} />
+              <PickMenu label={`${label.toLowerCase()} destination ports`} choices={PORT_CHOICES} disabled={off || row.protocol === 'icmp'} onPick={(c) => patch(i, { ports: withChoice(row.ports, c.values, false) })} />
             </Field>
 
             <Field caption="Protocol" className="col-span-2 sm:col-span-2 xl:col-span-1">

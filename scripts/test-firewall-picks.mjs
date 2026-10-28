@@ -2,7 +2,7 @@
 // the TypeScript directly: node --test scripts/test-firewall-picks.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, privateAddressesOf } from '../src/renderer/src/lib/firewallPicks.ts'
+import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, privateAddressesOf, withChoice } from '../src/renderer/src/lib/firewallPicks.ts'
 import { isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE, ruleLimitNote, rulesAllowed } from '../src/renderer/src/lib/firewallRules.ts'
 
 const net = (ip, type, extra = {}) => ({ ip_address: ip, type, netmask: '255.255.255.0', gateway: null, ...extra })
@@ -180,4 +180,31 @@ test('a server that already has more than 100 rules may keep, edit or reduce the
   assert.equal(ruleLimitNote(99), RULE_LIMIT_NOTE)
   assert.equal(ruleLimitNote(100), RULE_LIMIT_NOTE)
   assert.match(ruleLimitNote(110), /This server has 110/)
+})
+
+test('a choice is added to what the cell holds, as in mPanel, without repeating a value', () => {
+  // An empty cell takes the choice, whatever blank it holds.
+  assert.equal(withChoice('', ['198.51.100.1'], true), '198.51.100.1')
+  assert.equal(withChoice(' \n ', ['198.51.100.1', '10.0.0.5'], true), '198.51.100.1\n10.0.0.5')
+  // A populated cell keeps its values, in order, and the choice goes after them.
+  assert.equal(withChoice('203.0.113.9', ['198.51.100.1', '10.0.0.5'], true), '203.0.113.9\n198.51.100.1\n10.0.0.5')
+  assert.equal(withChoice('22', ['80', '443'], false), '22\n80\n443')
+  // A value the cell already has is not added again, and what was typed is not reordered or de-duplicated.
+  assert.equal(withChoice('198.51.100.1\n203.0.113.9', ['203.0.113.9', '10.0.0.5'], true), '198.51.100.1\n203.0.113.9\n10.0.0.5')
+  assert.equal(withChoice('80\n80', ['80'], false), '80\n80')
+  assert.equal(withChoice('203.0.113.9', ['203.0.113.9'], true), '203.0.113.9')
+  // Commas and spaces separate values in a cell, and it is written back one to a line.
+  assert.equal(withChoice('203.0.113.9, 203.0.113.10 ', ['10.0.0.5'], true), '203.0.113.9\n203.0.113.10\n10.0.0.5')
+})
+
+test('an address cell that holds only the any-address is replaced by the choice, because adding to it would still match every address', () => {
+  assert.equal(withChoice('0.0.0.0/0', ['198.51.100.1', '10.0.0.5'], true), '198.51.100.1\n10.0.0.5')
+  assert.equal(withChoice(' 0.0.0.0/0\n', ['198.51.100.1'], true), '198.51.100.1')
+  assert.equal(withChoice('0.0.0.0/0', ['0.0.0.0/0'], true), '0.0.0.0/0')
+  // Any address among other values was put there on purpose: it stays, and the choice is added.
+  assert.equal(withChoice('203.0.113.9\n0.0.0.0/0', ['198.51.100.1'], true), '203.0.113.9\n0.0.0.0/0\n198.51.100.1')
+  // And choosing any address for a populated cell adds it after the others.
+  assert.equal(withChoice('203.0.113.9', ['0.0.0.0/0'], true), '203.0.113.9\n0.0.0.0/0')
+  // Ports have no such value: the same text in a ports cell is just a value.
+  assert.equal(withChoice('0.0.0.0/0', ['80'], false), '0.0.0.0/0\n80')
 })
