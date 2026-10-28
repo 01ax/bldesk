@@ -22,11 +22,22 @@ export function ruleCount(n: number): string {
 }
 
 /**
- * The most rules BinaryLane keeps for one server. mPanel says so beside its New Rule button, and the API refuses a longer list with
- * "Firewall rules are limited to 100 per server; 101 were submitted." The reference does not state it.
+ * The most rules BinaryLane gives one server. The reference (`ChangeAdvancedFirewallRules.firewall_rules`, from 0.46.0) states it, mPanel
+ * says so beside its New Rule button, and the API refuses a longer list with "Firewall rules are limited to 100 per server; 101 were submitted."
  */
 export const MAX_RULES = 100
 export const RULE_LIMIT_NOTE = 'Firewall rules are limited to 100 per server.'
+
+/**
+ * The most rules a write may leave on a server that has `saved` rules now. The reference adds that a server that already exceeds the limit
+ * "may keep, edit or remove its rules, but not exceed what it already has", so a list longer than 100 is allowed when it is no longer than
+ * the list it replaces. (It states a second limit, on the combinations of address, protocol and port, that is left to the API.)
+ */
+export const rulesAllowed = (saved: number): number => Math.max(MAX_RULES, saved)
+
+/** What to say when `saved` rules leave no room for another: the limit, or, for a server over it, that its rules can be kept and edited but not added to. */
+export const ruleLimitNote = (saved: number): string =>
+  saved > MAX_RULES ? `${RULE_LIMIT_NOTE} This server has ${saved}, so its rules can be kept, edited or removed but not added to.` : RULE_LIMIT_NOTE
 
 /**
  * The destination sent for a rule that names none. The API reference requires at least one destination address on every
@@ -66,11 +77,12 @@ export function isIpv4OrRange(value: string): boolean {
 /**
  * Check a pasted or uploaded rule list against the API reference (`AdvancedFirewallRuleRequest`) and return the rules
  * as they will be written: only the fields the reference defines, with a destination on every rule. The first rule that
- * cannot be written is named, so nothing is sent for a list the API would refuse.
+ * cannot be written is named, so nothing is sent for a list the API would refuse. `saved` is how many rules the server has now:
+ * the list may be as long as that, or 100, whichever is more (see `rulesAllowed`).
  */
-export function readImportedRules(parsed: unknown): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
+export function readImportedRules(parsed: unknown, saved = 0): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
   if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
-  if (parsed.length > MAX_RULES) return { error: `The file has ${ruleCount(parsed.length)}. ${RULE_LIMIT_NOTE}` }
+  if (parsed.length > rulesAllowed(saved)) return { error: `The file has ${ruleCount(parsed.length)}. ${ruleLimitNote(saved)}` }
   const rules: RuleRequest[] = []
   for (let i = 0; i < parsed.length; i++) {
     const r = parsed[i] as Record<string, unknown> | null

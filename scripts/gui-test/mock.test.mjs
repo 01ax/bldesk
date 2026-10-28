@@ -439,6 +439,32 @@ for (const outcome of ['completed', 'errored']) {
   })
 }
 
+
+test('a server that already has more than 100 rules may keep, edit or reduce them but not exceed what it has', async () => {
+  const write = (rules, status = 200) => request('/v2/servers/8100/actions', { type: 'change_advanced_firewall_rules', firewall_rules: rules }, 'POST', status)
+  const rule = (i) => ({ action: 'accept', protocol: 'tcp', source_addresses: ['192.0.2.1/32'], destination_addresses: ['0.0.0.0/0'], destination_ports: [String(1000 + i)] })
+  const rules = (n) => Array.from({ length: n }, (_, i) => rule(i))
+  await request('/__mock/reset', {})
+  await request('/__mock/config', { actionMs: 20 })
+  // The write cannot make such a server: 101 is refused when it has fewer.
+  assert.match((await write(rules(101), 400)).message, /limited to 100 per server; 101 were submitted/)
+  await request('/__mock/firewall', { server_id: 8100, firewall_rules: rules(110) })
+  assert.equal((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules.length, 110)
+  // Kept, edited or reduced: accepted, though above 100.
+  assert.equal((await write(rules(110))).action.type, 'change_advanced_firewall_rules')
+  assert.equal((await write(rules(105))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  assert.equal((await request('/v2/servers/8100/advanced_firewall_rules')).firewall_rules.length, 105)
+  // Not grown beyond what it has now (105, no longer 110).
+  assert.match((await write(rules(106), 400)).message, /105 this server already has; 106 were submitted/)
+  assert.equal((await write(rules(105))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  // Reduced to 100, the server is an ordinary one again: 101 is refused with the usual text.
+  assert.equal((await write(rules(100))).action.type, 'change_advanced_firewall_rules')
+  await sleep(60)
+  assert.equal((await write(rules(101), 400)).message, 'Firewall rules are limited to 100 per server; 101 were submitted.')
+  await request('/__mock/reset', {})
+})
 test('proceed replaces the original timer before applying an action', async () => {
   const before = await server()
   await request('/__mock/config', { actionMs: 30, interaction: 'continue-after-ping-failure' })

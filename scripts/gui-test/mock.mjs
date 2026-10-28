@@ -459,8 +459,18 @@ async function handleApi(req, res, u, body) {
         return json(res, 202)
       }
       if (body?.type === 'change_advanced_firewall_rules') {
-        // The live API refuses a list of more than 100 rules: "Firewall rules are limited to 100 per server; 101 were submitted." (the reference does not say so).
-        if (Array.isArray(body.firewall_rules) && body.firewall_rules.length > 100) return json(res, 400, { id: 'bad_request', message: `Firewall rules are limited to 100 per server; ${body.firewall_rules.length} were submitted.` })
+        // ChangeAdvancedFirewallRules (reference 0.46.0): a server may have up to 100 rules, "A server that already exceeds either limit may keep, edit or
+        // remove its rules, but not exceed what it already has." Over 100 the live API answers "Firewall rules are limited to 100 per server; 101 were
+        // submitted."; its words for a server that already has more are not known, so the text for that case is this mock's own. The second limit
+        // (1000 combinations of address, protocol and port) is not modelled.
+        if (Array.isArray(body.firewall_rules)) {
+          const have = (fwOverride.get(s.id) ?? firewall(s)).length
+          const allowed = Math.max(100, have)
+          if (body.firewall_rules.length > allowed) {
+            const message = allowed === 100 ? `Firewall rules are limited to 100 per server; ${body.firewall_rules.length} were submitted.` : `Firewall rules are limited to 100 per server, or the ${allowed} this server already has; ${body.firewall_rules.length} were submitted.`
+            return json(res, 400, { id: 'bad_request', message })
+          }
+        }
         // AdvancedFirewallRuleRequest requires action, protocol, source_addresses and destination_addresses, each address list with at least one entry.
         const bad = (Array.isArray(body.firewall_rules) ? body.firewall_rules : [null]).map((r, i) => {
           if (!r || typeof r !== 'object') return `firewall_rules[${i}] must be a rule.`
@@ -517,6 +527,8 @@ const server = create(async (req, res) => {
   // control plane
   if (u.pathname.startsWith('/__mock/')) {
     if (u.pathname === '/__mock/reset') { reset(); fwOverride.clear(); return json(res, 200, { ok: true }) }
+    // A server that already has more than 100 rules, which a write cannot make (see change_advanced_firewall_rules): {server_id, firewall_rules}.
+    if (u.pathname === '/__mock/firewall') { fwOverride.set(body.server_id, body.firewall_rules || []); return json(res, 200, { ok: true }) }
     if (u.pathname === '/__mock/config') { Object.assign(cfg, body || {}); return json(res, 200, cfg) }
     if (u.pathname === '/__mock/fail') { fails.push({ match: new RegExp(body.match), status: body.status || 500, count: body.count ?? 1, method: body.method || null, empty: !!body.empty }); return json(res, 200, { ok: true }) }
     return json(res, 200, { requests: 'see log file' })

@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { addressChoicesFor, ownAddressesOf, PORT_CHOICES, privateAddressesOf } from '../src/renderer/src/lib/firewallPicks.ts'
-import { isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE } from '../src/renderer/src/lib/firewallRules.ts'
+import { isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE, ruleLimitNote, rulesAllowed } from '../src/renderer/src/lib/firewallRules.ts'
 
 const net = (ip, type, extra = {}) => ({ ip_address: ip, type, netmask: '255.255.255.0', gateway: null, ...extra })
 const server = (id, name, v4, extra = {}) => ({ id, name, networks: { v4, v6: [] }, failover_ips: [], ...extra })
@@ -154,4 +154,30 @@ test('the limit is 100 rules, and an import over it is refused with the reason',
   const over = readImportedRules(Array.from({ length: 101 }, () => one))
   assert.equal(over.error, 'The file has 101 rules. Firewall rules are limited to 100 per server.')
   assert.equal(over.rules, undefined)
+  // The saved count only matters above 100, and an ordinary server is refused at 101 however many it has.
+  assert.equal(readImportedRules(Array.from({ length: 101 }, () => one), 100).error, over.error)
+  assert.equal(readImportedRules(Array.from({ length: 101 }, () => one), 40).error, over.error)
+})
+
+test('a server that already has more than 100 rules may keep, edit or reduce them, but not exceed what it has', () => {
+  const one = { action: 'accept', protocol: 'tcp', source_addresses: ['0.0.0.0/0'], destination_ports: ['22'] }
+  const list = (n) => Array.from({ length: n }, () => one)
+  assert.deepEqual([0, 40, 100, 101, 110].map(rulesAllowed), [100, 100, 100, 101, 110])
+  // Reduced from 110 to 105, kept at 110, or cut to 100 or fewer: read, though 105 and 110 are above 100.
+  for (const n of [0, 1, 100, 105, 110]) {
+    const read = readImportedRules(list(n), 110)
+    assert.equal(read.error, undefined, `${n} of 110`)
+    assert.equal(read.rules.length, n)
+  }
+  // One more than it has is refused, and the reason says why 110 is not the usual 100.
+  const over = readImportedRules(list(111), 110)
+  assert.equal(over.error, 'The file has 111 rules. Firewall rules are limited to 100 per server. This server has 110, so its rules can be kept, edited or removed but not added to.')
+  assert.equal(over.rules, undefined)
+  // A server with 101 may be given 101 and not 102.
+  assert.equal(readImportedRules(list(101), 101).error, undefined)
+  assert.ok(readImportedRules(list(102), 101).error)
+  // The note for the form's Add Rule: the plain limit up to 100, the longer one above it.
+  assert.equal(ruleLimitNote(99), RULE_LIMIT_NOTE)
+  assert.equal(ruleLimitNote(100), RULE_LIMIT_NOTE)
+  assert.match(ruleLimitNote(110), /This server has 110/)
 })

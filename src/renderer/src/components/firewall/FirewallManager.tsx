@@ -20,7 +20,7 @@ import { useConfirm } from '../../context/ConfirmContext'
 import { updateChange, type ChangeTarget } from '../../lib/changelog'
 import { diffLines, describeFirewallRule } from '../../lib/diff'
 import { useTrackedActions } from '../../context/ActionTrackerContext'
-import { insertRule, isIpv4OrRange, MAX_RULES, readImportedRules, RULE_LIMIT_NOTE, ruleCount, toRuleRequest } from '../../lib/firewallRules'
+import { insertRule, isIpv4OrRange, readImportedRules, ruleCount, ruleLimitNote, rulesAllowed, toRuleRequest } from '../../lib/firewallRules'
 import { addressChoicesFor, ownAddressesOf, PORT_CHOICES } from '../../lib/firewallPicks'
 import type { FwRule } from '../../lib/firewallMatrix'
 import { describePending, draftApplies, draftFromRules, hasPendingChanges, joinList, pendingChanges, rulesToWrite, rowsWithProblems, sameRules, splitList, type DraftRow } from '../../lib/firewallDraft'
@@ -119,8 +119,9 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [cloneError, setCloneError] = useState<string | null>(null)
 
   const currentRules: FwRule[] = firewallQuery.data || []
-  // BinaryLane keeps at most MAX_RULES rules for a server, so there is no room to add another.
-  const atRuleLimit = currentRules.length >= MAX_RULES
+  // A server may have 100 rules, or the number it already has if that is more (rulesAllowed): with that many, one more is over.
+  const atRuleLimit = currentRules.length + 1 > rulesAllowed(currentRules.length)
+  const limitNote = ruleLimitNote(currentRules.length)
   const addressPicks = useMemo(() => addressChoicesFor(activeServer, servers), [activeServer, servers])
   const confirmAction = useConfirm()
   const { track, tracked } = useTrackedActions()
@@ -222,7 +223,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
     if (!activeServerId || !canEdit) return
     if (atRuleLimit) {
-      setErrorMsg(RULE_LIMIT_NOTE)
+      setErrorMsg(limitNote)
       return
     }
 
@@ -430,7 +431,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
     try {
       // What is written is checked against the API reference first: a rule list it would refuse is never sent.
-      const read = readImportedRules(JSON.parse(importJsonText))
+      const read = readImportedRules(JSON.parse(importJsonText), currentRules.length)
       if (read.error !== undefined) throw new Error(read.error)
       const parsed = read.rules
       if (parsed.length === 0 && currentRules.length === 0) throw new Error('The file has no rules, and this server has none, so there is nothing to import.')
@@ -611,7 +612,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           <button
             onClick={() => setIsAdding((prev) => !prev)}
             disabled={(!canEdit || atRuleLimit) && !isAdding}
-            title={atRuleLimit && !isAdding ? RULE_LIMIT_NOTE : undefined}
+            title={atRuleLimit && !isAdding ? limitNote : undefined}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#017cb6] hover:bg-[#016594] rounded transition shadow-sm disabled:opacity-40"
           >
             <Plus className="w-4 h-4" />
@@ -623,7 +624,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
         </div>
       </div>
       {/* Under the buttons, not among them: inside the row it made the row so wide that the heading wrapped. */}
-      {view === 'server' && atRuleLimit && <p className="-mt-3 md:text-right text-[11px] text-[#6c757d] dark:text-slate-400">{RULE_LIMIT_NOTE}</p>}
+      {view === 'server' && atRuleLimit && <p className="-mt-3 md:text-right text-[11px] text-[#6c757d] dark:text-slate-400">{limitNote}</p>}
 
       {view === 'matrix' ? (
         <FirewallMatrix
@@ -684,10 +685,10 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
             </div>
           </div>
 
-          {(errorMsg ?? (atRuleLimit ? RULE_LIMIT_NOTE : null)) && (
+          {(errorMsg ?? (atRuleLimit ? limitNote : null)) && (
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg ?? RULE_LIMIT_NOTE}</span>
+              <span>{errorMsg ?? limitNote}</span>
             </div>
           )}
 
