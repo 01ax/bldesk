@@ -9,7 +9,7 @@ import { recordChange, updateChange } from '../../lib/changelog'
 import { diffLines, describeFirewallRule, type DiffLine } from '../../lib/diff'
 import { ruleCount, toRuleRequest } from '../../lib/firewallRules'
 import { primaryIpv4 } from '../../lib/deeplinks'
-import { auditServer, buildMatrix, worstLevel, type AuditFlag, type FwRule } from '../../lib/firewallMatrix'
+import { auditServer, buildMatrix, publicAddressesOf, worstLevel, type AuditFlag, type FwRule } from '../../lib/firewallMatrix'
 import { GROUPS_EVENT, allTags, colorOf, effectiveGroups, loadGroups, loadTagColors, loadTags, newGroup, resolveGroup, saveGroups, saveTags, tagsOf, withTag, type ServerGroup, type TagColorMap, type TagMap } from '../../lib/serverGroups'
 import { TagChip } from '../tags/TagChip'
 import { useTagEditor } from '../tags/TagEditor'
@@ -96,7 +96,7 @@ export const FirewallMatrix: React.FC<Props> = ({ client, servers, profileId, on
   const audits = useMemo(() => {
     const m = new Map<number, AuditFlag[]>()
     // A server the fleet read has not answered about yet is still loading, not unreadable: only an answer of null is.
-    for (const s of scoped) m.set(s.id, rulesByServer.has(s.id) ? auditServer(rulesByServer.get(s.id) ?? null, accountAddresses) : [])
+    for (const s of scoped) m.set(s.id, rulesByServer.has(s.id) ? auditServer(rulesByServer.get(s.id) ?? null, accountAddresses, publicAddressesOf(s)) : [])
     return m
   }, [scoped, rulesByServer, accountAddresses])
 

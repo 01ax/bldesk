@@ -28,11 +28,15 @@ Aliases include restart; stop/halt; power-off/kill; boot/poweron/power-on; and p
 ## Backups
 Take a temporary backup, optionally supplying a quoted label. The command uses replacement_strategy: oldest. It uses a free temporary slot first; if none is free, BinaryLane replaces the oldest unlocked, unattached temporary backup, which will no longer be available. Use the Backups form if you need to choose a specific slot or replacement. The command does not restore an image or change purchased retention.
 
-Before you confirm, the review reads the backups of each target that has any, four at a time, while it says “Checking which backups would be replaced…” and Run waits. BinaryLane's API reference does not say how many temporary backups a server can hold, so the palette cannot tell whether a slot is free. Instead, for every target that holds a temporary backup that is not locked or attached, an amber note says:
+The review shows the same lifetime and limit note as Take Backup and Change Plan, whether or not a backup might be replaced:
+
+“A temporary backup is kept for up to 48 hours, and at most two can be taken of a server in any seven day period.”
+
+Before you confirm, the review reads the backups of each target that has any, four at a time, while it says “Checking which backups would be replaced…” and Run waits. BinaryLane's API reference does not say how many temporary backups a server can hold, so the palette cannot tell whether a slot is free. Instead, for every target that holds a temporary backup that is not locked or attached, a separate amber note says:
 
 “If a server has no free temporary slot, BinaryLane replaces its oldest temporary backup that is not locked or attached, and the replaced backup will no longer be available. The backup that would be replaced on each server is listed below.”
 
-Each line under it gives the server, then the backup's name, ID, slot and date. A target with no such backup gets no line, and the note does not appear when no target has a line. A target whose backups could not be read is listed as “example-server: could not list its backups, so BLDesk cannot say which would be replaced”. History records a take that may replace a backup as destructive and lists the backup in its “Replaced if no slot is free” row. Escape or Back takes no backup.
+Each line under it gives the server, then the backup's name, ID, slot and date. A target with no such backup gets no line, and the amber note does not appear when no target has a line. A target whose backups could not be read is listed as “example-server: could not list its backups, so BLDesk cannot say which would be replaced”. History records a take that may replace a backup as destructive and lists the backup in its “Replaced if no slot is free” row. Escape or Back takes no backup.
 
 ```
 backup db "before upgrade"

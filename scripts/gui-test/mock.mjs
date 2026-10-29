@@ -13,8 +13,9 @@ const TOKEN = process.env.MOCK_TOKEN
 if (!TOKEN) throw new Error('MOCK_TOKEN is required')
 const LOG = process.env.LOG || devNull
 const S = SPEC.components.schemas
-// A stand-in installer for the update scenario: the real bytes are never installed by this harness.
-const DEB = Buffer.from('not a real package: BLDesk GUI test update payload\n')
+// A stand-in installer for the update scenario: the real bytes are never installed by this harness. MOCK_DEB names a
+// real .deb to serve instead (and list, with its real size and checksum, in the feed), for testing a real install.
+const DEB = process.env.MOCK_DEB ? readFileSync(process.env.MOCK_DEB) : Buffer.from('not a real package: BLDesk GUI test update payload\n')
 const DEB_SHA = createHash('sha512').update(DEB).digest('base64')
 const VERSION = process.env.APP_VERSION || JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
 
@@ -223,15 +224,23 @@ function setBackups(s, list) { serverBackups.set(s.id, list); s.backup_ids = lis
 const backupsFor = (s) => serverBackups.get(s.id) || []
 const backupImage = (id) => [...serverBackups.values()].flat().find((b) => b.id === id)
 const isAttached = (id) => servers.some((s) => s.attached_backup?.id === id)
-// The reference (0.45.0): "At most two temporary backups may be taken of a server in any seven day period." Modelled as takes,
-// not images held, and counting a replacement and a pre-action backup (the reference is silent on both). Counted when a backup
-// is made, so a refused one is not.
+// The reference (0.45.0) limits temporary takes, not images held. The 23 October live checks in HELP_VERIFICATION.md
+// cover ordinary replacement and a successful pre-action replacement. Elapsed reset timing and failed-take accounting
+// were not checked live; this model records a take when the backup is made.
 const recentTemporaryTakes = (s) => (temporaryTakes.get(s.id) || []).filter((at) => Date.now() - at < 7 * 86400000).length
 const noteTemporaryTake = (s) => temporaryTakes.set(s.id, [...(temporaryTakes.get(s.id) || []), Date.now()])
 function backupPlan(s, body) {
   const plan = planBackup(s, body)
-  if (!plan.error && plan.type === 'temporary' && recentTemporaryTakes(s) >= cfg.temporaryLimit) return { error: 'At most two temporary backups may be taken of a server in any seven day period.' }
+  if (!plan.error && plan.type === 'temporary' && recentTemporaryTakes(s) >= cfg.temporaryLimit) return { error: 'At most two temporary backups may be taken of a server in any seven day period.', temporaryQuotaExceeded: true }
   return plan
+}
+function temporaryQuotaError(field) {
+  const reason = 'Temporary backup limit of 2 per 7 day period has been reached.'
+  return {
+    type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
+    title: 'One or more validation errors occurred', status: 400,
+    errors: { [field]: [reason] }, message: `${field}: ${reason}`
+  }
 }
 function planBackup(s, body) {
   const list = backupsFor(s), strategy = body.replacement_strategy
@@ -417,10 +426,12 @@ async function handleApi(req, res, u, body) {
     if (sub === '/actions' && m === 'POST') {
       if (body?.type === 'take_backup') {
         const plan = backupPlan(s, body)
+        if (plan.temporaryQuotaExceeded) return json(res, 400, temporaryQuotaError('backup_type'))
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'resize' && body.pre_action_backup) {
         const plan = backupPlan(s, body.pre_action_backup)
+        if (plan.temporaryQuotaExceeded) return json(res, 400, temporaryQuotaError('pre_action_backup.backup_type'))
         if (plan.error) return json(res, 400, { id: 'bad_request', message: plan.error })
       }
       if (body?.type === 'attach_backup' && !backupImage(body.image)) return json(res, 400, { id: 'bad_request', message: 'Backup image not found.' })

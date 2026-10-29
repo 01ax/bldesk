@@ -37,7 +37,7 @@ import { openServerSsh } from '../../lib/openServerSsh'
 import { searchHelp } from '../../lib/help'
 import { openHelp } from '../../lib/helpNavigation'
 import { recordChange, updateChange } from '../../lib/changelog'
-import { describeBackup, replacedByOldest } from '../../lib/backupSlots'
+import { describeBackup, replacedByOldest, TEMPORARY_BACKUP_TERMS } from '../../lib/backupSlots'
 import { colorOf, expandGroupRefs, loadGroups, loadTagColors, loadTags, saveTags, withTag, allTags, normaliseTag, tagServerCount, tagsOf } from '../../lib/serverGroups'
 import { completeTagToken, liveTagCounts, matchesTagPrefixes, parseTagSearch, tagSuggestions } from '../../lib/tags'
 import { TagChip } from '../tags/TagChip'
@@ -896,6 +896,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </li>
               ))}
             </ul>
+            {parsed?.kind === 'backup' && (
+              <p className="text-xs text-[#6c757d] dark:text-slate-400">{TEMPORARY_BACKUP_TERMS}</p>
+            )}
             {checking && <p className="text-xs text-[#6c757d] dark:text-slate-400">Checking which backups would be replaced…</p>}
             {replaceLines.length > 0 && (
               <div className="p-2.5 rounded border border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs leading-relaxed space-y-1">

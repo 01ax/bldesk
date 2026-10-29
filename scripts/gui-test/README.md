@@ -52,18 +52,77 @@ Fixture fleet (28 servers, more than 20 so paging is exercised):
 
 Actions normally complete after about 2.5 seconds. Terminal status and the completion timestamp are published only after the action callback settles, including failure handling. Waiting actions stay in progress; answering replaces their pending timer. Power actions, resize, taking/attaching/detaching backups and firewall writes change the mock's state; other server settings (rename, add disk, and so on) complete without changing anything.
 
-`take_backup` uses the server's selected retention counts for scheduled slots. `none` needs a free slot; `oldest` and `newest` use a free slot first, then replace the selected unlocked, unattached image of that type; `specified` replaces a named image belonging to that server and inherits its slot type. Taking a temporary backup requires no scheduled retention. The mock models one temporary slot per server, matching the live API check recorded for #312 in `docs/HELP_VERIFICATION.md`, not a count stated by the public reference. It also refuses a third temporary backup taken of a server in seven days, as the reference describes the Take Backup action. The reference does not say whether a replacement or a resize's `pre_action_backup` counts, so the mock counts both; `temporaryLimit` in `/__mock/config` changes the count. It does not expire temporary backups after 48 hours. A resize's `pre_action_backup` uses the same slot checks and is taken before memory or disk changes; a refused backup prevents those changes. Temporary images are not automatically expired by the mock. Image GET/PUT supports inspecting backup metadata, renaming images and locking/unlocking scheduled images; attaching an image protects it from replacement until it is detached.
+`take_backup` uses the server's selected retention counts for scheduled slots. `none` needs a free slot; `oldest` and `newest` use a free slot first, then replace the selected unlocked, unattached image of that type; `specified` replaces a named image belonging to that server and inherits its slot type. Taking a temporary backup requires no scheduled retention. The mock models one temporary slot per server, matching the live API check recorded for #312 in `docs/HELP_VERIFICATION.md`, not a count stated by the public reference. It also refuses a third temporary backup taken of a server in seven days, as the reference describes the Take Backup action. The 23 October 2026 live checks recorded in `docs/HELP_VERIFICATION.md` cover ordinary replacement and a successful resize `pre_action_backup` counting toward the allowance; the existing mock counting matches those sequences. Quota refusals use an HTTP 400 validation body with the reason in `errors` and `message`: the field is `backup_type` for an ordinary take, and `pre_action_backup.backup_type` for resize. The nested field and message follow the live observation in the [review of #331](https://github.com/termau/bldesk/pull/331#pullrequestreview-5623460097); see the 26 October verification entry for its scope and the Change Plan fixture check. `temporaryLimit` in `/__mock/config` changes the count. Elapsed reset timing and failed-take counting were not checked live. A resize's `pre_action_backup` uses the same slot checks and is taken before memory or disk changes; a refused backup prevents those changes. Temporary images are not automatically expired by the mock. Image GET/PUT supports inspecting backup metadata, renaming images and locking/unlocking scheduled images; attaching an image protects it from replacement until it is detached.
+
+To check Change Plan's quota refusal, reset the mock, then complete a temporary/none take and a temporary/oldest replacement on server 9003. In Change Plan, change memory, choose Replace an existing backup, select the held temporary image and accept the terms. Confirm Resize: expect one HTTP 400 and one Action failed card with `pre_action_backup.backup_type: Temporary backup limit of 2 per 7 day period has been reached.` The server, held backup and action list must remain unchanged. Dismiss the card before resubmitting if it covers the Change Plan button. This exercises the app's specified-replacement request, not an additional live API observation.
 
 Control endpoints (POST JSON to the mock, for example `curl -sk -X POST -d '{"empty":true}' https://127.0.0.1:8443/__mock/config`):
 
 - `/__mock/config`: `{"empty":true}` an account with nothing in it; `{"rejectAuth":true}` every call returns 401; `{"extraToken":"second-token"}` also accepts that token, so a second profile with a different token can be added (a profile with the same token is the same client to the app); that account sees only its own server, #9101 `second-account-01`; `{"unpaid":true}` the unpaid-invoice banner; `{"actionMs":8000}` slower actions; `{"actionOutcome":"errored"}` actions fail with an error message; `{"latencyMs":1500}` slow responses. `{"interaction":"continue-after-ping-failure"}` (or `allow-unclean-power-off`) makes reboots, shutdowns and power cycles stop and ask that question, which the app's "needs an answer" dialog shows; answering at `POST /v2/actions/{id}/proceed` lets them settle.
-- `/__mock/config` `{"consoleUrl":"https://console.invalid/x"}` makes the rescue console URL one that cannot be loaded; `{"feedStatus":404}` makes the mock GitHub feed answer every request with that status and no body (`null` to stop), to see what an update check that fails does; `{"updateVersion":"1.0.62-beta.9"}` also offers a newer version through the mock GitHub feed, so a packaged app (`--bin`) finds, downloads and shows "Restart to update". The download is a stand-in file, not a real package: do not click Restart against a real `pkexec`, which would ask for your password and try to install it. To test the install path, put a stand-in `pkexec` that just sleeps and exits 0 first on the app's `PATH`. A build made with `electron-builder --dir` also needs a `resources/package-type` file containing `deb`, or electron-updater treats it as an inactive AppImage and the check never finishes.
+- `/__mock/config` `{"consoleUrl":"https://console.invalid/x"}` makes the rescue console URL one that cannot be loaded; `{"feedStatus":404}` makes the mock GitHub feed answer every request with that status and no body (`null` to stop), to see what an update check that fails does; `{"updateVersion":"1.0.62-beta.9"}` also offers a newer version through the mock GitHub feed, so a packaged app (`--bin`) finds, downloads and shows "Restart to update". The download is a stand-in file, not a real package: do not click Restart against a real `pkexec`, which would ask for your password and try to install it. To test the install path, put a stand-in `pkexec` that just sleeps and exits 0 first on the app's `PATH`. To serve a real package instead (for installing one on purpose), start the mock with `MOCK_DEB=/path/to/BLDesk.deb`: its real size and SHA-512 go in the feed. On Linux the packaged app keeps its downloaded update in `~/.cache/bldesk-updater`, which is not under the test's data folder, so a test that offers an update would overwrite what your own BLDesk has downloaded there: start the test with `XDG_CACHE_HOME` pointing at a scratch folder. A build made with `electron-builder --dir` also needs a `resources/package-type` file containing `deb`, or electron-updater treats it as an inactive AppImage and the check never finishes.
 - `/__mock/fail`: `{"match":"advanced_firewall","status":500,"count":3}` injects HTTP errors (500, 429...) on paths matching a regex. `"method":"DELETE"` limits it to one method, and `"empty":true` answers with no body at all, which the typed client reports as no `error` and only a non-ok `response`.
 - `/__mock/reset`: restore the fixtures.
 
 Not app bugs: usage graphs are synthetic (CPU can exceed 100% on multi-vCPU servers), billing's Pending Charges are empty, console links open a stub page, help answers are canned, and the embedded SSH terminal has nowhere to connect.
 
 ## Android
+
+### Native HTTP Replay
+
+`http-retry-fixture.mjs` counts handler executions and can lose the answer
+before JavaScript receives it. Use only an isolated Android fixture build and
+fictitious data, never a live account. Start the loopback fixture:
+
+```sh
+node scripts/gui-test/http-retry-fixture.mjs --port 8446
+curl -X POST http://127.0.0.1:8446/__fault/config -d '{"id":"warm-loss","drop":"first","when":"after","close":"fin"}'
+```
+
+Make the fixture reachable using the Android setup below (`adb reverse
+tcp:8446 tcp:8446` for a physical connection). In that debug WebView, warm the
+connection and then call the native plugin once:
+
+```js
+const base = 'http://127.0.0.1:8446'
+await Capacitor.Plugins.CapacitorHttp.request({ url: `${base}/warm`, method: 'GET' })
+await Capacitor.Plugins.CapacitorHttp.request({
+  url: `${base}/probe?id=warm-loss`, method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, data: { fixture: true }
+})
+```
+
+Read `GET /__fault/state` from the host: a patched write has one request and
+one execution, while the lost response rejects the native call. The unpatched
+warm path can make two executions and resolve successfully. `when: before`
+drops the request before the fixture executes it; `drop: always` loses every
+answer; `close: rst` resets plain HTTP (and abruptly closes HTTPS).
+`/warm?expire=1` closes the idle connection after its answer. Each configuration
+resets its named counter. Events record connection IDs and negotiated HTTP
+versions; do not infer HTTP/2 coverage from a successful HTTPS call.
+
+Optional `--api-port PORT` forwards `/v2/` requests only to a loopback fake API.
+A configuration with `path: /v2/servers` and `method: POST` applies the same
+fault to that route, so the real form can be checked. `when: after` waits for
+the fake API response before losing it. `--cert PATH --key PATH` additionally
+starts HTTPS/HTTP/1.1 on port+2 and an HTTP/2-only TLS listener on port+3.
+HTTPS reproduction requires your own certificate/key setup: the fixture does
+not generate them or configure Android trust. Supply a loopback certificate
+valid for 127.0.0.1 and trust it only in the throwaway test build. For the
+example ports also run `adb reverse tcp:8448 tcp:8448` and, when checking
+protocol negotiation, `adb reverse tcp:8449 tcp:8449`. Production TLS settings
+must stay unchanged. `--log PATH` records fixture events and only the
+`content-length`, `transfer-encoding` and `content-type` request headers;
+authorization, cookies and other headers are excluded. See `patches/README.md`
+for the versioned fix and its limits.
+
+`status` and `responseHeaders` configure probe responses, for example a 307
+with `responseHeaders: { location: '/probe?id=target' }` (configure the target
+case too), or a 401 with a `www-authenticate` header.
+
+The fixture's six Node regressions run in `npm run test:api-errors`, without
+Android or account access.
+
+### Test Build
 
 The Android app is the same UI over Capacitor's HTTP layer, and its API address is fixed in the code, so testing it needs a throwaway build:
 

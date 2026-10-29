@@ -169,7 +169,7 @@ export type UpdaterStatus =
   | 'available' // found, download starting
   | 'downloading'
   | 'ready' // downloaded; restart to install
-  | 'installing' // the installer is running; the window may not respond until the app restarts
+  | 'installing' // Restart was chosen: the system asks for the password (Linux package), then the installer runs and the app restarts
   | 'check-failed' // feed unreachable / no manifest published; version is unknown, not confirmed current
   | 'error'
 
@@ -184,6 +184,10 @@ export interface UpdaterState {
   /** 0-100 while downloading. */
   progress?: number
   error?: string
+  /** While `installing` on a Linux package: last look at the feed, waiting for the password (BLDesk stays open), or closing for the install. */
+  installPhase?: 'checking' | 'authorising' | 'installing'
+  /** Why the last Restart did not install the update (prompt cancelled, checksum mismatch, installer failed). */
+  installError?: string
   lastCheckedAt?: string
   apkUrl?: string
 }

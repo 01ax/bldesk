@@ -185,6 +185,65 @@ test('a third temporary backup in seven days is refused however it is asked for;
   await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none', label: 'Another server' }, 9003))
 })
 
+test('an ordinary temporary take and a pre-action replacement exhaust the allowance with the observed refusal body', async () => {
+  const before = await server(9003)
+  assert.deepEqual(before.backup_ids, [])
+  for (const field of ['daily_backups', 'weekly_backups', 'monthly_backups']) assert.equal(before.selected_size_options[field], 0)
+  assert.equal(before.selected_size_options.offsite_backups, false)
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none' }, 9003))
+  const first = await backups(9003)
+  await completed(await request('/v2/servers/9003/actions', {
+    type: 'resize', options: { memory: before.memory + 1024 },
+    pre_action_backup: { type: 'take_backup', backup_type: 'temporary', replacement_strategy: 'oldest' }
+  }))
+  const held = await backups(9003)
+  assert.equal(held.length, 1)
+  assert.notEqual(held[0].id, first[0].id)
+  assert.equal(held[0].backup_info.type, 'temporary')
+  assert.equal(held[0].status, 'available')
+  const resized = await server(9003)
+  assert.equal(resized.memory, before.memory + 1024)
+  assert.equal(resized.disk, before.disk)
+  const actions = (await request('/v2/servers/9003/actions')).actions
+  const refusal = await take({ backup_type: 'temporary', replacement_strategy: 'oldest' }, 9003, 400)
+  assert.deepEqual(refusal, {
+    type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
+    title: 'One or more validation errors occurred', status: 400,
+    errors: { backup_type: ['Temporary backup limit of 2 per 7 day period has been reached.'] },
+    message: 'backup_type: Temporary backup limit of 2 per 7 day period has been reached.'
+  })
+  assert.deepEqual((await request('/v2/servers/9003/actions')).actions, actions)
+  assert.deepEqual(await backups(9003), held)
+  assert.deepEqual(await server(9003), resized)
+})
+
+test('a resize over the temporary allowance returns the nested refusal without adding an action or changing state', async () => {
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'none' }, 9003))
+  await completed(await take({ backup_type: 'temporary', replacement_strategy: 'oldest' }, 9003))
+  const held = await backups(9003)
+  const before = await server(9003)
+  const actions = (await request('/v2/servers/9003/actions')).actions
+  for (const replacement of [
+    { replacement_strategy: 'oldest' },
+    { replacement_strategy: 'specified', backup_id_to_replace: held[0].id }
+  ]) {
+    const refusal = await request('/v2/servers/9003/actions', {
+      type: 'resize', options: { memory: before.memory + 1024, disk: before.disk + 10 },
+      pre_action_backup: { type: 'take_backup', backup_type: 'temporary', ...replacement }
+    }, 'POST', 400)
+    assert.deepEqual(refusal, {
+      type: 'https://tools.ietf.org/html/rfc7231#section-6.5.1',
+      title: 'One or more validation errors occurred', status: 400,
+      errors: { 'pre_action_backup.backup_type': ['Temporary backup limit of 2 per 7 day period has been reached.'] },
+      message: 'pre_action_backup.backup_type: Temporary backup limit of 2 per 7 day period has been reached.'
+    })
+    await sleep(30)
+    assert.deepEqual((await request('/v2/servers/9003/actions')).actions, actions)
+    assert.deepEqual(await backups(9003), held)
+    assert.deepEqual(await server(9003), before)
+  }
+})
+
 test('none fills free scheduled slots and then rejects without changing any backup', async () => {
   for (const label of ['Free slot one', 'Free slot two']) {
     await completed(await take({ backup_type: 'daily', replacement_strategy: 'none', label }))

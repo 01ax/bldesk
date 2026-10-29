@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<!-- Lets BLDesk's updater ask for the system password with a prompt that says what it is for, instead of the generic one
+     for running /bin/bash. Only install-update.sh is named here. Its path must stay the one in update-session.sh. -->
+<policyconfig>
+  <vendor>BLDesk</vendor>
+  <vendor_url>https://github.com/termau/bldesk</vendor_url>
+  <action id="com.termau.bldesk.install-update">
+    <description>Install a BLDesk update</description>
+    <message>Authentication is required to install a BLDesk update</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/BLDesk/resources/linux/install-update.sh</annotate>
+  </action>
+</policyconfig>
