@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react'
-import { Capacitor } from '@capacitor/core'
 import { Settings, Bell, Tags, Download, Upload } from 'lucide-react'
 import type { NotificationSettingKey } from '@shared/ipc-types'
 import { HelpLink } from '../ui/HelpLink'
@@ -7,6 +6,7 @@ import { Modal } from '../ui/Modal'
 import { useConfirm } from '../../context/ConfirmContext'
 import { notifyFailure } from '../../lib/failures'
 import type { DiffLine } from '../../lib/diff'
+import { saveTextFile } from '../../lib/saveFile'
 import { applyTagsImport, loadTagColors, loadTags } from '../../lib/serverGroups'
 import { TAGS_FILE_MAX_BYTES, buildTagsFile, liveTagCounts, planTagsImport, readTagsFile, type TagsImportPlan } from '../../lib/tags'
 import { useNotificationSettings } from '../../lib/traySettings'
@@ -36,17 +36,6 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** How many tags an import puts on servers, counting a tag once for each server it goes on. */
 const tagsAdded = (plan: TagsImportPlan) => plan.changed.reduce((n, c) => n + c.after.length - c.before.length, 0)
-
-function downloadText(filename: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
 
 const TAGS_FILE_NAME = () => {
   const d = new Date()
@@ -86,9 +75,8 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
   const { tags, colors } = useTagState(profileId)
   const fileRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [tagStatus, setTagStatus] = useState('')
-  // The Android app (a WebView) ignores a download link, so Export would do nothing there; it is off, and says so.
-  const native = Capacitor.isNativePlatform()
   const liveIds = new Set(servers.map((s) => s.id))
   const inUse = liveTagCounts(tags, liveIds)
   const taggedServers = servers.filter((s) => (tags[s.id]?.length ?? 0) > 0).length
@@ -98,10 +86,19 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
       ? 'No server has a tag yet. Import adds the tags in a file.'
       : `${plural(inUse.length, 'tag', 'tags')} on ${plural(taggedServers, 'server', 'servers')}${profileName ? ` in ${profileName}` : ''}.`
 
-  const exportTags = () => {
-    if (!profileId || native) return
+  const exportTags = async () => {
+    if (!profileId) return
     setTagStatus('')
-    downloadText(TAGS_FILE_NAME(), JSON.stringify(buildTagsFile(tags, colors, servers), null, 2) + '\n')
+    setExporting(true)
+    try {
+      const saved = await saveTextFile(TAGS_FILE_NAME(), JSON.stringify(buildTagsFile(tags, colors, servers), null, 2) + '\n')
+      // Only where the system says (the Android app); a download cannot say whether it was kept.
+      if (saved.saved) setTagStatus(saved.name ? `Saved as ${saved.name}.` : 'Saved the tags file.')
+    } catch (err) {
+      notifyFailure('Could not export tags', err)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const importTags = async (file: File) => {
@@ -141,7 +138,7 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
       ])
       const notes = [
         plan.missing ? `${plural(plan.missing, 'server in the file is', 'servers in the file are')} not on this account and ${plan.missing === 1 ? 'is' : 'are'} skipped.` : '',
-        plan.colorsSet ? `${plural(plan.colorsSet, 'tag gets', 'tags get')} its colour from the file.` : '',
+        plan.colorsSet ? `${plural(plan.colorsSet, 'tag gets', 'tags get')} ${plan.colorsSet === 1 ? 'its' : 'their'} colour from the file.` : '',
         plan.colorsKept ? `${plural(plan.colorsKept, 'tag is', 'tags are')} coloured differently in the file. The colour ${plan.colorsKept === 1 ? 'it has' : 'they have'} now stays.` : ''
       ].filter(Boolean)
       const c = await confirmAction({
@@ -229,7 +226,7 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
             <p className="mt-0.5 text-[11px] leading-relaxed text-[#6c757d] dark:text-[#adb5bd]">{tagSummary}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={exportTags} disabled={!profileId || inUse.length === 0 || native} className={tagButton}>
+            <button type="button" onClick={() => void exportTags()} disabled={!profileId || inUse.length === 0 || exporting} className={tagButton}>
               <Download className="w-3.5 h-3.5" />
               Export tags
             </button>
@@ -249,11 +246,6 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
               }}
             />
           </div>
-          {native && (
-            <p className="text-[11px] leading-relaxed text-[#6c757d] dark:text-[#adb5bd]">
-              Export tags is not available in the Android app yet. Export them from BLDesk on a computer.
-            </p>
-          )}
           {tagStatus && (
             <p role="status" className="text-[11px] leading-relaxed text-[#212529] dark:text-[#f8f9fa]">
               {tagStatus}
