@@ -1,7 +1,8 @@
-// What a firewall rule written to BinaryLane must contain, and how a rule is placed in a list. Its one import is a type, so
-// it can be tested on its own (scripts/test-firewall-rules.mjs).
+// What a firewall rule written to BinaryLane must contain, and how a rule is placed in a list. Its imports are a type and the
+// pure ./firewallMpanel.ts, so it can be tested on its own (scripts/test-firewall-rules.mjs).
 
 import type { components } from '@shared/api/schema'
+import { MPANEL_KEYS, readNetmask, splitMpanelList } from './firewallMpanel.ts'
 
 type RuleAction = components['schemas']['AdvancedFirewallRuleAction']
 type RuleProtocol = components['schemas']['AdvancedFirewallRuleProtocol']
@@ -74,20 +75,133 @@ export function isIpv4OrRange(value: string): boolean {
   return m.slice(1, 5).every((o) => Number(o) <= 255) && (m[5] === undefined || Number(m[5]) <= 32)
 }
 
+/** The keys that tell the two formats apart; `action`, `protocol` and `description` are the same in both. */
+const MPANEL_ONLY = ['sourceaddr', 'destaddr', 'destport'] as const
+const BLDESK_ONLY = ['source_addresses', 'destination_addresses', 'destination_ports'] as const
+
+const hasKey = (rule: object, key: string): boolean => Object.prototype.hasOwnProperty.call(rule, key)
+
+/**
+ * Whether the rules of a file are in one format. A rule is in mPanel's format when it has `sourceaddr`, `destaddr` or `destport`, and in
+ * BLDesk's (the API's) when it has `source_addresses`, `destination_addresses` or `destination_ports`. A rule with both kinds, or a file
+ * with a rule of each kind, could mean anything, so it is refused with the rule and the key named. Entries that are not objects are left
+ * for the rule check, which names them.
+ */
+function mixedFormats(parsed: unknown[]): string | undefined {
+  let first: { at: number; key: string; mpanel: boolean } | undefined
+  for (let i = 0; i < parsed.length; i++) {
+    const r = parsed[i]
+    if (!r || typeof r !== 'object' || Array.isArray(r)) continue
+    const mpanelKey = MPANEL_ONLY.find((k) => hasKey(r, k))
+    const bldeskKey = BLDESK_ONLY.find((k) => hasKey(r, k))
+    if (mpanelKey && bldeskKey) {
+      return `Rule ${i + 1} has both "${mpanelKey}", which is mPanel's format, and "${bldeskKey}", which is BLDesk's and the API's. Use one format for every rule in the file.`
+    }
+    const here = mpanelKey ? { at: i + 1, key: mpanelKey, mpanel: true } : bldeskKey ? { at: i + 1, key: bldeskKey, mpanel: false } : undefined
+    if (!here) continue
+    if (!first) first = here
+    else if (first.mpanel !== here.mpanel) {
+      const [a, b] = first.mpanel ? ["mPanel's", "BLDesk's and the API's"] : ["BLDesk's and the API's", "mPanel's"]
+      return `Rule ${here.at} has "${here.key}", which is ${b} format, but Rule ${first.at} has "${first.key}", which is ${a}. Use one format for every rule in the file.`
+    }
+  }
+  return undefined
+}
+
+/**
+ * The text of a netmask refusal. It names the address and what to do, and says no more about the form than the reference does: that its
+ * addresses are an IPv4 address or a CIDR range.
+ */
+const netmaskRefusal = (at: string, key: string, address: string): string =>
+  `${at}: "${key}" has ${address}, an address with a netmask that is not a whole CIDR range, so it cannot be written as one (a mask such as 255.255.255.0 can: 192.0.2.0/255.255.255.0 is 192.0.2.0/24). ` +
+  `The API reference documents only an IPv4 address or a CIDR range, so BLDesk does not import this form. Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again.`
+
+/**
+ * Read one rule written the way mPanel's Import/Export dialog writes it (see ./firewallMpanel.ts) and return it as the reference defines it.
+ *  - Every key must be one mPanel writes: a key BLDesk has no place for could change what the rule means, so it refuses the file instead of leaving it out.
+ *  - `action` and `protocol` are read in either case; addresses and ports are text split at commas, each item trimmed (ranges such as 1000-2000 stay as written).
+ *  - `sourceaddr` must name at least one address, as it must in BLDesk's format. An empty `destaddr` is read like a missing `destination_addresses` in BLDesk's format:
+ *    the rule is written with 0.0.0.0/0, the one value that adds no condition (see ANY_ADDRESS). An empty `destport` is every port; an empty `description` is none.
+ *  - An address with a netmask is written as CIDR when its mask is a whole range, and refused when it is not.
+ */
+function readMpanelRule(r: Record<string, unknown>, at: string): { rule: RuleRequest; error?: undefined } | { rule?: undefined; error: string } {
+  const extra = Object.keys(r).find((k) => !(MPANEL_KEYS as readonly string[]).includes(k))
+  if (extra !== undefined) {
+    return { error: `${at} has "${extra}", which BLDesk does not know. Nothing was imported, rather than drop a field that could change what the rule does. mPanel's format has ${MPANEL_KEYS.map((k) => `"${k}"`).join(', ')}.` }
+  }
+  const action = typeof r.action === 'string' ? r.action.toLowerCase() : r.action
+  if (!isAction(action)) return { error: `${at}: "action" must be "ACCEPT" or "DROP".` }
+  const protocol = typeof r.protocol === 'string' ? r.protocol.toLowerCase() : r.protocol
+  if (!isProtocol(protocol)) return { error: `${at}: "protocol" must be "ALL", "ICMP", "TCP" or "UDP".` }
+
+  const items = (key: string): { items: string[]; error?: undefined } | { items?: undefined; error: string } => {
+    const text = r[key]
+    if (text == null) return { items: [] }
+    if (typeof text !== 'string') return { error: `${at}: "${key}" must be text, with the items separated by commas.` }
+    const list = splitMpanelList(text)
+    if (list.some((item) => item === '')) return { error: `${at}: "${key}" has an empty item between its commas.` }
+    return { items: list }
+  }
+  const addresses = (key: 'sourceaddr' | 'destaddr'): { items: string[]; error?: undefined } | { items?: undefined; error: string } => {
+    const read = items(key)
+    if (read.error !== undefined) return read
+    const out: string[] = []
+    for (const item of read.items) {
+      const mask = readNetmask(item)
+      if (mask.kind === 'gap') return { error: netmaskRefusal(at, key, item) }
+      const address = mask.kind === 'cidr' ? mask.cidr : item
+      if (!isIpv4OrRange(address)) return { error: `${at}: "${key}" has "${item}", which is not an IPv4 address or range, such as 192.0.2.1 or 192.0.2.0/24.` }
+      out.push(address)
+    }
+    return { items: out }
+  }
+
+  const sources = addresses('sourceaddr')
+  if (sources.error !== undefined) return sources
+  if (sources.items.length === 0) return { error: `${at}: "sourceaddr" must list at least one address, or 0.0.0.0/0 for any.` }
+  const destinations = addresses('destaddr')
+  if (destinations.error !== undefined) return destinations
+  const ports = items('destport')
+  if (ports.error !== undefined) return ports
+  if (r.description != null && typeof r.description !== 'string') return { error: `${at}: "description" must be text.` }
+  if (typeof r.description === 'string' && r.description.length > MAX_DESCRIPTION) return { error: `${at}: "description" is ${r.description.length} characters; the most BinaryLane accepts is ${MAX_DESCRIPTION}.` }
+  return {
+    rule: toRuleRequest({
+      action,
+      protocol,
+      source_addresses: sources.items,
+      destination_addresses: destinations.items,
+      ...(ports.items.length > 0 ? { destination_ports: ports.items } : {}),
+      ...(r.description ? { description: r.description as string } : {})
+    })
+  }
+}
+
 /**
  * Check a pasted or uploaded rule list against the API reference (`AdvancedFirewallRuleRequest`) and return the rules
  * as they will be written: only the fields the reference defines, with a destination on every rule. The first rule that
  * cannot be written is named, so nothing is sent for a list the API would refuse. `saved` is how many rules the server has now:
  * the list may be as long as that, or 100, whichever is more (see `rulesAllowed`).
+ *
+ * The list may be in BLDesk's format, which is the API's, or in mPanel's (see `readMpanelRule`), told apart by the keys. Mixing them is refused.
  */
 export function readImportedRules(parsed: unknown, saved = 0): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
   if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
   if (parsed.length > rulesAllowed(saved)) return { error: `The file has ${ruleCount(parsed.length)}. ${ruleLimitNote(saved)}` }
+  const mixed = mixedFormats(parsed)
+  if (mixed !== undefined) return { error: mixed }
+  const mpanel = parsed.some((r) => r && typeof r === 'object' && !Array.isArray(r) && MPANEL_ONLY.some((k) => hasKey(r, k)))
   const rules: RuleRequest[] = []
   for (let i = 0; i < parsed.length; i++) {
     const r = parsed[i] as Record<string, unknown> | null
     const at = `Rule ${i + 1}`
     if (!r || typeof r !== 'object' || Array.isArray(r)) return { error: `${at} is not a rule object.` }
+    if (mpanel) {
+      const read = readMpanelRule(r, at)
+      if (read.error !== undefined) return { error: read.error }
+      rules.push(read.rule)
+      continue
+    }
     if (!isAction(r.action)) return { error: `${at}: "action" must be "accept" or "drop".` }
     if (!isProtocol(r.protocol)) return { error: `${at}: "protocol" must be "all", "icmp", "tcp" or "udp".` }
     if (!isStrings(r.source_addresses) || r.source_addresses.length === 0) return { error: `${at}: "source_addresses" must list at least one address.` }
