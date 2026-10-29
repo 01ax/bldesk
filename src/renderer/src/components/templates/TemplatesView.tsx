@@ -76,11 +76,14 @@ const btn = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ro
 const btnPrimary = 'inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-[#017cb6] hover:bg-[#016594] text-white disabled:opacity-40 shadow-sm'
 const label = 'block text-[11px] font-semibold uppercase tracking-wide text-[#6c757d] dark:text-slate-400 mb-1'
 
-// The file type handed to Android's Save as dialog. Android does not know .yaml, and what the dialog does with the file name
+// File types for Android's Save as and Open dialogs. Android does not know .yaml, and what its dialogs do with the file name
 // depends on the type: a YAML type keeps ".yaml" but, when the name is taken, numbers after it ("a.yaml (1)"); text/plain adds
-// ".txt"; the generic type keeps ".yaml" and numbers before it ("a (1).yaml"). The desktop app and the browser keep the YAML
-// type, which only labels the download.
-const yamlType = () => (Capacitor.isNativePlatform() ? 'application/octet-stream' : 'application/x-yaml')
+// ".txt"; the generic type keeps ".yaml" and numbers before it ("a (1).yaml"). Its picker greys out a file whose type is not in
+// the accept list, and a .yaml file is neither JSON nor text, so the generic type is listed there too. The desktop app and the
+// browser keep the YAML type for the download and the plain extension list for the chooser.
+const TEMPLATE_FILES = '.yaml,.yml,.json,.txt'
+const native = () => Capacitor.isNativePlatform()
+const yamlType = () => (native() ? 'application/octet-stream' : 'application/x-yaml')
 
 function randomSecret(): string {
   const bytes = new Uint8Array(18)
@@ -298,7 +301,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
         {/* Wraps: with the reveal button present the row is wider than a phone
             and the help `?` was clipped past the edge (#67). */}
         <div className="flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept=".yaml,.yml,.json,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.currentTarget.value = '' }} />
+          <input ref={fileRef} type="file" accept={native() ? `${TEMPLATE_FILES},application/octet-stream` : TEMPLATE_FILES} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.currentTarget.value = '' }} />
           <button className={btn} onClick={() => fileRef.current?.click()}><Upload className="w-3.5 h-3.5" />Import file</button>
           <button className={btn} onClick={() => setImportOpen(true)}><ClipboardPaste className="w-3.5 h-3.5" />Paste</button>
           <button className={btn} onClick={handleExportAll} disabled={exporting}><Download className="w-3.5 h-3.5" />Export all</button>
