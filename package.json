@@ -1,6 +1,6 @@
 {
   "name": "bldesk",
-  "version": "1.0.62-beta.31",
+  "version": "1.0.62-beta.34",
   "type": "module",
   "description": "BinaryLane Cloud Desktop Client",
   "homepage": "https://github.com/termau/bldesk",
@@ -11,14 +11,16 @@
   },
   "license": "MIT",
   "scripts": {
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "patch-package --error-on-fail && electron-builder install-app-deps",
     "format": "prettier --write .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "lint:guards": "node scripts/check-mutation-guards.mjs && node scripts/check-ui-guards.mjs && node scripts/check-help-guards.mjs && node scripts/check-pty-guards.mjs && node scripts/check-updater-guards.mjs && node scripts/check-security-guards.mjs && node scripts/check-typed-seams.mjs && npm run test:api-errors && npm run test:firewall-rules && npm run test:pricing && npm run test:network-map && npm run test:ssh-key-names && npm run test:deeplink && npm run test:server-tags && npm run test:backup-schedule && npm run test:backup-slots && npm run test:backup-retention && npm run test:terminal-launchers && npm run test:notices && npm run test:failures && npm run test:typed-seams && npm run test:create-hostname && npm run test:updater-script && npm run test:notification-settings",
+    "lint:guards": "node scripts/check-mutation-guards.mjs && node scripts/check-ui-guards.mjs && node scripts/check-help-guards.mjs && node scripts/check-pty-guards.mjs && node scripts/check-updater-guards.mjs && node scripts/check-security-guards.mjs && node scripts/check-typed-seams.mjs && npm run test:api-errors && npm run test:firewall-rules && npm run test:firewall-matrix && npm run test:firewall-match && npm run test:pricing && npm run test:network-map && npm run test:ssh-key-names && npm run test:deeplink && npm run test:server-tags && npm run test:backup-schedule && npm run test:backup-slots && npm run test:backup-retention && npm run test:terminal-launchers && npm run test:notices && npm run test:failures && npm run test:typed-seams && npm run test:create-hostname && npm run test:updater-script && npm run test:notification-settings && npm run test:linux-package-scripts && npm run test:linux-update-scripts && npm run test:linux-install && npm run test:linux-install-flow && npm run test:updater-log && npm run test:updater-schedule",
     "test:terminal": "node scripts/test-terminal.cjs",
-    "test:api-errors": "node --experimental-strip-types --no-warnings --test scripts/test-api-errors.mjs",
+    "test:api-errors": "node --experimental-strip-types --no-warnings --test scripts/test-api-errors.mjs scripts/test-native-http.mjs scripts/test-capacitor-http-patch.mjs scripts/gui-test/http-retry-fixture.test.mjs",
     "test:firewall-rules": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-rules.mjs",
+    "test:firewall-matrix": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-matrix.mjs",
+    "test:firewall-match": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-match.mjs",
     "test:pricing": "node --experimental-strip-types --no-warnings --test scripts/test-pricing.mjs",
     "test:network-map": "node --experimental-strip-types --no-warnings --test scripts/test-network-map.mjs",
     "test:ssh-key-names": "node --experimental-strip-types --no-warnings --test scripts/test-ssh-key-names.mjs",
@@ -33,6 +35,12 @@
     "test:failures": "node --experimental-strip-types --no-warnings --test scripts/test-failures.mjs",
     "test:typed-seams": "node --experimental-strip-types --no-warnings --test scripts/test-typed-seams.mjs",
     "test:updater-script": "node --experimental-strip-types --no-warnings --test scripts/test-updater-script.mjs",
+    "test:linux-package-scripts": "node --experimental-strip-types --no-warnings --test scripts/test-linux-package-scripts.mjs",
+    "test:linux-update-scripts": "node --experimental-strip-types --no-warnings --test scripts/test-linux-update-scripts.mjs",
+    "test:linux-install": "node --experimental-strip-types --no-warnings --test scripts/test-linux-install.mjs",
+    "test:linux-install-flow": "node --experimental-strip-types --no-warnings --test scripts/test-linux-install-flow.mjs",
+    "test:updater-log": "node --experimental-strip-types --no-warnings --test scripts/test-updater-log.mjs",
+    "test:updater-schedule": "node --experimental-strip-types --no-warnings --test scripts/test-updater-schedule.mjs",
     "test:notification-settings": "node --experimental-strip-types --no-warnings --test scripts/test-notification-settings.mjs",
     "gui-test": "node scripts/gui-test/launch.mjs",
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run lint:guards",
@@ -136,11 +144,23 @@
       "target": [
         "AppImage",
         "deb"
+      ],
+      "extraResources": [
+        {
+          "from": "linux/update",
+          "to": "linux"
+        }
       ]
     },
     "deb": {
       "afterInstall": "linux/after-install.sh",
       "afterRemove": "linux/after-remove.sh",
+      "recommends": [
+        "pkexec | policykit-1"
+      ],
+      "fpm": [
+        "linux/com.termau.bldesk.policy=/usr/share/polkit-1/actions/com.termau.bldesk.policy"
+      ],
       "depends": [
         "libgtk-3-0",
         "libnotify4",
@@ -163,7 +183,7 @@
   },
   "devDependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",
-    "@capacitor/android": "^8.5.2",
+    "@capacitor/android": "8.5.2",
     "@capacitor/app": "^8.1.1",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
@@ -175,12 +195,13 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.20",
-    "electron": "^44.4.5",
+    "electron": "^44.9.3",
     "electron-builder": "26.15.3",
     "electron-vite": "^5.0.0",
     "lucide-react": "^0.460.0",
     "openapi-fetch": "^0.13.3",
     "openapi-typescript": "^7.4.3",
+    "patch-package": "8.0.1",
     "postcss": "^8.4.47",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
