@@ -1,5 +1,45 @@
 # Help verification
 
+## Templates: Export and Export all save through Android's Save as dialog (29 October 2026, after 1.0.63-beta.1)
+
+Branch: `feat/android-export-templates`, stacked on `feat/tags-import-export` (#345), whose `saveTextFile` it uses. No new runtime dependencies and no API calls. One help page changed (`templates.md`), by one added paragraph. Fixes #347: in the Android app, “Export” and “Export all” saved nothing and said nothing, because a WebView ignores a download link (the same defect #345 fixed for Export tags). The sources are `TemplatesView.tsx` (`exportYaml`, `handleExport`, `handleExportAll`, `yamlType`), `lib/saveFile.ts` (`saveTextFile`), `FileSavePlugin.java` and `lib/serverTemplates.ts` (`templateToYaml`, `bundleToYaml`, unchanged).
+
+| String | Rendered by | Result |
+| --- | --- | --- |
+| “Export” saves the selected template as a YAML file named after it, such as export-demo-web.yaml | `handleExport`: `${item.slug}.yaml`, content `templateToYaml(item.template)`; the slug is `templateSlug(name)`, a starter's is its own (`starter-docker-host`) | New sentence; the name and the content are what the desktop app already wrote. |
+| “Export all” saves your own templates, not the starters, as one bundle named bldesk-templates- followed by today's date in UTC | `handleExportAll`: `stored.filter(!error)`, `bundleToYaml`, `bldesk-templates-<YYYY-MM-DD>.yaml` (UTC date, `toISOString().slice(0, 10)`, as before) | New sentence. |
+| With none of your own it says so and saves nothing | The notice “Nothing of your own to export yet — the starters ship with the app.”, returned before any save | New sentence, about an existing behaviour. |
+| “Import file” and “Paste” read either kind back | `templatesFromImport` accepts a bundle, a single template document, or raw cloud-init | New sentence, about an existing behaviour. |
+| On desktop and in the browser build the file is downloaded | `saveTextFile` keeps the download link when `Capacitor.isNativePlatform()` is false | New sentence; the desktop path is unchanged (below). |
+| In the Android app both buttons open Android's own Save as dialog; backing out saves nothing and shows no error | `saveTextFile` calls `FileSavePlugin.saveText` (`ACTION_CREATE_DOCUMENT`); `saved: false` clears the notice and shows nothing | New sentence. Run on a phone, see below. |
+| The page says the name the file was saved under, because Android adds a number when the name is taken | `exportYaml` shows “Saved as <name>.” from the name `FileSavePlugin` reads back from the provider | New sentence. Run on a phone, see below. |
+
+What the page does around the save, which the help does not describe: Export and Export all are greyed out and a second tap is ignored until the save has finished or the person has backed out (`exportingRef` stops the second tap, `exporting` greys the buttons); a failed write shows its message in the page's red banner (`setError`, the way the page's other failures are shown, with “Could not export.” when there is no message).
+
+### The file type given to Android
+
+`FileSavePlugin` passes the type to `intent.setType(...)`, and Android's dialog decides the file name from it, because Android does not know `.yaml`. #347 asked for the saved name to be checked and the alternatives tried. On the phone (Samsung SM-S948B, Android 17), exporting “Export Demo Web” (suggested name export-demo-web.yaml, Downloads) with each type, then again with the name taken:
+
+| Type passed | Saved as, name free | Saved as, name taken (2nd, 3rd) |
+| --- | --- | --- |
+| `application/x-yaml` (what the download used) | export-demo-web.yaml | export-demo-web.yaml (1) |
+| `text/yaml`, `text/x-yaml`, `application/yaml` | export-demo-web.yaml | export-demo-web.yaml (1) |
+| `text/plain` | export-demo-web.yaml.txt | export-demo-web.yaml (1).txt |
+| `application/octet-stream` | export-demo-web.yaml | export-demo-web (1).yaml, export-demo-web (2).yaml |
+
+So no YAML type loses the extension when the name is free, but all four put the number after it when the name is taken, which leaves a file whose name no longer ends in `.yaml`; `text/plain` adds `.txt`. The generic type keeps `.yaml` last in both cases, because Android does not know the extension and so accepts the one in the name. The Android app therefore passes `application/octet-stream` (`yamlType`); the desktop app and the browser build keep `application/x-yaml` for the download.
+
+### Checks performed
+
+- `npm run typecheck` (guards, the help guard with 190 quotes, 489 tests), `npm run build` and `npm run test:terminal`, in a throwaway Ubuntu 24.04 VM.
+- Desktop, real Electron against the GUI mock, driven over the debugging port, before (the #345 head) and after: Export all with nothing of your own gave the notice and no file; a pasted two-template bundle imported (“Imported 2 templates.”); Export on an own template, on another own template and on a starter, and Export all, each caught as a download with CDP `Browser.setDownloadBehavior`. All four files from the two builds are identical apart from the `updated_at` and `exported_at` timestamps, which differ per run.
+- The page's Android path in real Electron with a fake Capacitor bridge whose `FileSave.saveText` stays pending until answered: a double tap (two clicks in one task, then two more) made one call, with the file name, the YAML and the type, and both buttons were greyed out meanwhile; “Saved as starter-docker-host (1).yaml.” after an answer with a name; Back (`saved: false`) left no message and no error; a rejected write showed its text in the red banner; the buttons were usable again after each. Without the ref, a double tap in one task made two calls (found first, then fixed).
+- On a phone, with a throwaway build of the branch under its own application id (never the real app's), against the GUI mock, driven by real touches (`adb shell input tap`) and the WebView's debugging port. Before the change (the #345 head) a real tap on Export and on Export all fired the download link once with a `blob:` URL and nothing else happened: no dialog, no file in Downloads, no message. After: a real tap on Export opened Android's Save as dialog with export-demo-web.yaml suggested; SAVE wrote 590 bytes, the page said “Saved as export-demo-web.yaml.”, and the file pulled off the phone parses as YAML and equals what the desktop wrote for the same template (identical text apart from the timestamps). Export all: bldesk-templates-2026-10-29.yaml, 1422 bytes, a `bldesk/template-bundle@1` with the two own templates and none of the starters, identical to the desktop's apart from the timestamps. Back out of the dialog: no file, the earlier “Saved as” line cleared, no error, Export usable. Exporting the same template twice more: “Saved as export-demo-web (1).yaml.” and “(2)”, three identical files. Three taps in one `adb shell` made one plugin call and one dialog.
+- The file types above, one at a time with the real button (a throwaway build read the type from local storage so each could be tried without a rebuild; the branch's code, passing `application/octet-stream`, was then built and run with the same checks).
+- Afterwards the test files, the throwaway app (including its copy in the phone's second user space) and the port forwards were removed; the real app was not touched.
+
+Not tested: a cloud provider such as Drive in Android's Save as dialog (only Downloads was used); a write failure inside the Android save (the page's handling of a rejected write was run with the fake bridge, not a real failure); other Android versions and phones; Windows and macOS; the browser build on a device; what the operating system's save dialog does after Export on desktop (a CDP download setting wrote the file directly).
+
 ## Tags: export and import as a JSON file (29 October 2026, after 1.0.63-beta.1)
 
 Branch: `feat/tags-import-export`. No new runtime dependencies and no API calls. `docs/help/settings.md` has a new “Tags” section and a new summary and keywords; `servers.md` and `server-settings.md` each gained a sentence pointing at it; `docs/HELP_SPEC.md` and `FEATURES.md` each gained a clause.
