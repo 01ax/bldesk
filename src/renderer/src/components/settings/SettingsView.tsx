@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { Settings, Bell, Tags, Download, Upload } from 'lucide-react'
 import type { NotificationSettingKey } from '@shared/ipc-types'
 import { HelpLink } from '../ui/HelpLink'
@@ -86,6 +87,8 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
   const fileRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
   const [tagStatus, setTagStatus] = useState('')
+  // The Android app (a WebView) ignores a download link, so Export would do nothing there; it is off, and says so.
+  const native = Capacitor.isNativePlatform()
   const liveIds = new Set(servers.map((s) => s.id))
   const inUse = liveTagCounts(tags, liveIds)
   const taggedServers = servers.filter((s) => (tags[s.id]?.length ?? 0) > 0).length
@@ -96,7 +99,7 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
       : `${plural(inUse.length, 'tag', 'tags')} on ${plural(taggedServers, 'server', 'servers')}${profileName ? ` in ${profileName}` : ''}.`
 
   const exportTags = () => {
-    if (!profileId) return
+    if (!profileId || native) return
     setTagStatus('')
     downloadText(TAGS_FILE_NAME(), JSON.stringify(buildTagsFile(tags, colors, servers), null, 2) + '\n')
   }
@@ -128,6 +131,8 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
         setTagStatus('Nothing to import: the servers in the file already have these tags.')
         return
       }
+      // The profile the file was chosen in: the dialog can still be open, or the read slow, when the account is switched.
+      const inProfile = profileName ? ` in ${profileName}` : ''
       const names = new Map(servers.map((s) => [s.id, s.name]))
       const line = (id: number, list: string[]) => `${names.get(id) ?? `#${id}`}: ${list.join(', ')}`
       const diff: DiffLine[] = plan.changed.flatMap((c) => [
@@ -141,7 +146,7 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
       ].filter(Boolean)
       const c = await confirmAction({
         title: 'Import tags',
-        summary: `Adds ${plural(tagsAdded(plan), 'tag', 'tags')} to ${plural(plan.changed.length, 'server', 'servers')} from ${file.name}. No tag is removed.`,
+        summary: `Adds ${plural(tagsAdded(plan), 'tag', 'tags')} to ${plural(plan.changed.length, 'server', 'servers')}${inProfile} from ${file.name}. No tag is removed.`,
         severity: 'normal',
         helpSlug: 'settings#tags',
         notes: notes.length ? notes : undefined,
@@ -150,10 +155,9 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
         log: false
       })
       if (!c.ok) return
-      // Worked out again from what is stored now, so a tag changed while the dialog was open is not overwritten.
-      const done = planTagsImport(loadTags(profileId), loadTagColors(profileId), read, liveIds)
-      applyTagsImport(profileId, done)
-      setTagStatus(`Imported: added ${plural(tagsAdded(done), 'tag', 'tags')} to ${plural(done.changed.length, 'server', 'servers')}.`)
+      // Throws, with nothing imported, if the device will not save it: the status below is only ever for tags that were kept.
+      const done = applyTagsImport(profileId, read, liveIds)
+      setTagStatus(`Imported${profileName ? ` into ${profileName}` : ''}: added ${plural(tagsAdded(done), 'tag', 'tags')} to ${plural(done.changed.length, 'server', 'servers')}.`)
     } catch (err) {
       notifyFailure('Could not import tags', err)
     } finally {
@@ -225,7 +229,7 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
             <p className="mt-0.5 text-[11px] leading-relaxed text-[#6c757d] dark:text-[#adb5bd]">{tagSummary}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={exportTags} disabled={!profileId || inUse.length === 0} className={tagButton}>
+            <button type="button" onClick={exportTags} disabled={!profileId || inUse.length === 0 || native} className={tagButton}>
               <Download className="w-3.5 h-3.5" />
               Export tags
             </button>
@@ -245,6 +249,11 @@ export const SettingsView: React.FC<Props> = ({ profileId, profileName, servers 
               }}
             />
           </div>
+          {native && (
+            <p className="text-[11px] leading-relaxed text-[#6c757d] dark:text-[#adb5bd]">
+              Export tags is not available in the Android app yet. Export them from BLDesk on a computer.
+            </p>
+          )}
           {tagStatus && (
             <p role="status" className="text-[11px] leading-relaxed text-[#212529] dark:text-[#f8f9fa]">
               {tagStatus}

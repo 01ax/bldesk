@@ -522,6 +522,12 @@ export function readTagsFile(raw: unknown): TagsFileRead {
   return { ok: true, servers, colors }
 }
 
+/** What a read tags file gives an import: the servers with their tags, and the colours. */
+export interface TagsImportFile {
+  servers: ReadonlyArray<{ id: number; tags: readonly string[] }>
+  colors: TagColorMap
+}
+
 export interface TagsImportPlan {
   /** The whole tag map and colour map after the import, with what the import did not touch as it was. */
   tags: TagMap
@@ -547,7 +553,7 @@ export interface TagsImportPlan {
 export function planTagsImport(
   current: TagMap,
   currentColors: TagColorMap,
-  file: { servers: ReadonlyArray<{ id: number; tags: readonly string[] }>; colors: TagColorMap },
+  file: TagsImportFile,
   liveIds: ReadonlySet<number>
 ): TagsImportPlan {
   const tags = copyTagMap(current)

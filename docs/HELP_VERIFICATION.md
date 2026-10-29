@@ -20,7 +20,9 @@ Tags are local (the API has none), kept per account profile in local storage. Se
 | A new tag with no colour in the file “gets a colour the way any new tag does” | `applyTagsImport` writes colours first, then `saveTags` with its default `autoColor` | New. Seen: `batch` took `slate`, the first preset no tag in use had. |
 | “Nothing to import: the servers in the file already have these tags.” | The literal in `importTags`, shown when no server changes and no colour is set | New. |
 | The “Import tags” dialog, “Before → after”, the three notes | `confirmAction` in `importTags` (`severity: 'normal'`, `log: false`, `helpSlug: 'settings#tags'`), `diff` and `notes` built from the plan | New. Not written to History: `log: false`, as for other local tag changes. |
-| “Afterwards the card says how many tags were added to how many servers” | The `setTagStatus` after `applyTagsImport` | New. |
+| “Afterwards the card says how many tags were added to how many servers”, naming the account profile | The `setTagStatus` after `applyTagsImport` (`Imported into <profile>: added …`); the dialog's summary has `in <profile>` | New. |
+| Export is off, with a line saying so, in the Android app | `native = Capacitor.isNativePlatform()` on the Export button's `disabled`, and the paragraph under the buttons | New, after review of #345 (below). |
+| If the device cannot save the tags, “Could not import tags” and nothing is imported; anything written is put back | `applyTagsImport` in `lib/serverGroups.ts` (strict writes, rollback of the keys it changed, the two error texts) | New, after review of #345 (below). |
 
 ### Checks performed
 
@@ -34,7 +36,19 @@ Tags are local (the API has none), kept per account profile in local storage. Se
   - The mock saw no request other than reads during the import checks.
   - The card and the dialog in both themes. `layoutReport` was clean at 1600×1000, 1024×672, 853×560, 683×453 (1024×680 at 150%) and 390×844 (phone), and the dialog with a 28-server, 84-tag diff at 683×453 scrolled its list with Cancel and Import still on screen.
 
-Not tested: the Android app and the browser build on a device (the card uses the same hidden file input and `<a download>` as the firewall and template import and export, so what they do there is what this does); Windows and macOS; what the operating system's save dialog does after Export (a CDP download setting wrote the file directly, so the real dialog was not seen). A file from another account has no matching server and is refused; whether a server id could ever repeat across accounts is not something the API reference says, so the help does not claim it either way.
+Not tested: the Android app and the browser build on a device (see the review of #345 below for what was and was not run); Windows and macOS; what the operating system's save dialog does after Export (a CDP download setting wrote the file directly, so the real dialog was not seen). A file from another account has no matching server and is refused; whether a server id could ever repeat across accounts is not something the API reference says, so the help does not claim it either way.
+
+### After review of #345 (29 October 2026)
+
+The reviewer found two blocking problems and suggested one clarity change. All three were checked before and after the fix.
+
+| Finding | Evidence | Fix |
+| --- | --- | --- |
+| **Import reported success when the device did not save it.** `applyTagsImport` called `saveTags` and `saveTagColors`, which catch and drop a storage error, so the card said “Imported: added 1 tag to 1 server.” with nothing kept and no failure card. | The reviewer's injected fault, reproduced here in real Electron: `Storage.prototype.setItem` made to throw `QuotaExceededError` for the tag-map key only, then a valid import adding a tag and a colour. On the build under review the card claimed success, the stored tags did not change, and the colour had been written. | `applyTagsImport` now writes strictly, puts back any key it had changed when a write fails, tells the tag views to read again and throws, so the card shows “Could not import tags” and no success line. Seven tests in `scripts/test-tags-import.mjs` run the function the card calls against a storage that fails (tag map, colours, both, rollback failing, reads failing, empty store, a tag changed meanwhile). Putting the bug back (swallowing the failure, or no rollback) makes them fail. The first version of the rollback rewrote a key it had never changed, which also fails on a full device; the tests caught that. |
+| **Export tags did nothing in the Android app.** A WebView ignores `<a download>`; the button was on and no failure showed. | The reviewer's native run. Not reproduced here: no Android device or emulator was used. The app has no file-save or share plugin. | Export is off in the app (`Capacitor.isNativePlatform()`), with a line under the buttons. No plugin was added; saving on Android is a separate change. Checked here only by making Capacitor report `android` in desktop Electron (a stand-in `window.androidBridge`): Export off with the line shown, Import on. That is a simulation, not the app on a device. |
+| **The profile was not named** (clarity, not blocking). | The reviewer showed a delayed file read after an account switch writes only to the profile it was chosen in. | The confirmation summary says `in <profile>` and the result says `Imported into <profile>`. |
+
+Checks after the fixes, in the VM: `npm run typecheck` (guards, help guard with 186 quotes, 489 tests across the suites, 7 of them new), `npm run build` and `npm run test:terminal`. Real Electron against the mock with the reviewer's injected fault: on the build under review the card said “Imported: added 1 tag to 1 server.”, no failure card, stored tags unchanged and the colour written; on the fixed build, “Could not import tags” with “BLDesk could not save the imported tags on this device, so nothing was imported.”, no success line, and the stored tags and colours exactly as before. With storage back to normal the same file imported and the card said “Imported into <profile>: added 1 tag to 1 server.”
 
 ## Firewall: the Add Rule form, the address and port pickers, and the 100-rule limit (28 October 2026)
 

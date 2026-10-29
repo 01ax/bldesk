@@ -5,13 +5,15 @@ import {
   cleanTagMap,
   newColorMap,
   newTagMap,
+  planTagsImport,
   pruneTagColors,
   type Rng,
   type ServerGroup,
   type TagColorMap,
   type TagMap,
+  type TagsImportFile,
   type TagsImportPlan
-} from './tags'
+} from './tags.ts'
 
 /**
  * Where tags, tag colours, saved custom colours and server groups are kept: local storage, per account profile (the
@@ -35,8 +37,8 @@ export {
   isGroupRef,
   resolveGroup,
   expandGroupRefs
-} from './tags'
-export type { TagMap, TagColorKey, TagColorMap, ServerGroup } from './tags'
+} from './tags.ts'
+export type { TagMap, TagColorKey, TagColorMap, ServerGroup } from './tags.ts'
 
 const KEY = (profileId: string) => `bldesk_server_groups_${profileId}`
 const TAGS_KEY = (profileId: string) => `bldesk_server_tags_${profileId}`
@@ -64,20 +66,26 @@ export interface SaveTagsOptions {
   autoColor?: boolean
   /** Source of randomness for the colour of a new tag once the presets are used up; a test can pin it. */
   rng?: Rng
+  /**
+   * Throw when the device will not take a write, where every other caller carries on without saving. Only an import
+   * needs it: it must know, to put back what it had and say so, instead of reporting tags that were never kept.
+   */
+  strict?: boolean
 }
 
 export function saveTags(profileId: string, tags: TagMap, options: SaveTagsOptions = {}): void {
   const before = loadTags(profileId)
   try {
     localStorage.setItem(TAGS_KEY(profileId), JSON.stringify(tags))
-  } catch {
+  } catch (err) {
     // storage unavailable
+    if (options.strict) throw err
   }
   // A colour belongs to a tag in use: when the last server loses a tag its colour goes too, and a new tag gets one.
   const colors = loadTagColors(profileId)
   const next = options.autoColor === false ? colors : autoColorNewTags(before, tags, colors, options.rng)
   const kept = options.autoColor === false ? pruneTagColors(colors, tags) : next
-  if (JSON.stringify(kept) !== JSON.stringify(colors)) writeTagColors(profileId, kept)
+  if (JSON.stringify(kept) !== JSON.stringify(colors)) writeTagColors(profileId, kept, options.strict)
   try {
     window.dispatchEvent(new CustomEvent(GROUPS_EVENT))
   } catch {
@@ -96,17 +104,18 @@ export function loadTagColors(profileId: string | undefined): TagColorMap {
   }
 }
 
-function writeTagColors(profileId: string, colors: TagColorMap): void {
+function writeTagColors(profileId: string, colors: TagColorMap, strict = false): void {
   try {
     if (Object.keys(colors).length) localStorage.setItem(COLORS_KEY(profileId), JSON.stringify(colors))
     else localStorage.removeItem(COLORS_KEY(profileId))
-  } catch {
+  } catch (err) {
     // storage unavailable
+    if (strict) throw err
   }
 }
 
-export function saveTagColors(profileId: string, colors: TagColorMap): void {
-  writeTagColors(profileId, colors)
+export function saveTagColors(profileId: string, colors: TagColorMap, strict = false): void {
+  writeTagColors(profileId, colors, strict)
   try {
     window.dispatchEvent(new CustomEvent(GROUPS_EVENT))
   } catch {
@@ -115,12 +124,51 @@ export function saveTagColors(profileId: string, colors: TagColorMap): void {
 }
 
 /**
- * Write what importing a tags file decided (planTagsImport). The colours go first, so a new tag that the file coloured
- * keeps that colour and saveTags only gives a colour to a new tag the file left without one, as it does for any new tag.
+ * Import a read tags file into this profile: the merge is worked out again from what is stored now (so a tag changed
+ * while the confirmation was open is kept) and written, colours first, so a new tag that the file coloured keeps that
+ * colour and saveTags only gives a colour to a new tag the file left without one, as it does for any new tag. Returns
+ * what was written.
+ *
+ * It is all or nothing. If the device will not take a write (storage full or turned off), whatever was written before
+ * the failure is put back, the tag views are told to read again, and it throws with the reason, so the caller never
+ * reports tags that were not kept. If what was stored cannot be put back either, the error says so.
  */
-export function applyTagsImport(profileId: string, plan: TagsImportPlan): void {
-  saveTagColors(profileId, plan.colors)
-  saveTags(profileId, plan.tags)
+export function applyTagsImport(profileId: string, file: TagsImportFile, liveIds: ReadonlySet<number>): TagsImportPlan {
+  const plan = planTagsImport(loadTags(profileId), loadTagColors(profileId), file, liveIds)
+  const keys = [COLORS_KEY(profileId), TAGS_KEY(profileId)]
+  let before: Array<string | null> | undefined
+  try {
+    before = keys.map((k) => localStorage.getItem(k))
+    saveTagColors(profileId, plan.colors, true)
+    saveTags(profileId, plan.tags, { strict: true })
+    return plan
+  } catch {
+    let restored = true
+    if (before) {
+      try {
+        // Only a key that now holds something else: one the import never changed needs no write, and on a full device
+        // that write could be the one that fails.
+        keys.forEach((k, i) => {
+          const was = before![i]
+          if (localStorage.getItem(k) === was) return
+          if (was === null) localStorage.removeItem(k)
+          else localStorage.setItem(k, was)
+        })
+      } catch {
+        restored = false
+      }
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(GROUPS_EVENT))
+    } catch {
+      // no window
+    }
+    throw new Error(
+      restored
+        ? "BLDesk could not save the imported tags on this device, so nothing was imported. The device's storage may be full or turned off."
+        : "BLDesk could not save the imported tags on this device, and could not put back the tags it had, so some of the import may have been saved. The device's storage may be full or turned off. Check the tags before importing again."
+    )
+  }
 }
 
 /** The saved custom colours: `#rrggbb`, at most eight. */
