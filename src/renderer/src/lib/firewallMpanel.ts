@@ -34,9 +34,9 @@ export const splitMpanelList = (text: string): string[] => (text.trim() === '' ?
 
 /**
  * An address written with a netmask, `a.b.c.d/e.f.g.h`. `cidr` when the mask is a run of ones and then zeros, which is the same range in
- * CIDR notation (`192.0.2.0/255.255.255.0` is `192.0.2.0/24`: a change of notation only). `gap` when it is not (`0.0.0.255/0.0.0.255`): that
- * cannot be written as CIDR, and what the address would then match is not something the public API reference says. `none` for anything that
- * is not an address and a dotted mask (a plain address, a CIDR range, text), which the ordinary address check judges.
+ * CIDR notation (`192.0.2.0/255.255.255.0` is `192.0.2.0/24`: a change of notation only). `gap` when it is not: that cannot be written as CIDR,
+ * and the caller decides what to do with it (see `PASSED_THROUGH_DESTINATION` in ./firewallRules.ts). `none` for anything that is not an
+ * address and a dotted mask (a plain address, a CIDR range, text), which the ordinary address check judges.
  */
 export function readNetmask(value: string): { kind: 'none' } | { kind: 'cidr'; cidr: string } | { kind: 'gap' } {
   const m = /^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,3}(?:\.\d{1,3}){3})$/.exec(value.trim())

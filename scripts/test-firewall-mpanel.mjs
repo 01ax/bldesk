@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { ANY_ADDRESS, readImportedRules } from '../src/renderer/src/lib/firewallRules.ts'
 import { MPANEL_KEYS, mpanelText, readNetmask, splitMpanelList, toMpanelRules } from '../src/renderer/src/lib/firewallMpanel.ts'
 
-// What mPanel's dialog shows, with the documentation addresses (the first rule is mPanel's multicast rule with the netmask left out of it).
+// What mPanel's dialog shows, with the documentation addresses. SAMPLE leaves the netmask address out of the first rule; AS_PASTED has it.
 const mp = (over = {}) => ({ sourceaddr: '192.0.2.10', destaddr: '203.0.113.17', destport: '22,80', action: 'ACCEPT', description: 'datacenter', protocol: 'ALL', ...over })
 const SAMPLE = [
   mp({ sourceaddr: '0.0.0.0/0', destaddr: '224.0.0.0/4', destport: '', action: 'DROP', description: 'Multicast and broadcast traffic' }),
@@ -18,6 +18,9 @@ const SAMPLE_RULES = [
   { action: 'accept', protocol: 'all', source_addresses: ['192.0.2.10'], destination_addresses: ['203.0.113.17'], destination_ports: ['22', '80'], description: 'datacenter' },
   { action: 'drop', protocol: 'all', source_addresses: ['0.0.0.0/0'], destination_addresses: ['203.0.113.17'], description: 'block everything else' }
 ]
+const MASKED = '0.0.0.255/0.0.0.255'
+const AS_PASTED = [{ ...SAMPLE[0], destaddr: `224.0.0.0/4,${MASKED}` }, SAMPLE[1], SAMPLE[2]]
+const AS_PASTED_RULES = [{ ...SAMPLE_RULES[0], destination_addresses: ['224.0.0.0/4', MASKED] }, SAMPLE_RULES[1], SAMPLE_RULES[2]]
 const read = (rules, saved) => readImportedRules(rules, saved)
 
 test('mPanel text imports as the API-shaped rules, and nothing else is added', () => {
@@ -28,14 +31,48 @@ test('mPanel text imports as the API-shaped rules, and nothing else is added', (
   for (const rule of r.rules) for (const k of MPANEL_KEYS.filter((k) => !['action', 'description', 'protocol'].includes(k))) assert.equal(k in rule, false, k)
 })
 
-test('mPanel\'s own multicast rule is refused, naming the rule, the address and what to do', () => {
-  const r = read([mp(), mp({ sourceaddr: '0.0.0.0/0', destaddr: '224.0.0.0/4,0.0.0.255/0.0.0.255', destport: '', action: 'DROP' })])
-  assert.equal(r.rules, undefined)
-  assert.match(r.error, /^Rule 2: "destaddr" has 0\.0\.0\.255\/0\.0\.0\.255, an address with a netmask that is not a whole CIDR range/)
-  assert.match(r.error, /documents only an IPv4 address or a CIDR range/)
-  assert.match(r.error, /Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again\.$/)
-  // The source is checked the same way and named as the source.
-  assert.match(read([mp({ sourceaddr: '0.0.0.255/0.0.0.255' })]).error, /^Rule 1: "sourceaddr" has 0\.0\.0\.255\/0\.0\.0\.255/)
+test('0.0.0.255/0.0.0.255 is accepted as a destination address and written exactly as it is, in either format', () => {
+  // The sample as mPanel's dialog shows it, with the address in its multicast rule.
+  const r = read(AS_PASTED)
+  assert.equal(r.error, undefined)
+  assert.deepEqual(r.rules, AS_PASTED_RULES)
+  assert.deepEqual(r.rules[0].destination_addresses, ['224.0.0.0/4', MASKED])
+  // Alone, first, and with spaces around it (mPanel's text is trimmed): the same string, in the same place, not converted.
+  for (const [destaddr, expected] of [[MASKED, [MASKED]], [`${MASKED},224.0.0.0/4`, [MASKED, '224.0.0.0/4']], [` ${MASKED} , 203.0.113.17`, [MASKED, '203.0.113.17']]]) {
+    assert.deepEqual(read([mp({ destaddr })]).rules[0].destination_addresses, expected, destaddr)
+  }
+  // The API's own format: the same address, in the same place, unchanged.
+  const api = [{ action: 'drop', protocol: 'all', source_addresses: ['0.0.0.0/0'], destination_addresses: ['224.0.0.0/4', MASKED], description: 'Multicast and broadcast traffic' }]
+  assert.deepEqual(read(api).rules, api)
+  assert.deepEqual(read([{ ...api[0], destination_addresses: [MASKED] }]).rules[0].destination_addresses, [MASKED])
+})
+
+test('0.0.0.255/0.0.0.255 as a source address is refused in either format, saying it is accepted only as a destination', () => {
+  const text = (key) => `Rule 1: "${key}" has 0.0.0.255/0.0.0.255, which BLDesk accepts only as a destination address. Nothing was imported: remove that address from "${key}" and import again.`
+  assert.equal(read([mp({ sourceaddr: MASKED })]).error, text('sourceaddr'))
+  assert.equal(read([mp({ sourceaddr: `192.0.2.1, ${MASKED}` })]).error, text('sourceaddr'))
+  assert.equal(read([mp({ sourceaddr: MASKED, destaddr: MASKED })]).error, text('sourceaddr'))
+  assert.equal(read([{ action: 'accept', protocol: 'all', source_addresses: [MASKED], destination_addresses: ['0.0.0.0/0'] }]).error, text('source_addresses'))
+  assert.equal(read([{ action: 'accept', protocol: 'all', source_addresses: ['192.0.2.1', MASKED], destination_addresses: [MASKED] }]).error, text('source_addresses'))
+  assert.match(read([mp(), mp({ sourceaddr: MASKED })]).error, /^Rule 2: "sourceaddr" has 0\.0\.0\.255\/0\.0\.0\.255, which BLDesk accepts only as a destination address/)
+  assert.equal(read([mp({ sourceaddr: MASKED })]).rules, undefined)
+})
+
+test('any other netmask with a gap is still refused, naming the rule, the key, the address and what to do', () => {
+  for (const mask of ['255.0.255.0', '0.0.0.254', '255.255.255.1', '0.0.0.127']) {
+    for (const address of ['198.51.100.0', '0.0.0.254']) {
+      const r = read([mp(), mp({ destaddr: `224.0.0.0/4,${address}/${mask}` })])
+      assert.equal(r.rules, undefined)
+      assert.match(r.error, new RegExp(`^Rule 2: "destaddr" has ${address.replace(/\./g, '\\.')}\\/${mask.replace(/\./g, '\\.')}, an address with a netmask that is not a whole CIDR range`), `${address}/${mask}`)
+      assert.match(r.error, /documents only an IPv4 address or a CIDR range, so BLDesk does not import this form \(the one exception is 0\.0\.0\.255\/0\.0\.0\.255, as a destination address\)\./)
+      assert.match(r.error, /Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again\.$/)
+    }
+  }
+  // The same mask on another address is not the accepted value, and neither is the accepted address with another mask.
+  assert.match(read([mp({ destaddr: '192.0.2.0/0.0.0.255' })]).error, /^Rule 1: "destaddr" has 192\.0\.2\.0\/0\.0\.0\.255, an address with a netmask/)
+  assert.match(read([mp({ destaddr: '0.0.0.255/0.0.0.254' })]).error, /^Rule 1: "destaddr" has 0\.0\.0\.255\/0\.0\.0\.254, an address with a netmask/)
+  // In a source too, with the netmask message and the key named.
+  assert.match(read([mp({ sourceaddr: '192.0.2.0/255.0.255.0' })]).error, /^Rule 1: "sourceaddr" has 192\.0\.2\.0\/255\.0\.255\.0, an address with a netmask/)
 })
 
 test('a netmask that is a whole range is written as CIDR; one with a gap is refused', () => {
@@ -57,9 +94,14 @@ test('a netmask that is a whole range is written as CIDR; one with a gap is refu
   assert.match(read([mp({ destaddr: '203.0.113.17,198.51.100.0/255.255.255.256' })]).error, /^Rule 1: "destaddr" has "198\.51\.100\.0\/255\.255\.255\.256", which is not an IPv4 address or range/)
 })
 
-test('the same notation conversion is not applied to BLDesk\'s own format, which refuses a netmask as before', () => {
-  assert.match(read([{ action: 'accept', protocol: 'all', source_addresses: ['192.0.2.0/255.255.255.0'], destination_addresses: ['0.0.0.0/0'] }]).error, /^Rule 1: "source_addresses" must be IPv4 addresses or ranges/)
-  assert.match(read([{ action: 'accept', protocol: 'all', source_addresses: ['0.0.0.0/0'], destination_addresses: ['0.0.0.255/0.0.0.255'] }]).error, /^Rule 1: "destination_addresses" must be IPv4 addresses or ranges/)
+test('in BLDesk\'s own format a netmask is still refused and not converted, except 0.0.0.255/0.0.0.255 as a destination address', () => {
+  const bl = (source_addresses, destination_addresses) => [{ action: 'accept', protocol: 'all', source_addresses, destination_addresses }]
+  assert.match(read(bl(['192.0.2.0/255.255.255.0'], ['0.0.0.0/0'])).error, /^Rule 1: "source_addresses" must be IPv4 addresses or ranges/)
+  assert.match(read(bl(['0.0.0.0/0'], ['192.0.2.0/255.255.255.0'])).error, /^Rule 1: "destination_addresses" must be IPv4 addresses or ranges/)
+  assert.match(read(bl(['0.0.0.0/0'], ['0.0.0.255/0.0.0.254'])).error, /^Rule 1: "destination_addresses" must be IPv4 addresses or ranges/)
+  assert.match(read(bl(['0.0.0.0/0'], ['192.0.2.0/0.0.0.255'])).error, /^Rule 1: "destination_addresses" must be IPv4 addresses or ranges/)
+  assert.match(read(bl(['0.0.0.0/0'], [` ${MASKED}`])).error, /^Rule 1: "destination_addresses" must be IPv4 addresses or ranges/)
+  assert.deepEqual(read(bl(['0.0.0.0/0'], [MASKED])).rules, bl(['0.0.0.0/0'], [MASKED]))
 })
 
 test('BLDesk\'s format still imports as it did, extra keys left out and a missing destination written as any', () => {
@@ -209,7 +251,8 @@ test('Export then Import gives back the same rules, and Import then Export gives
     ...SAMPLE_RULES,
     { action: 'accept', protocol: 'tcp', source_addresses: ['192.0.2.10', '198.51.100.0/24'], destination_addresses: ['203.0.113.17', '203.0.113.18'], destination_ports: ['22', '8000:9000', '1000-2000'], description: 'Web & "SSH", with a comma' },
     { action: 'accept', protocol: 'icmp', source_addresses: ['0.0.0.0/0'], destination_addresses: ['0.0.0.0/0'] },
-    { action: 'drop', protocol: 'udp', source_addresses: ['192.0.2.0/24'], destination_addresses: ['0.0.0.0/0'], destination_ports: ['53'] }
+    { action: 'drop', protocol: 'udp', source_addresses: ['192.0.2.0/24'], destination_addresses: ['0.0.0.0/0'], destination_ports: ['53'] },
+    ...AS_PASTED_RULES
   ]
   const back = read(JSON.parse(mpanelText(rules)))
   assert.equal(back.error, undefined)
@@ -217,6 +260,10 @@ test('Export then Import gives back the same rules, and Import then Export gives
   // The other way: text mPanel wrote reads and is written out again byte for byte.
   const text = JSON.stringify(SAMPLE, null, 2)
   assert.equal(mpanelText(read(JSON.parse(text)).rules), text)
+  // Including the sample exactly as mPanel's dialog shows it, address with a netmask and all.
+  const pasted = JSON.stringify(AS_PASTED, null, 2)
+  assert.equal(mpanelText(read(JSON.parse(pasted)).rules), pasted)
+  assert.match(pasted, /"destaddr": "224\.0\.0\.0\/4,0\.0\.0\.255\/0\.0\.0\.255"/)
   // And twice over.
   assert.equal(mpanelText(read(JSON.parse(mpanelText(back.rules))).rules), mpanelText(rules))
 })

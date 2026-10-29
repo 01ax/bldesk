@@ -75,6 +75,21 @@ export function isIpv4OrRange(value: string): boolean {
   return m.slice(1, 5).every((o) => Number(o) <= 255) && (m[5] === undefined || Number(m[5]) <= 32)
 }
 
+/**
+ * The one address with a netmask that BLDesk passes through, and only as a destination address. The API reference documents only an IPv4
+ * address or a range in CIDR notation, so this is not in it; it is here because the API accepted it as a destination and returned it
+ * unchanged (observed on a throwaway server, 29 October 2026), mPanel's text uses it, and a server that holds it returns it, so a rule that
+ * has it can be read back and written back. It is kept exactly as written and BLDesk does not interpret it.
+ */
+export const PASSED_THROUGH_DESTINATION = '0.0.0.255/0.0.0.255'
+
+/** Whether `value` may be a destination address of an imported rule: an IPv4 address or CIDR range, or exactly `PASSED_THROUGH_DESTINATION`. */
+export const isDestinationAddress = (value: string): boolean => value === PASSED_THROUGH_DESTINATION || isIpv4OrRange(value)
+
+/** The refusal for `PASSED_THROUGH_DESTINATION` among the source addresses of a rule, in either format. */
+const passedThroughSourceRefusal = (at: string, key: string): string =>
+  `${at}: "${key}" has ${PASSED_THROUGH_DESTINATION}, which BLDesk accepts only as a destination address. Nothing was imported: remove that address from "${key}" and import again.`
+
 /** The keys that tell the two formats apart; `action`, `protocol` and `description` are the same in both. */
 const MPANEL_ONLY = ['sourceaddr', 'destaddr', 'destport'] as const
 const BLDESK_ONLY = ['source_addresses', 'destination_addresses', 'destination_ports'] as const
@@ -109,12 +124,13 @@ function mixedFormats(parsed: unknown[]): string | undefined {
 }
 
 /**
- * The text of a netmask refusal. It names the address and what to do, and says no more about the form than the reference does: that its
- * addresses are an IPv4 address or a CIDR range.
+ * The text of the refusal for an address with a netmask that is not a whole range (other than `PASSED_THROUGH_DESTINATION`). It names the
+ * address and what to do, and says no more about the form than the reference does: that its addresses are an IPv4 address or a CIDR range.
  */
 const netmaskRefusal = (at: string, key: string, address: string): string =>
   `${at}: "${key}" has ${address}, an address with a netmask that is not a whole CIDR range, so it cannot be written as one (a mask such as 255.255.255.0 can: 192.0.2.0/255.255.255.0 is 192.0.2.0/24). ` +
-  `The API reference documents only an IPv4 address or a CIDR range, so BLDesk does not import this form. Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again.`
+  `The API reference documents only an IPv4 address or a CIDR range, so BLDesk does not import this form (the one exception is ${PASSED_THROUGH_DESTINATION}, as a destination address). ` +
+  `Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again.`
 
 /**
  * Read one rule written the way mPanel's Import/Export dialog writes it (see ./firewallMpanel.ts) and return it as the reference defines it.
@@ -122,7 +138,7 @@ const netmaskRefusal = (at: string, key: string, address: string): string =>
  *  - `action` and `protocol` are read in either case; addresses and ports are text split at commas, each item trimmed (ranges such as 1000-2000 stay as written).
  *  - `sourceaddr` must name at least one address, as it must in BLDesk's format. An empty `destaddr` is read like a missing `destination_addresses` in BLDesk's format:
  *    the rule is written with 0.0.0.0/0, the one value that adds no condition (see ANY_ADDRESS). An empty `destport` is every port; an empty `description` is none.
- *  - An address with a netmask is written as CIDR when its mask is a whole range, and refused when it is not.
+ *  - An address with a netmask is written as CIDR when its mask is a whole range. `PASSED_THROUGH_DESTINATION` is kept as it is in `destaddr` and refused in `sourceaddr`; any other netmask is refused.
  */
 function readMpanelRule(r: Record<string, unknown>, at: string): { rule: RuleRequest; error?: undefined } | { rule?: undefined; error: string } {
   const extra = Object.keys(r).find((k) => !(MPANEL_KEYS as readonly string[]).includes(k))
@@ -145,12 +161,14 @@ function readMpanelRule(r: Record<string, unknown>, at: string): { rule: RuleReq
   const addresses = (key: 'sourceaddr' | 'destaddr'): { items: string[]; error?: undefined } | { items?: undefined; error: string } => {
     const read = items(key)
     if (read.error !== undefined) return read
+    const valid = key === 'destaddr' ? isDestinationAddress : isIpv4OrRange
     const out: string[] = []
     for (const item of read.items) {
+      if (item === PASSED_THROUGH_DESTINATION && key === 'sourceaddr') return { error: passedThroughSourceRefusal(at, key) }
       const mask = readNetmask(item)
-      if (mask.kind === 'gap') return { error: netmaskRefusal(at, key, item) }
+      if (mask.kind === 'gap' && !isDestinationAddress(item)) return { error: netmaskRefusal(at, key, item) }
       const address = mask.kind === 'cidr' ? mask.cidr : item
-      if (!isIpv4OrRange(address)) return { error: `${at}: "${key}" has "${item}", which is not an IPv4 address or range, such as 192.0.2.1 or 192.0.2.0/24.` }
+      if (!valid(address)) return { error: `${at}: "${key}" has "${item}", which is not an IPv4 address or range, such as 192.0.2.1 or 192.0.2.0/24.` }
       out.push(address)
     }
     return { items: out }
@@ -205,9 +223,10 @@ export function readImportedRules(parsed: unknown, saved = 0): { rules: RuleRequ
     if (!isAction(r.action)) return { error: `${at}: "action" must be "accept" or "drop".` }
     if (!isProtocol(r.protocol)) return { error: `${at}: "protocol" must be "all", "icmp", "tcp" or "udp".` }
     if (!isStrings(r.source_addresses) || r.source_addresses.length === 0) return { error: `${at}: "source_addresses" must list at least one address.` }
+    if (r.source_addresses.includes(PASSED_THROUGH_DESTINATION)) return { error: passedThroughSourceRefusal(at, 'source_addresses') }
     if (!r.source_addresses.every(isIpv4OrRange)) return { error: `${at}: "source_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
     if (r.destination_addresses != null && !isStrings(r.destination_addresses)) return { error: `${at}: "destination_addresses" must be a list of addresses.` }
-    if (isStrings(r.destination_addresses) && !r.destination_addresses.every(isIpv4OrRange)) return { error: `${at}: "destination_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
+    if (isStrings(r.destination_addresses) && !r.destination_addresses.every(isDestinationAddress)) return { error: `${at}: "destination_addresses" must be IPv4 addresses or ranges, such as 192.0.2.1 or 192.0.2.0/24.` }
     if (r.destination_ports != null && (!isStrings(r.destination_ports) || r.destination_ports.some((p) => !p.trim()))) return { error: `${at}: "destination_ports" must be a list of ports, as text.` }
     if (r.description != null && typeof r.description !== 'string') return { error: `${at}: "description" must be text.` }
     if (typeof r.description === 'string' && r.description.length > MAX_DESCRIPTION) return { error: `${at}: "description" is ${r.description.length} characters; the most BinaryLane accepts is ${MAX_DESCRIPTION}.` }
