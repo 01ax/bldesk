@@ -1,1 +1,3 @@
 Screenshots for the pull request that adds export and import of tags to Settings (fictitious demo capture, app area only). Before is `main` at f279b04, after is the branch on top of it: same fixture fleet, same seeded tags, 1280x840, light theme. The refusal shot was taken after the successful import in the same run, so its tag count is higher than in the first image.
+
+Added after review: the import dialog naming the profile, the storage-fault case before and after the fix, and the Android app on a Samsung phone (fictitious demo data; the system Save as dialog is cropped to its filename field).
