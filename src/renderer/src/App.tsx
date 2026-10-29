@@ -465,7 +465,7 @@ function MainDashboard() {
               <AccountOverview client={client} />
             )}
 
-            {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'settings' && <SettingsView profileId={activeProfile?.id} profileName={activeProfile?.name} servers={servers} />}
 
             {activeTab === 'map' && (
               <NetworkMap

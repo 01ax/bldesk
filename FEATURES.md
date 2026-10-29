@@ -6,7 +6,7 @@ Source audit: 5 September 2026, package version 1.0.61-beta.1. This inventory de
 
 | Area | What BLDesk implements | Source |
 | --- | --- | --- |
-| Compute fleet | Grid/list, name/IP/tag and region/status filters, per-server actions, inferred power state | `ServerList.tsx`, `lib/powerState.ts` |
+| Compute fleet | Grid/list, name/IP/tag and region/status filters, per-server actions, inferred power state, local tags exported to and imported from a JSON file in Settings | `ServerList.tsx`, `lib/powerState.ts`, `SettingsView.tsx`, `lib/tags.ts` |
 | Server detail | Overview, embedded/native SSH and console, historical Usage, stored cloud-init, Network, Backups, Firewall, Settings, Recovery, Change Plan, Cancel | `ServerDetails.tsx`, `src/shared/deeplink.ts` |
 | Create and Change Plan | Resource/region/image selection, licences, backup retention/offsite options, pre-action backup, price comparison and explicit address-release/reinstall review | `CreateServerModal.tsx`, `ChangePlanPanel.tsx`, `lib/serverPricing.ts`, `lib/licences.ts` |
 | Templates | Built-in starters, capture from a server, YAML edit/import/export, variables and reviewed creation, local tags and follow-up firewall application | `TemplatesView.tsx`, `lib/templateJobs.ts` |
