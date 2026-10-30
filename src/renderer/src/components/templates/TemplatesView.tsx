@@ -1,5 +1,6 @@
 import { HelpLink } from '../ui/HelpLink'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import {
   LayoutTemplate,
   Plus,
@@ -29,6 +30,7 @@ import { useRegions, useSizes, useDistributionImages, useVpcs, useSshKeys } from
 import { Modal } from '../ui/Modal'
 import { useConfirm } from '../../context/ConfirmContext'
 import { isIpv6 } from '../../lib/firewallRules'
+import { saveTextFile } from '../../lib/saveFile'
 import { CreateServerModal } from '../servers/CreateServerModal'
 import {
   TEMPLATE_KIND,
@@ -74,17 +76,14 @@ const btn = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ro
 const btnPrimary = 'inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-[#017cb6] hover:bg-[#016594] text-white disabled:opacity-40 shadow-sm'
 const label = 'block text-[11px] font-semibold uppercase tracking-wide text-[#6c757d] dark:text-slate-400 mb-1'
 
-function download(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'application/x-yaml' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+// File types for Android's Save as and Open dialogs. Android does not know .yaml, and what its dialogs do with the file name
+// depends on the type: a YAML type keeps ".yaml" but, when the name is taken, numbers after it ("a.yaml (1)"); text/plain adds
+// ".txt"; the generic type keeps ".yaml" and numbers before it ("a (1).yaml"). Its picker greys out a file whose type is not in
+// the accept list, and a .yaml file is neither JSON nor text, so the generic type is listed there too. The desktop app and the
+// browser keep the YAML type for the download and the plain extension list for the chooser.
+const TEMPLATE_FILES = '.yaml,.yml,.json,.txt'
+const native = () => Capacitor.isNativePlatform()
+const yamlType = () => (native() ? 'application/octet-stream' : 'application/x-yaml')
 
 function randomSecret(): string {
   const bytes = new Uint8Array(18)
@@ -110,6 +109,10 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
   const [notice, setNotice] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ template: ServerTemplate; oldSlug?: string } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  // True from the tap on Export or Export all until the file is written or the person backs out of Android's Save as dialog.
+  // The ref is what stops a second tap; the state is what greys the buttons out.
+  const [exporting, setExporting] = useState(false)
+  const exportingRef = useRef(false)
   const [applying, setApplying] = useState<{ template: ServerTemplate; hostname: string } | null>(null)
   const [create, setCreate] = useState<{ prefill: CreateServerPrefill; template: ServerTemplate; rules: FwRule[] } | null>(null)
   const [jobs, setJobs] = useState<TemplateJob[]>(listTemplateJobs())
@@ -211,18 +214,33 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
     setEditing({ template: copy })
   }
 
-  const handleExport = (item: ListedServerTemplate) => {
+  // The Android app opens Android's Save as dialog (a WebView ignores a download link); the desktop app and the browser
+  // download the file as before. A second tap while the dialog is open or the file is being written is ignored.
+  const exportYaml = async (filename: string, yaml: () => string) => {
+    if (exportingRef.current) return
+    exportingRef.current = true
+    setExporting(true)
     try {
-      download(`${item.slug}.yaml`, templateToYaml(item.template))
+      const saved = await saveTextFile(filename, yaml(), yamlType())
+      // Only where the system says (the Android app); a download cannot say whether it was kept. Backing out is not an error.
+      if (saved.saved) {
+        setError(null)
+        setNotice(saved.name ? `Saved as ${saved.name}.` : 'Saved the file.')
+      } else if (saved.saved === false) setNotice(null)
     } catch (err: any) {
       setError(err?.message || 'Could not export.')
+    } finally {
+      exportingRef.current = false
+      setExporting(false)
     }
   }
+
+  const handleExport = (item: ListedServerTemplate) => void exportYaml(`${item.slug}.yaml`, () => templateToYaml(item.template))
 
   const handleExportAll = () => {
     const mine = stored.filter((s) => !s.error).map((s) => s.template)
     if (!mine.length) return setNotice('Nothing of your own to export yet — the starters ship with the app.')
-    download(`bldesk-templates-${new Date().toISOString().slice(0, 10)}.yaml`, bundleToYaml(mine))
+    void exportYaml(`bldesk-templates-${new Date().toISOString().slice(0, 10)}.yaml`, () => bundleToYaml(mine))
   }
 
   const importText = async (text: string, fallbackName: string) => {
@@ -283,10 +301,10 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
         {/* Wraps: with the reveal button present the row is wider than a phone
             and the help `?` was clipped past the edge (#67). */}
         <div className="flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept=".yaml,.yml,.json,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.currentTarget.value = '' }} />
+          <input ref={fileRef} type="file" accept={native() ? `${TEMPLATE_FILES},application/octet-stream` : TEMPLATE_FILES} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.currentTarget.value = '' }} />
           <button className={btn} onClick={() => fileRef.current?.click()}><Upload className="w-3.5 h-3.5" />Import file</button>
           <button className={btn} onClick={() => setImportOpen(true)}><ClipboardPaste className="w-3.5 h-3.5" />Paste</button>
-          <button className={btn} onClick={handleExportAll}><Download className="w-3.5 h-3.5" />Export all</button>
+          <button className={btn} onClick={handleExportAll} disabled={exporting}><Download className="w-3.5 h-3.5" />Export all</button>
           {canReveal && <button className={btn} onClick={reveal} title="Show the template files on disk"><FolderOpen className="w-3.5 h-3.5" /></button>}
           <button className={btnPrimary} onClick={() => setEditing({ template: emptyTemplate() })}><Plus className="w-3.5 h-3.5" />New template</button>
           <HelpLink slug="templates" />
@@ -369,6 +387,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ client, servers, p
               onEdit={() => setEditing({ template: JSON.parse(JSON.stringify(selected.template)), oldSlug: selected.builtin ? undefined : selected.slug })}
               onDuplicate={() => handleDuplicate(selected)}
               onExport={() => handleExport(selected)}
+              exporting={exporting}
               onDelete={() => void handleDelete(selected)}
             />
           ) : (
@@ -441,8 +460,9 @@ const TemplateDetail: React.FC<{
   onEdit: () => void
   onDuplicate: () => void
   onExport: () => void
+  exporting: boolean
   onDelete: () => void
-}> = ({ item, servers, onApply, onEdit, onDuplicate, onExport, onDelete }) => {
+}> = ({ item, servers, onApply, onEdit, onDuplicate, onExport, exporting, onDelete }) => {
   const t = item.template
   const s = t.spec
   const vars = templateVariables(t)
@@ -470,7 +490,7 @@ const TemplateDetail: React.FC<{
             <button className={btnPrimary} onClick={onApply} disabled={!!item.error}><Rocket className="w-3.5 h-3.5" />New server from this</button>
             {!item.builtin && <button className={btn} onClick={onEdit} disabled={!!item.error}><Pencil className="w-3.5 h-3.5" />Edit</button>}
             <button className={btn} onClick={onDuplicate} disabled={!!item.error}><Copy className="w-3.5 h-3.5" />{item.builtin ? 'Make mine' : 'Duplicate'}</button>
-            <button className={btn} onClick={onExport} disabled={!!item.error}><Download className="w-3.5 h-3.5" />Export</button>
+            <button className={btn} onClick={onExport} disabled={!!item.error || exporting}><Download className="w-3.5 h-3.5" />Export</button>
             {!item.builtin && <button className={`${btn} border-rose-300 text-rose-600 hover:border-rose-500`} onClick={onDelete}><Trash2 className="w-3.5 h-3.5" />Delete</button>}
           </div>
         </div>
