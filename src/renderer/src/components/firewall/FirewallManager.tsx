@@ -29,6 +29,7 @@ import { FirewallMatrix } from './FirewallMatrix'
 import { FirewallRulesEditor, lines } from './FirewallRulesEditor'
 import { PickMenu } from './PickMenu'
 import { notifyFailure } from '../../lib/failures'
+import { saveTextFile } from '../../lib/saveFile'
 
 interface FirewallManagerProps {
   client: BinaryLaneClient | null
@@ -101,6 +102,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [importJsonText, setImportJsonText] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
+  // Whether the Save as dialog is open, so a second tap on Export cannot open another.
+  const [exporting, setExporting] = useState(false)
 
   // Clone to Server States
   const [isCloneOpen, setIsCloneOpen] = useState(false)
@@ -376,15 +379,16 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
   }
 
   // Handle Export Rules JSON
-  const handleExportJson = () => {
-    const jsonStr = JSON.stringify(currentRules, null, 2)
-    const blob = new Blob([jsonStr], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `firewall-rules-${activeServer?.name || activeServerId}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+  // The Android app opens Android's Save as dialog; the desktop app and the browser build download the file as before.
+  const handleExportJson = async () => {
+    setExporting(true)
+    try {
+      await saveTextFile(`firewall-rules-${activeServer?.name || activeServerId}.json`, JSON.stringify(currentRules, null, 2))
+    } catch (err) {
+      notifyFailure('Could not export firewall rules', err)
+    } finally {
+      setExporting(false)
+    }
   }
 
   // Handle Import Rules from text/file
@@ -564,8 +568,8 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
           </button>
 
           <button
-            onClick={handleExportJson}
-            disabled={currentRules.length === 0 || pending}
+            onClick={() => void handleExportJson()}
+            disabled={currentRules.length === 0 || pending || exporting}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#212529] dark:text-slate-200 bg-white dark:bg-[#2b3035] hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border border-[#ced4da] dark:border-[#373b3e] rounded transition shadow-sm disabled:opacity-40"
             title="Export rules as JSON file"
           >
