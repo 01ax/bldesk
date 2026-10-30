@@ -5,6 +5,7 @@ import { components } from '@shared/api/schema'
 import { BinaryLaneClient } from '../../api/client'
 import { useFleetFirewalls, useLoadBalancers, useVpcMembers, useVpcs } from '../../api/queries'
 import { auditServer, publicAddressesOf, worstLevel, type AuditLevel, type FwRule } from '../../lib/firewallMatrix'
+import { notifyFailure } from '../../lib/failures'
 import { openServerSsh } from '../../lib/openServerSsh'
 import {
   INTERNET_ID,
@@ -19,6 +20,7 @@ import {
   type MapVpc
 } from '../../lib/networkMap'
 import { cardFooter, estimateFooter, type MeasureFooter } from '../../lib/mapFooter'
+import { saveBlobFile, saveTextFile, type SaveResult } from '../../lib/saveFile'
 
 type ServerResponse = components['schemas']['Server']
 
@@ -147,6 +149,10 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
   const [hover, setHover] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [showPublic, setShowPublic] = useState(false)
+  // An export in progress: Android's Save as dialog stays open until the person answers it, so a second tap must wait.
+  const exportBusy = useRef(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportStatus, setExportStatus] = useState('')
   const fitted = useRef(false)
 
   useEffect(() => {
@@ -335,32 +341,60 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
     bg?.setAttribute('fill', dark ? '#212529' : '#f8f9fa')
     return new XMLSerializer().serializeToString(clone)
   }
-  const download = (name: string, blob: Blob) => {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-  const exportAsSvg = () => download('bldesk-network-map.svg', new Blob([exportSvg()], { type: 'image/svg+xml' }))
-  const exportAsPng = () => {
+  const mapSvg = (): string => {
     const src = exportSvg()
-    const img = new Image()
-    const url = URL.createObjectURL(new Blob([src], { type: 'image/svg+xml' }))
-    img.onload = () => {
-      const scale = 2
-      const canvas = document.createElement('canvas')
-      canvas.width = layout.width * scale
-      canvas.height = layout.height * scale
-      const ctx = canvas.getContext('2d')!
-      ctx.scale(scale, scale)
-      ctx.drawImage(img, 0, 0)
-      canvas.toBlob((blob) => blob && download('bldesk-network-map.png', blob), 'image/png')
-      URL.revokeObjectURL(url)
-    }
-    img.src = url
+    if (!src) throw new Error('The map is not on screen, so there is nothing to export.')
+    return src
   }
+  /** The map drawn onto a canvas at twice its size. */
+  const renderPng = () =>
+    new Promise<Blob>((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(new Blob([mapSvg()], { type: 'image/svg+xml' }))
+      img.onload = () => {
+        try {
+          const scale = 2
+          const canvas = document.createElement('canvas')
+          canvas.width = layout.width * scale
+          canvas.height = layout.height * scale
+          const ctx = canvas.getContext('2d')!
+          ctx.scale(scale, scale)
+          ctx.drawImage(img, 0, 0)
+          canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('The map could not be drawn as an image.'))), 'image/png')
+        } catch (err) {
+          reject(err)
+        }
+        URL.revokeObjectURL(url)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('The map could not be drawn as an image.'))
+      }
+      img.src = url
+    })
+  const runExport = async (save: () => Promise<SaveResult>, preparing?: string) => {
+    if (exportBusy.current) return
+    exportBusy.current = true
+    setExporting(true)
+    setExportStatus('')
+    // Drawing the PNG took 13 seconds on a phone, with nothing else to show for it: say so, but not for the blink it takes on a desktop.
+    const slow = preparing ? setTimeout(() => setExportStatus(preparing), 600) : undefined
+    let status = ''
+    try {
+      const result = await save()
+      // Only where the system says (the Android app): a browser download cannot be known to have been kept.
+      if (result.saved) status = result.name ? `Saved as ${result.name}.` : 'Saved the network map.'
+    } catch (err) {
+      notifyFailure('Could not export the network map', err)
+    } finally {
+      clearTimeout(slow)
+      exportBusy.current = false
+      setExporting(false)
+      setExportStatus(status)
+    }
+  }
+  const exportAsSvg = () => runExport(() => saveTextFile('bldesk-network-map.svg', mapSvg(), 'image/svg+xml'))
+  const exportAsPng = () => runExport(async () => saveBlobFile('bldesk-network-map.png', await renderPng()), 'Preparing the PNG…')
 
   const loading = vpcsQuery.isLoading || lbsQuery.isLoading || membersQuery.isLoading
   const counts = {
@@ -395,6 +429,11 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
               </span>
             )}
           </p>
+          {exportStatus && (
+            <p role="status" className="text-xs text-[#6c757d] dark:text-slate-400 mt-0.5">
+              {exportStatus}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="relative">
@@ -422,10 +461,10 @@ export const NetworkMap: React.FC<Props> = ({ client, servers, onSelectServer })
             </button>
           </div>
           <div className="flex items-center bg-white dark:bg-[#2b3035] border border-[#ced4da] dark:border-[#373b3e] rounded overflow-hidden">
-            <button onClick={exportAsPng} className="px-2.5 py-1.5 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] flex items-center gap-1" title="Export PNG (2×)">
+            <button onClick={exportAsPng} disabled={exporting} className="px-2.5 py-1.5 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] flex items-center gap-1 disabled:opacity-50" title="Export PNG (2×)">
               <Download className="w-3.5 h-3.5" /> PNG
             </button>
-            <button onClick={exportAsSvg} className="px-2.5 py-1.5 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border-l border-[#ced4da] dark:border-[#373b3e]" title="Export SVG">
+            <button onClick={exportAsSvg} disabled={exporting} className="px-2.5 py-1.5 hover:bg-[#f1f1f1] dark:hover:bg-[#343a40] border-l border-[#ced4da] dark:border-[#373b3e] disabled:opacity-50" title="Export SVG">
               SVG
             </button>
           </div>

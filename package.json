@@ -24,7 +24,7 @@
     "test:firewall-matrix": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-matrix.mjs",
     "test:firewall-match": "node --experimental-strip-types --no-warnings --test scripts/test-firewall-match.mjs",
     "test:pricing": "node --experimental-strip-types --no-warnings --test scripts/test-pricing.mjs",
-    "test:network-map": "node --experimental-strip-types --no-warnings --test scripts/test-network-map.mjs",
+    "test:network-map": "node --experimental-strip-types --no-warnings --test scripts/test-network-map.mjs scripts/test-save-file.mjs",
     "test:ssh-key-names": "node --experimental-strip-types --no-warnings --test scripts/test-ssh-key-names.mjs",
     "test:deeplink": "node --experimental-strip-types --no-warnings --test scripts/test-deeplink.mjs",
     "test:server-tags": "node --experimental-strip-types --no-warnings --test scripts/test-server-tags.mjs scripts/test-tags-import.mjs",
