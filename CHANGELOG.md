@@ -5,6 +5,15 @@ All notable changes to the **BLDesk** project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
  
+## [1.0.63-beta.2] - 2026-10-30
+
+**Every export saves on Android, through its own Save as dialog**
+
+### Fixed
+- **Export on the Firewall tab, Export and Export all on Templates, and Export PNG and Export SVG on the Network Map save in the Android app** (#351, #352, #353, #346, #347, #348). Each of them built a download link, which an Android WebView ignores, so a tap did nothing and said nothing. They now go through the Save as dialog that Export tags introduced, where you choose the folder and can change the name; backing out saves nothing and shows no error, Android adds a number to the name when a file with it is already there, and Templates and the Network Map say the name the file was saved under. A write that fails shows why. The desktop app and the browser build download the same files as before.
+- **Templates: Import file can choose a .yaml file in the Android app** (#352). Android does not know `.yaml` as a type, so its chooser greyed every YAML file out and a template exported on the desktop could only be imported with Paste. The chooser now also offers files of unknown types, and the Android app saves YAML under a type that keeps the `.yaml` ending when Android numbers the name.
+- **A large export no longer closes the Android app, and two exports cannot swap files** (#353). The map's PNG was handed to the save dialog in one piece, which exceeded what Android lets one call carry and killed the app as the dialog opened; the bytes now go over in 256 KB pieces, and text over 100,000 characters takes the same route. Saves also take turns: an export started while another's dialog is open waits for it, so each file holds its own bytes under its own name and every export reports back. Drawing the PNG can take several seconds on a phone, so the map's header says "Preparing the PNG…" while it does, and a drawing that fails is reported rather than silently dropped.
+
 ## [1.0.63-beta.1] - 2026-10-28
 
 **Add a firewall rule with a destination and a picker, and a refused backup says so**
