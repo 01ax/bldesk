@@ -2,6 +2,7 @@
 // pure ./firewallMpanel.ts, so it can be tested on its own (scripts/test-firewall-rules.mjs).
 
 import type { components } from '@shared/api/schema'
+import { describeFirewallRule } from './diff.ts'
 import { MPANEL_KEYS, readNetmask, splitMpanelList } from './firewallMpanel.ts'
 
 type RuleAction = components['schemas']['AdvancedFirewallRuleAction']
@@ -76,15 +77,19 @@ export function isIpv4OrRange(value: string): boolean {
 }
 
 /**
- * The one address with a netmask that BLDesk passes through, and only as a destination address. The API reference documents only an IPv4
- * address or a range in CIDR notation, so this is not in it; it is here because the API accepted it as a destination and returned it
- * unchanged (observed on a throwaway server, 29 October 2026), mPanel's text uses it, and a server that holds it returns it, so a rule that
- * has it can be read back and written back. It is kept exactly as written and BLDesk does not interpret it.
+ * The one address with a netmask that BLDesk keeps, and only as a destination address in a rule the server already has, unchanged: mPanel's
+ * text uses it in its multicast rule, and a server that holds such a rule returns it, so Export can write it and Import can put it back. The
+ * API reference documents only an IPv4 address or a range in CIDR notation, so BLDesk never adds a new rule that has it (see
+ * `passedThroughNewRefusal`). It is kept exactly as written and BLDesk does not interpret it.
  */
 export const PASSED_THROUGH_DESTINATION = '0.0.0.255/0.0.0.255'
 
-/** Whether `value` may be a destination address of an imported rule: an IPv4 address or CIDR range, or exactly `PASSED_THROUGH_DESTINATION`. */
+/** Whether `value` may be a destination address of an imported rule: an IPv4 address or CIDR range, or exactly `PASSED_THROUGH_DESTINATION` (which `readImportedRules` then checks the server has). */
 export const isDestinationAddress = (value: string): boolean => value === PASSED_THROUGH_DESTINATION || isIpv4OrRange(value)
+
+/** The refusal for `PASSED_THROUGH_DESTINATION` in a rule the server does not already have, or has but not as it is in the file. */
+const passedThroughNewRefusal = (at: string, key: string): string =>
+  `${at}: "${key}" has ${PASSED_THROUGH_DESTINATION}, which BLDesk keeps only in a rule this server already has, as it is, and does not add to a new or changed rule. Nothing was imported: remove that address from "${key}" and import again.`
 
 /** The refusal for `PASSED_THROUGH_DESTINATION` among the source addresses of a rule, in either format. */
 const passedThroughSourceRefusal = (at: string, key: string): string =>
@@ -129,7 +134,7 @@ function mixedFormats(parsed: unknown[]): string | undefined {
  */
 const netmaskRefusal = (at: string, key: string, address: string): string =>
   `${at}: "${key}" has ${address}, an address with a netmask that is not a whole CIDR range, so it cannot be written as one (a mask such as 255.255.255.0 can: 192.0.2.0/255.255.255.0 is 192.0.2.0/24). ` +
-  `The API reference documents only an IPv4 address or a CIDR range, so BLDesk does not import this form (the one exception is ${PASSED_THROUGH_DESTINATION}, as a destination address). ` +
+  `The API reference documents only an IPv4 address or a CIDR range, so BLDesk does not import this form (the one exception is ${PASSED_THROUGH_DESTINATION}, as a destination address in a rule this server already has). ` +
   `Nothing was imported: remove that address from the rule, or replace it with addresses or CIDR ranges, and import again.`
 
 /**
@@ -138,7 +143,7 @@ const netmaskRefusal = (at: string, key: string, address: string): string =>
  *  - `action` and `protocol` are read in either case; addresses and ports are text split at commas, each item trimmed (ranges such as 1000-2000 stay as written).
  *  - `sourceaddr` must name at least one address, as it must in BLDesk's format. An empty `destaddr` is read like a missing `destination_addresses` in BLDesk's format:
  *    the rule is written with 0.0.0.0/0, the one value that adds no condition (see ANY_ADDRESS). An empty `destport` is every port; an empty `description` is none.
- *  - An address with a netmask is written as CIDR when its mask is a whole range. `PASSED_THROUGH_DESTINATION` is kept as it is in `destaddr` and refused in `sourceaddr`; any other netmask is refused.
+ *  - An address with a netmask is written as CIDR when its mask is a whole range. `PASSED_THROUGH_DESTINATION` is kept as it is in `destaddr` (`readImportedRules` then checks the server has that rule) and refused in `sourceaddr`; any other netmask is refused.
  */
 function readMpanelRule(r: Record<string, unknown>, at: string): { rule: RuleRequest; error?: undefined } | { rule?: undefined; error: string } {
   const extra = Object.keys(r).find((k) => !(MPANEL_KEYS as readonly string[]).includes(k))
@@ -202,8 +207,15 @@ function readMpanelRule(r: Record<string, unknown>, at: string): { rule: RuleReq
  * the list may be as long as that, or 100, whichever is more (see `rulesAllowed`).
  *
  * The list may be in BLDesk's format, which is the API's, or in mPanel's (see `readMpanelRule`), told apart by the keys. Mixing them is refused.
+ *
+ * `kept` is the rules the server has now. A rule with `PASSED_THROUGH_DESTINATION` is accepted only if it is one of them, one for one (the same
+ * test the confirmation's diff uses to call a rule unchanged); otherwise it would be a new rule that has it, and the file is refused.
  */
-export function readImportedRules(parsed: unknown, saved = 0): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
+export function readImportedRules(
+  parsed: unknown,
+  saved = 0,
+  kept: readonly FirewallRuleLike[] = []
+): { rules: RuleRequest[]; error?: undefined } | { rules?: undefined; error: string } {
   if (!Array.isArray(parsed)) return { error: 'Firewall rules configuration must be a JSON array of rule objects.' }
   if (parsed.length > rulesAllowed(saved)) return { error: `The file has ${ruleCount(parsed.length)}. ${ruleLimitNote(saved)}` }
   const mixed = mixedFormats(parsed)
@@ -240,6 +252,16 @@ export function readImportedRules(parsed: unknown, saved = 0): { rules: RuleRequ
         ...(r.description != null ? { description: r.description } : {})
       })
     )
+  }
+  // Each rule the server has covers one rule of the file, so a copy of it is a new rule.
+  const unused = new Map<string, number>()
+  for (const k of kept) unused.set(describeFirewallRule(k), (unused.get(describeFirewallRule(k)) ?? 0) + 1)
+  for (let i = 0; i < rules.length; i++) {
+    if (!rules[i].destination_addresses?.includes(PASSED_THROUGH_DESTINATION)) continue
+    const key = describeFirewallRule(rules[i])
+    const left = unused.get(key) ?? 0
+    if (left === 0) return { error: passedThroughNewRefusal(`Rule ${i + 1}`, mpanel ? 'destaddr' : 'destination_addresses') }
+    unused.set(key, left - 1)
   }
   return { rules }
 }

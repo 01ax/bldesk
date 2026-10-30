@@ -400,7 +400,7 @@ export const FirewallManager: React.FC<FirewallManagerProps> = ({ client, initia
 
     try {
       // What is written is checked against the API reference first: a rule list it would refuse is never sent.
-      const read = readImportedRules(JSON.parse(importJsonText), currentRules.length)
+      const read = readImportedRules(JSON.parse(importJsonText), currentRules.length, currentRules)
       if (read.error !== undefined) throw new Error(read.error)
       const parsed = read.rules
       if (parsed.length === 0 && currentRules.length === 0) throw new Error('The file has no rules, and this server has none, so there is nothing to import.')
